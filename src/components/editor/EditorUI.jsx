@@ -7,11 +7,12 @@ import SceneHierarchyPanel from './panels/SceneHierarchyPanel'
 import ObjectPropertiesPanel from './panels/ObjectPropertiesPanel'
 import LibraryPanel from './panels/LibraryPanel'
 import AssetsPanel from './panels/AssetsPanel'
+import PostProcessingPanel from './panels/PostProcessingPanel'
 import ContextMenu from './ContextMenu'
 import Toast from '../ui/Toast'
 import './EditorUI.css'
 
-function EditorUI({ editorControls, onAddToLibrary }) {
+function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
   const {
     selectedObject,
     transformMode,
@@ -38,6 +39,8 @@ function EditorUI({ editorControls, onAddToLibrary }) {
   const [assetName, setAssetName] = useState('')
   const [showLibrary, setShowLibrary] = useState(false)
   const [showAssets, setShowAssets] = useState(false)
+  const [showPostProcessing, setShowPostProcessing] = useState(false)
+  const [isPostProcessingPanelOpen, setIsPostProcessingPanelOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState({
     isVisible: false,
     x: 0,
@@ -318,11 +321,19 @@ function EditorUI({ editorControls, onAddToLibrary }) {
   const handleLibraryToggle = () => {
     setShowLibrary(!showLibrary)
     if (showAssets) setShowAssets(false) // 다른 패널 닫기
+    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
   }
 
   const handleAssetsToggle = () => {
     setShowAssets(!showAssets)
     if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
+    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
+  }
+
+  const handlePostProcessingToggle = () => {
+    setIsPostProcessingPanelOpen(!isPostProcessingPanelOpen)
+    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
+    if (showAssets) setShowAssets(false) // 다른 패널 닫기
   }
 
   const handleAssetDrop = (assetData, position) => {
@@ -515,6 +526,23 @@ function EditorUI({ editorControls, onAddToLibrary }) {
               <path d="M4,6H20V8H4V6M4,11H20V13H4V11M4,16H20V18H4V16Z"/>
             </svg>
           </button>
+          <button 
+            className={`tool-btn post-processing-btn ${isPostProcessingPanelOpen ? 'active' : ''}`}
+            onClick={handlePostProcessingToggle}
+            title="포스트프로세싱 효과"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9,12L11,14L15,10L20,15H4L9,12Z"/>
+            </svg>
+          </button>
+
+          {/* 포스트프로세싱 패널 - 버튼 바로 옆에 */}
+          {isPostProcessingPanelOpen && (
+            <PostProcessingPanel 
+              postProcessingManager={postProcessingManager}
+              onClose={() => setIsPostProcessingPanelOpen(false)}
+            />
+          )}
         </div>
       </div>
 
@@ -532,6 +560,14 @@ function EditorUI({ editorControls, onAddToLibrary }) {
           onObjectDrop={handleLibraryDrop}
           onClose={() => setShowLibrary(false)}
           forceRefresh={forceRefresh}
+        />
+      )}
+
+      {/* 포스트프로세싱 패널 */}
+      {showPostProcessing && (
+        <PostProcessingPanel 
+          postProcessingManager={postProcessingManager}
+          isVisible={showPostProcessing}
         />
       )}
 

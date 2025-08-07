@@ -166,28 +166,38 @@ export class ObjectSelector {
         break;
         
       case 'rotate':
-        // 그룹의 회전량 계산
-        const groupRotationDelta = new THREE.Euler(
-          groupTransform.rotation.x - initialGroupState.rotation.x,
-          groupTransform.rotation.y - initialGroupState.rotation.y,
-          groupTransform.rotation.z - initialGroupState.rotation.z
+        // 그룹의 회전량을 쿼터니언으로 계산
+        const initialQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+          initialGroupState.rotation.x,
+          initialGroupState.rotation.y,
+          initialGroupState.rotation.z
+        ));
+        
+        const currentQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+          groupTransform.rotation.x,
+          groupTransform.rotation.y,
+          groupTransform.rotation.z
+        ));
+        
+        // 회전 차이를 쿼터니언으로 계산
+        const deltaQuaternion = new THREE.Quaternion().multiplyQuaternions(
+          currentQuaternion,
+          initialQuaternion.invert()
         );
         
-        // 그룹 중심을 기준으로 회전 적용
+        // 그룹 중심을 기준으로 위치 회전
         const objectToGroupCenter = new THREE.Vector3().subVectors(targetInitialState.position, initialGroupState.position);
-        
-        // 회전 매트릭스 생성
-        const rotationMatrix = new THREE.Matrix4().makeRotationFromEuler(groupRotationDelta);
-        
-        // 오브젝트의 위치를 그룹 중심 기준으로 회전
-        objectToGroupCenter.applyMatrix4(rotationMatrix);
+        objectToGroupCenter.applyQuaternion(deltaQuaternion);
         targetObject.position.copy(groupTransform.position).add(objectToGroupCenter);
         
-        // 오브젝트 자체의 회전도 적용
-        targetObject.rotation.copy(targetInitialState.rotation);
-        targetObject.rotation.x += groupRotationDelta.x;
-        targetObject.rotation.y += groupRotationDelta.y;
-        targetObject.rotation.z += groupRotationDelta.z;
+        // 오브젝트 자체의 회전을 쿼터니언으로 적용
+        const targetInitialQuaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+          targetInitialState.rotation.x,
+          targetInitialState.rotation.y,
+          targetInitialState.rotation.z
+        ));
+        
+        targetObject.quaternion.multiplyQuaternions(deltaQuaternion, targetInitialQuaternion);
         break;
         
       case 'scale':

@@ -44,6 +44,14 @@ export class TransformManager {
       toggleMagnetRays: () => this.toggleMagnetRays()
     });
 
+    // 쿼터니언 회전 액션 등록
+    this.keyboardController.registerRotationActions({
+      rotateX: (degrees) => this.rotateSelectedX(degrees),
+      rotateY: (degrees) => this.rotateSelectedY(degrees),
+      rotateZ: (degrees) => this.rotateSelectedZ(degrees),
+      resetRotation: () => this.resetSelectedRotation()
+    });
+
     // 선택 액션 등록
     this.keyboardController.registerSelectionActions({
       deselectAll: () => this.deselectAll(),
@@ -78,6 +86,11 @@ export class TransformManager {
     
     // ObjectSelector에 모드 적용
     this.objectSelector.setGizmoMode(mode);
+    
+    // 회전 모드일 때 쿼터니언 설정 적용
+    if (mode === 'rotate') {
+      this.setupQuaternionRotation();
+    }
     
     // 에디터 스토어 업데이트
     if (this.editorStore?.getState().setTransformMode) {
@@ -312,6 +325,66 @@ export class TransformManager {
 
     if (this.objectSelector.transformControls) {
       this.objectSelector.transformControls.setSpace(this.state.space);
+      
+      // 쿼터니언 회전 모드 활성화
+      this.setupQuaternionRotation();
+    }
+  }
+
+  /**
+   * 쿼터니언 회전 모드 설정
+   */
+  setupQuaternionRotation() {
+    if (!this.objectSelector?.transformControls) return;
+
+    const controls = this.objectSelector.transformControls;
+    
+    // 회전 모드일 때 쿼터니언 사용 설정
+    if (this.state.mode === 'rotate') {
+      // TransformControls의 회전 처리를 쿼터니언 기반으로 설정
+      controls.rotationSnap = Math.PI / 12; // 15도 스냅
+      
+      // 회전 이벤트 리스너 추가
+      this.setupRotationEventListeners();
+    }
+  }
+
+  /**
+   * 회전 이벤트 리스너 설정
+   */
+  setupRotationEventListeners() {
+    if (!this.objectSelector?.transformControls) return;
+
+    const controls = this.objectSelector.transformControls;
+    
+    // 회전 변경 이벤트 감지
+    controls.addEventListener('objectChange', () => {
+      if (controls.getMode() === 'rotate' && this.hasSelectedObjects()) {
+        this.onQuaternionRotationChange();
+      }
+    });
+  }
+
+  /**
+   * 쿼터니언 회전 변경 시 처리
+   */
+  onQuaternionRotationChange() {
+    // 선택된 오브젝트들의 쿼터니언이 업데이트됨을 로깅
+    const selectedObjects = this.objectSelector.selectedObjects;
+    
+    selectedObjects.forEach((object, index) => {
+      // 쿼터니언 정규화 확인
+      object.quaternion.normalize();
+      
+      // 변환 행렬 업데이트
+      object.updateMatrix();
+      object.updateMatrixWorld();
+    });
+
+    // 회전 상태 로깅
+    if (selectedObjects.length > 0) {
+      const rotation = this.getSelectedObjectRotation(selectedObjects[0]);
+      console.log('Quaternion rotation applied:', rotation);
     }
   }
 
@@ -361,6 +434,234 @@ export class TransformManager {
     if (settings.magnetRaysVisible !== undefined && settings.magnetRaysVisible !== this.state.magnetRaysVisible) {
       this.toggleMagnetRays();
     }
+  }
+
+  // ======================
+  // 쿼터니언 회전 메서드들
+  // ======================
+
+  /**
+   * 선택된 오브젝트를 쿼터니언으로 회전
+   */
+  rotateSelectedObjects(quaternion) {
+    if (!this.hasSelectedObjects()) {
+      return false;
+    }
+
+    const selectedObjects = this.objectSelector.selectedObjects;
+    
+    selectedObjects.forEach(object => {
+      this.applyQuaternionRotation(object, quaternion);
+    });
+
+    console.log(`Applied quaternion rotation to ${selectedObjects.length} objects`);
+    return true;
+  }
+
+  /**
+   * 개별 오브젝트에 쿼터니언 회전 적용
+   */
+  applyQuaternionRotation(object, quaternion) {
+    if (!object) return;
+
+    // 현재 쿼터니언에 새 회전 적용
+    object.quaternion.multiplyQuaternions(quaternion, object.quaternion);
+    
+    // 변환 행렬 업데이트
+    object.updateMatrix();
+  }
+
+  /**
+   * X축 기준 회전 (도 단위)
+   */
+  rotateSelectedX(degrees) {
+    const radians = THREE.MathUtils.degToRad(degrees);
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), radians);
+    return this.rotateSelectedObjects(quaternion);
+  }
+
+  /**
+   * Y축 기준 회전 (도 단위)
+   */
+  rotateSelectedY(degrees) {
+    const radians = THREE.MathUtils.degToRad(degrees);
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), radians);
+    return this.rotateSelectedObjects(quaternion);
+  }
+
+  /**
+   * Z축 기준 회전 (도 단위)
+   */
+  rotateSelectedZ(degrees) {
+    const radians = THREE.MathUtils.degToRad(degrees);
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), radians);
+    return this.rotateSelectedObjects(quaternion);
+  }
+
+  /**
+   * 임의 축 기준 회전 (도 단위)
+   */
+  rotateSelectedAroundAxis(axis, degrees) {
+    if (!axis || axis.length() === 0) {
+      console.warn('Invalid rotation axis');
+      return false;
+    }
+
+    const normalizedAxis = axis.clone().normalize();
+    const radians = THREE.MathUtils.degToRad(degrees);
+    const quaternion = new THREE.Quaternion().setFromAxisAngle(normalizedAxis, radians);
+    
+    return this.rotateSelectedObjects(quaternion);
+  }
+
+  /**
+   * 오일러 각도를 쿼터니언으로 변환 후 적용 (도 단위)
+   */
+  rotateSelectedByEuler(x, y, z, order = 'XYZ') {
+    const euler = new THREE.Euler(
+      THREE.MathUtils.degToRad(x),
+      THREE.MathUtils.degToRad(y),
+      THREE.MathUtils.degToRad(z),
+      order
+    );
+    
+    const quaternion = new THREE.Quaternion().setFromEuler(euler);
+    return this.rotateSelectedObjects(quaternion);
+  }
+
+  /**
+   * 특정 방향을 향하도록 회전 (Look At 기능)
+   */
+  rotateSelectedToLookAt(targetPosition) {
+    if (!this.hasSelectedObjects() || !targetPosition) {
+      return false;
+    }
+
+    const selectedObjects = this.objectSelector.selectedObjects;
+    
+    selectedObjects.forEach(object => {
+      // 현재 위치에서 타겟 위치를 향하는 방향 계산
+      const direction = new THREE.Vector3().subVectors(targetPosition, object.position).normalize();
+      
+      // Look At 매트릭스 생성
+      const lookAtMatrix = new THREE.Matrix4();
+      lookAtMatrix.lookAt(object.position, targetPosition, new THREE.Vector3(0, 1, 0));
+      
+      // 매트릭스에서 쿼터니언 추출
+      const quaternion = new THREE.Quaternion().setFromRotationMatrix(lookAtMatrix);
+      
+      // 오브젝트에 회전 적용
+      object.quaternion.copy(quaternion);
+      object.updateMatrix();
+    });
+
+    console.log(`Applied look-at rotation to ${selectedObjects.length} objects`);
+    return true;
+  }
+
+  /**
+   * 선택된 오브젝트들의 회전 초기화
+   */
+  resetSelectedRotation() {
+    if (!this.hasSelectedObjects()) {
+      return false;
+    }
+
+    const selectedObjects = this.objectSelector.selectedObjects;
+    
+    selectedObjects.forEach(object => {
+      object.quaternion.set(0, 0, 0, 1); // 기본 쿼터니언 (무회전)
+      object.updateMatrix();
+    });
+
+    console.log(`Reset rotation for ${selectedObjects.length} objects`);
+    return true;
+  }
+
+  /**
+   * 쿼터니언을 오일러 각도로 변환하여 반환 (도 단위)
+   */
+  getSelectedObjectRotation(object = null) {
+    const targetObject = object || this.objectSelector.selectedObjects[0];
+    
+    if (!targetObject) {
+      return null;
+    }
+
+    const euler = new THREE.Euler().setFromQuaternion(targetObject.quaternion, 'XYZ');
+    
+    return {
+      x: THREE.MathUtils.radToDeg(euler.x),
+      y: THREE.MathUtils.radToDeg(euler.y),
+      z: THREE.MathUtils.radToDeg(euler.z),
+      quaternion: targetObject.quaternion.clone()
+    };
+  }
+
+  /**
+   * 월드 공간에서의 회전 적용
+   */
+  rotateSelectedInWorldSpace(quaternion) {
+    if (!this.hasSelectedObjects()) {
+      return false;
+    }
+
+    const selectedObjects = this.objectSelector.selectedObjects;
+    
+    selectedObjects.forEach(object => {
+      // 월드 공간에서 회전 적용
+      const worldQuaternion = new THREE.Quaternion();
+      object.getWorldQuaternion(worldQuaternion);
+      
+      // 새 월드 쿼터니언 = 회전 쿼터니언 * 현재 월드 쿼터니언
+      worldQuaternion.premultiply(quaternion);
+      
+      // 부모의 역변환을 적용하여 로컬 쿼터니언 계산
+      if (object.parent) {
+        const parentWorldQuaternion = new THREE.Quaternion();
+        object.parent.getWorldQuaternion(parentWorldQuaternion);
+        parentWorldQuaternion.invert();
+        
+        object.quaternion.multiplyQuaternions(parentWorldQuaternion, worldQuaternion);
+      } else {
+        object.quaternion.copy(worldQuaternion);
+      }
+      
+      object.updateMatrix();
+    });
+
+    console.log(`Applied world space rotation to ${selectedObjects.length} objects`);
+    return true;
+  }
+
+  /**
+   * 중심점을 기준으로 오브젝트들 회전
+   */
+  rotateSelectedAroundPoint(center, quaternion) {
+    if (!this.hasSelectedObjects() || !center) {
+      return false;
+    }
+
+    const selectedObjects = this.objectSelector.selectedObjects;
+    
+    selectedObjects.forEach(object => {
+      // 중심점으로부터의 상대 위치 계산
+      const relativePosition = object.position.clone().sub(center);
+      
+      // 상대 위치를 회전
+      relativePosition.applyQuaternion(quaternion);
+      
+      // 새 위치 설정
+      object.position.copy(center).add(relativePosition);
+      
+      // 오브젝트 자체도 회전
+      object.quaternion.multiplyQuaternions(quaternion, object.quaternion);
+      
+      object.updateMatrix();
+    });
+
+    console.log(`Rotated ${selectedObjects.length} objects around point`);
+    return true;
   }
 
   // ======================

@@ -39,12 +39,19 @@ function EditorPage() {
   
   // EditorControls 인스턴스를 관리하기 위한 ref
   const editorControlsRef = useRef(null)
+  const postProcessingRef = useRef(null)
   const meshLibraryManager = useRef(new MeshLibraryManager())
 
   // EditorControls 인스턴스를 설정하는 함수
   const setEditorControls = (controls) => {
     editorControlsRef.current = controls
     // EditorControls instance received in EditorPage
+  }
+
+  // PostProcessingManager 인스턴스를 설정하는 함수
+  const setPostProcessingManager = (manager) => {
+    postProcessingRef.current = manager
+    console.log('PostProcessingManager instance received in EditorPage')
   }
 
   const handleFileImport = () => {
@@ -248,6 +255,7 @@ function EditorPage() {
       <div className="editor-container">
         <PlainEditorCanvas 
           onEditorControlsReady={setEditorControls}
+          onPostProcessingReady={setPostProcessingManager}
           onContextMenu={(e) => {
             // 커스텀 이벤트를 통해 전달
             const contextMenuEvent = new CustomEvent('editorContextMenu', {
@@ -259,6 +267,7 @@ function EditorPage() {
         <ViewportControls editorControls={editorControlsRef.current} />
         <EditorUI 
           editorControls={editorControlsRef.current} 
+          postProcessingManager={postProcessingRef.current}
           onAddToLibrary={handleAddToLibrary}
         />
       </div>

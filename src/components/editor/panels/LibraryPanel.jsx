@@ -266,6 +266,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   return (
     <div className="library-panel">
       <div className="library-header">
+        <h3>라이브러리</h3>
         <button className="close-btn" onClick={onClose}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z"/>
@@ -275,6 +276,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
       <div className="library-content">
         <div className="category-section">
+          <h4 className="category-title">기본 도형</h4>
           <div className="object-grid">
             {objectLibrary.map((object) => (
               <div
@@ -319,6 +321,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         {/* 라이브러리 메쉬 섹션 */}
         {libraryMeshes.length > 0 && (
           <div className="category-section">
+            <h4 className="category-title">라이브러리 메쉬</h4>
             <div className="object-grid">
               {libraryMeshes.map((object) => (
                 <div
@@ -358,6 +361,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
         {/* 커스텀 메쉬 섹션 */}
         <div className="category-section">
+          <h4 className="category-title">커스텀 메쉬</h4>
           <div className="object-grid">
             {customMeshes.length > 0 ? (
               customMeshes.map((mesh) => (
@@ -417,7 +421,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         {/* 사용자 정의 객체 섹션 */}
         {customObjects.length > 0 && (
           <div className="category-section">
-            <h4>사용자 정의</h4>
+            <h4 className="category-title">사용자 정의</h4>
             <div className="object-grid">
             {/* 사용자 정의 객체들 */}
             {customObjects.map((object) => (

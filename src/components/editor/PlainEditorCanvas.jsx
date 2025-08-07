@@ -3,10 +3,12 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useEditorStore } from '../../store/editorStore';
 import { EditorControls } from './EditorControls.js';
+import { PostProcessingManager } from './PostProcessingManager.js';
 
-function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
+function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onContextMenu }) {
   const mountRef = useRef(null);
   const editorControlsRef = useRef(null);
+  const postProcessingRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
   
@@ -72,9 +74,18 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
     const editorControls = new EditorControls(scene, camera, renderer, useEditorStore, handleCameraChange);
     editorControlsRef.current = editorControls;
     
+    // 포스트프로세싱 매니저 초기화
+    const postProcessingManager = new PostProcessingManager(scene, camera, renderer);
+    postProcessingRef.current = postProcessingManager;
+    
     // EditorControls가 준비되었음을 부모 컴포넌트에 알림
     if (onEditorControlsReady) {
       onEditorControlsReady(editorControls);
+    }
+    
+    // PostProcessingManager가 준비되었음을 부모 컴포넌트에 알림
+    if (onPostProcessingReady) {
+      onPostProcessingReady(postProcessingManager);
     }
 
     // Add lights
@@ -154,11 +165,17 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         editorControlsRef.current.updateSelectedOutlines();
       }
       
-      // 렌더링 (기즈모를 위한 특별한 렌더링)
+      // 렌더링 (포스트프로세싱 사용)
       renderer.clear();
       // EditorControls의 현재 카메라 사용 (Perspective/Orthographic 토글 대응)
       const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
-      renderer.render(scene, currentCamera);
+      
+      // 포스트프로세싱 매니저가 있으면 포스트프로세싱 렌더링, 없으면 기본 렌더링
+      if (postProcessingRef.current) {
+        postProcessingRef.current.render();
+      } else {
+        renderer.render(scene, currentCamera);
+      }
     };
     animate();
 
@@ -716,6 +733,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
       }
+      
+      // 포스트프로세싱 리사이즈
+      if (postProcessingRef.current) {
+        postProcessingRef.current.handleResize(window.innerWidth, window.innerHeight);
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -727,6 +749,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
       }
       if (editorControlsRef.current) {
         editorControlsRef.current.dispose();
+      }
+      if (postProcessingRef.current) {
+        postProcessingRef.current.dispose();
       }
       if (mountRef.current && renderer.domElement) {
         mountRef.current.removeChild(renderer.domElement);

@@ -9,6 +9,7 @@ export class KeyboardController {
     // 키보드 액션 카테고리
     this.actions = {
       transform: new Map(),
+      rotation: new Map(),     // 쿼터니언 회전 액션
       selection: new Map(),
       viewport: new Map(),
       object: new Map(),
@@ -76,6 +77,56 @@ export class KeyboardController {
       description: '자석 레이 표시',
       action: null,
       category: 'transform'
+    });
+
+    // 쿼터니언 회전 관련 키
+    this.actions.rotation.set('KeyJ', {
+      name: 'Rotate X+',
+      description: 'X축 양의 방향 15도 회전',
+      action: null,
+      category: 'rotation'
+    });
+
+    this.actions.rotation.set('KeyL', {
+      name: 'Rotate X-',
+      description: 'X축 음의 방향 15도 회전',
+      action: null,
+      category: 'rotation'
+    });
+
+    this.actions.rotation.set('KeyI', {
+      name: 'Rotate Y+',
+      description: 'Y축 양의 방향 15도 회전',
+      action: null,
+      category: 'rotation'
+    });
+
+    this.actions.rotation.set('KeyK', {
+      name: 'Rotate Y-',
+      description: 'Y축 음의 방향 15도 회전',
+      action: null,
+      category: 'rotation'
+    });
+
+    this.actions.rotation.set('KeyU', {
+      name: 'Rotate Z+',
+      description: 'Z축 양의 방향 15도 회전',
+      action: null,
+      category: 'rotation'
+    });
+
+    this.actions.rotation.set('KeyO', {
+      name: 'Rotate Z-',
+      description: 'Z축 음의 방향 15도 회전',
+      action: null,
+      category: 'rotation'
+    });
+
+    this.actions.rotation.set('KeyP', {
+      name: 'Reset Rotation',
+      description: '회전 초기화',
+      action: null,
+      category: 'rotation'
     });
 
     // 선택 관련 키
@@ -321,6 +372,30 @@ export class KeyboardController {
     
     if (actions.toggleMagnetRays) {
       this.actions.transform.get('KeyC').action = actions.toggleMagnetRays;
+    }
+  }
+
+  /**
+   * 회전 액션 등록
+   */
+  registerRotationActions(actions) {
+    if (actions.rotateX) {
+      this.actions.rotation.get('KeyJ').action = () => actions.rotateX(15);  // X+ 15도
+      this.actions.rotation.get('KeyL').action = () => actions.rotateX(-15); // X- 15도
+    }
+    
+    if (actions.rotateY) {
+      this.actions.rotation.get('KeyI').action = () => actions.rotateY(15);  // Y+ 15도
+      this.actions.rotation.get('KeyK').action = () => actions.rotateY(-15); // Y- 15도
+    }
+    
+    if (actions.rotateZ) {
+      this.actions.rotation.get('KeyU').action = () => actions.rotateZ(15);  // Z+ 15도
+      this.actions.rotation.get('KeyO').action = () => actions.rotateZ(-15); // Z- 15도
+    }
+    
+    if (actions.resetRotation) {
+      this.actions.rotation.get('KeyP').action = actions.resetRotation;
     }
   }
 
