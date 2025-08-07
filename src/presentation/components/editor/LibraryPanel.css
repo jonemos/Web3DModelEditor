@@ -1,0 +1,185 @@
+.library-panel {
+  position: fixed;
+  left: 70px;
+  top: 0;
+  width: 280px;
+  height: 100vh;
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  z-index: 1000;
+  overflow-y: auto;
+  transition: transform 0.3s ease;
+}
+
+.library-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(20, 20, 20, 0.8);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.library-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.library-content {
+  padding: 20px;
+}
+
+.category-section {
+  margin-bottom: 30px;
+}
+
+.category-section h4 {
+  margin: 0 0 16px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #cccccc;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.object-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 12px;
+}
+
+.object-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 12px 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.object-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(100, 150, 255, 0.5);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.object-item:active {
+  transform: translateY(0);
+}
+
+.object-thumbnail {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  color: #ffffff;
+  transition: color 0.2s ease;
+}
+
+.object-item:hover .object-thumbnail {
+  color: #64b5f6;
+}
+
+.object-name {
+  font-size: 12px;
+  color: #cccccc;
+  text-align: center;
+  line-height: 1.2;
+  font-weight: 400;
+}
+
+.library-instructions {
+  margin-top: 30px;
+  padding: 16px;
+  background: rgba(100, 150, 255, 0.1);
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  border-radius: 8px;
+}
+
+.library-instructions p {
+  margin: 0;
+  font-size: 13px;
+  color: #e3f2fd;
+  line-height: 1.4;
+}
+
+/* 드래그 중 스타일 */
+.object-item.dragging {
+  opacity: 0.6;
+  transform: rotate(5deg);
+}
+
+/* 스크롤바 스타일 */
+.library-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.library-panel::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.library-panel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+}
+
+.library-panel::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .library-panel {
+    width: 100vw;
+    left: 0;
+  }
+  
+  .object-grid {
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 10px;
+  }
+  
+  .object-item {
+    padding: 10px 6px;
+  }
+  
+  .object-thumbnail {
+    width: 35px;
+    height: 35px;
+  }
+  
+  .object-name {
+    font-size: 11px;
+  }
+}

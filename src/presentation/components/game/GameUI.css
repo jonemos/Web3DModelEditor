@@ -1,0 +1,268 @@
+/* 크로스헤어 */
+.crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.crosshair::before,
+.crosshair::after {
+  content: '';
+  position: absolute;
+  background-color: rgba(255, 255, 255, 0.8);
+}
+
+.crosshair::before {
+  top: 50%;
+  left: 8px;
+  width: 4px;
+  height: 2px;
+  transform: translateY(-50%);
+}
+
+.crosshair::after {
+  left: 50%;
+  top: 8px;
+  width: 2px;
+  height: 4px;
+  transform: translateX(-50%);
+}
+
+/* 게임 메시지 */
+.game-message {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 10px 20px;
+  border-radius: 5px;
+  font-size: 18px;
+  z-index: 200;
+  pointer-events: none;
+}
+
+/* 일시정지 오버레이 */
+.pause-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  color: white;
+}
+
+.pause-overlay h2 {
+  margin-bottom: 30px;
+  font-size: 2em;
+}
+
+.pause-overlay button {
+  margin: 10px;
+  padding: 15px 30px;
+  font-size: 18px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.resume-btn {
+  background-color: #007acc;
+  color: white;
+}
+
+.resume-btn:hover {
+  background-color: #0099ff;
+}
+
+.restart-btn {
+  background-color: #666;
+  color: white;
+}
+
+.restart-btn:hover {
+  background-color: #888;
+}
+
+/* 컨트롤 안내 */
+.controls-info {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  background: rgba(0, 0, 0, 0.5);
+  color: white;
+  padding: 15px;
+  border-radius: 5px;
+  font-size: 14px;
+  line-height: 1.4;
+  z-index: 100;
+}
+
+/* 사이드바 토글 버튼 */
+.sidebar-toggle-btn {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  width: 50px;
+  height: 50px;
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  z-index: 300;
+  transition: background-color 0.3s;
+}
+
+.sidebar-toggle-btn:hover {
+  background: rgba(0, 0, 0, 0.9);
+}
+
+/* 사이드바 */
+.sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 300px;
+  height: 100vh;
+  background: rgba(30, 30, 30, 0.95);
+  color: white;
+  transform: translateX(100%);
+  transition: transform 0.3s ease;
+  z-index: 200;
+  overflow-y: auto;
+}
+
+.sidebar.open {
+  transform: translateX(0);
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-header h3 {
+  margin: 0;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 5px;
+}
+
+.sidebar-content {
+  padding: 20px;
+}
+
+.section {
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.section h4 {
+  margin-bottom: 15px;
+  color: #007acc;
+}
+
+.upload-btn,
+.reset-btn,
+.camera-btn,
+.apply-map-btn {
+  padding: 10px 15px;
+  margin: 5px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+}
+
+.upload-btn {
+  background-color: #007acc;
+  color: white;
+}
+
+.upload-btn:hover {
+  background-color: #0099ff;
+}
+
+.reset-btn {
+  background-color: #666;
+  color: white;
+}
+
+.reset-btn:hover {
+  background-color: #888;
+}
+
+.camera-btn {
+  background-color: #333;
+  color: white;
+  width: 100%;
+}
+
+.camera-btn.active {
+  background-color: #007acc;
+}
+
+.camera-btn:hover {
+  background-color: #555;
+}
+
+.camera-btn.active:hover {
+  background-color: #0099ff;
+}
+
+.apply-map-btn {
+  background-color: #28a745;
+  color: white;
+  width: 100%;
+}
+
+.apply-map-btn:hover {
+  background-color: #218838;
+}
+
+.model-info {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #aaa;
+}
+
+.slider {
+  width: 100%;
+  margin: 10px 0;
+}
+
+.map-select {
+  width: 100%;
+  padding: 8px;
+  margin-bottom: 10px;
+  border: 1px solid #666;
+  border-radius: 3px;
+  background-color: #333;
+  color: white;
+}
