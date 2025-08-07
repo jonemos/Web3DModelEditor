@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import './ContextMenu.css';
 
-const ContextMenu = ({ x, y, isVisible, onClose, onAddToLibrary, selectedObject }) => {
+const ContextMenu = ({ x, y, isVisible, onClose, selectedObject }) => {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -30,16 +30,6 @@ const ContextMenu = ({ x, y, isVisible, onClose, onAddToLibrary, selectedObject 
 
   if (!isVisible) return null;
 
-  const handleAddToLibrary = () => {
-    console.log('컨텍스트 메뉴에서 라이브러리 추가 클릭, 선택된 객체:', selectedObject);
-    if (selectedObject && onAddToLibrary) {
-      onAddToLibrary(selectedObject);
-    } else {
-      alert('선택된 객체가 없습니다. 3D 뷰에서 객체를 클릭하여 선택해주세요.');
-    }
-    onClose();
-  };
-
   // 메뉴가 화면 밖으로 나가지 않도록 위치 조정
   const adjustedX = Math.min(x, window.innerWidth - 200);
   const adjustedY = Math.min(y, window.innerHeight - 150);
@@ -58,19 +48,6 @@ const ContextMenu = ({ x, y, isVisible, onClose, onAddToLibrary, selectedObject 
       </div>
       
       <div className="context-menu-items">
-        <button 
-          className="context-menu-item"
-          onClick={handleAddToLibrary}
-          disabled={!selectedObject}
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z"/>
-          </svg>
-          <span>라이브러리에 추가</span>
-        </button>
-        
-        <div className="context-menu-separator"></div>
-        
         <button 
           className="context-menu-item disabled"
           disabled

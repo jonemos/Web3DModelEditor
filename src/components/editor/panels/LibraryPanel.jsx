@@ -109,9 +109,9 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
       }
       
       // 로컬 스토리지에서 제거
-      const savedCustomObjects = JSON.parse(localStorage.getItem('customLibraryObjects') || '[]');
+      const savedCustomObjects = JSON.parse(localStorage.getItem('customObjects') || '[]');
       const filteredObjects = savedCustomObjects.filter(obj => obj.id !== objectToDelete.id);
-      localStorage.setItem('customLibraryObjects', JSON.stringify(filteredObjects));
+      localStorage.setItem('customObjects', JSON.stringify(filteredObjects));
       
       // 상태 업데이트
       setCustomObjects(filteredObjects);

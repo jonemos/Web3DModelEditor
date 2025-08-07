@@ -4,7 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useEditorStore } from '../../store/editorStore';
 import { EditorControls } from './EditorControls.js';
 
-function PlainEditorCanvas({ onEditorControlsReady }) {
+function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
   const mountRef = useRef(null);
   const editorControlsRef = useRef(null);
   const sceneRef = useRef(null);
@@ -48,6 +48,15 @@ function PlainEditorCanvas({ onEditorControlsReady }) {
     
     // Mount the renderer
     mountRef.current.appendChild(renderer.domElement);
+
+    // 캔버스 우클릭 이벤트 리스너 추가
+    const handleCanvasContextMenu = (e) => {
+      if (onContextMenu) {
+        onContextMenu(e);
+      }
+    };
+
+    renderer.domElement.addEventListener('contextmenu', handleCanvasContextMenu);
 
     // Store scene reference
     sceneRef.current = scene;
@@ -352,6 +361,9 @@ function PlainEditorCanvas({ onEditorControlsReady }) {
     // Cleanup
     return () => {
       window.removeEventListener('resize', handleResize);
+      if (renderer.domElement) {
+        renderer.domElement.removeEventListener('contextmenu', handleCanvasContextMenu);
+      }
       if (editorControlsRef.current) {
         editorControlsRef.current.dispose();
       }

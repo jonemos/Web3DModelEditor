@@ -69,6 +69,20 @@ function EditorUI({ editorControls }) {
   // Console output removed
   // Console output removed
 
+  // 컨텍스트 메뉴 핸들러 함수 추가
+  const handleContextMenu = (e) => {
+    // 선택된 객체가 있을 때만 컨텍스트 메뉴 표시
+    if (selectedObject) {
+      e.preventDefault();
+      console.log('컨텍스트 메뉴 표시 - 선택된 객체:', selectedObject);
+      setContextMenu({
+        isVisible: true,
+        x: e.clientX,
+        y: e.clientY
+      });
+    }
+  };
+
   // 전역 키보드 이벤트 처리
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -82,25 +96,17 @@ function EditorUI({ editorControls }) {
       }
     }
 
-    const handleContextMenu = (e) => {
-      // 선택된 객체가 있을 때만 컨텍스트 메뉴 표시
-      if (selectedObject) {
-        e.preventDefault();
-        console.log('컨텍스트 메뉴 표시 - 선택된 객체:', selectedObject);
-        setContextMenu({
-          isVisible: true,
-          x: e.clientX,
-          y: e.clientY
-        });
-      }
+    // 커스텀 컨텍스트 메뉴 이벤트 리스너
+    const handleEditorContextMenu = (e) => {
+      handleContextMenu(e.detail.originalEvent);
     };
 
     window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('contextmenu', handleContextMenu)
+    window.addEventListener('editorContextMenu', handleEditorContextMenu)
     
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('contextmenu', handleContextMenu)
+      window.removeEventListener('editorContextMenu', handleEditorContextMenu)
     }
   }, [selectedObject])
 
@@ -338,210 +344,6 @@ function EditorUI({ editorControls }) {
     })
   }
 
-  const handleAddToLibrary = async (selectedObj) => {
-    console.log('라이브러리 추가 시작...');
-    console.log('받은 selectedObj 매개변수:', selectedObj);
-    
-    if (!editorControls) {
-      console.error('EditorControls가 아직 준비되지 않았습니다.');
-      showToast('에디터가 준비되지 않았습니다.', 'error');
-      return;
-    }
-
-    // 선택된 객체들 가져오기 (아웃라인이 적용된 객체들)
-    const selectedObjects = editorControls.getSelectedObjects();
-    console.log('선택된 객체들 (아웃라인 적용):', selectedObjects);
-
-    if (!selectedObjects || selectedObjects.length === 0) {
-      console.log('선택된 객체가 없습니다.');
-      showToast('라이브러리에 추가할 객체를 먼저 선택해주세요. 3D 뷰에서 객체를 클릭하거나 드래그하여 선택하세요.', 'error');
-      return;
-    }
-
-    try {
-      // 여러 객체가 선택된 경우 하나의 그룹으로 만들기
-      let objectToExport;
-      if (selectedObjects.length === 1) {
-        objectToExport = selectedObjects[0];
-      } else {
-        // 여러 객체를 하나의 그룹으로 결합
-        const group = new THREE.Group();
-        selectedObjects.forEach(obj => {
-          const clone = obj.clone();
-          group.add(clone);
-        });
-        objectToExport = group;
-      }
-
-      console.log('내보낼 객체:', objectToExport);
-      showToast(`${selectedObjects.length}개 객체를 라이브러리에 추가 중...`, 'info');
-
-      // 사용자 정의 이름 입력
-      const customName = prompt('라이브러리에 추가할 객체의 이름을 입력하세요:', 
-        selectedObj?.name || objectToExport.name || `Custom Object ${JSON.parse(localStorage.getItem('customObjects') || '[]').length + 1}`
-      );
-      if (!customName) return;
-
-      // GLB 파일로 내보내기
-      const exporter = new GLTFExporter();
-      const gltfData = await new Promise((resolve, reject) => {
-        exporter.parse(
-          objectToExport,
-          (result) => resolve(result),
-          (error) => reject(error),
-          { binary: true }
-        );
-      });
-
-      // 썸네일 생성
-      const thumbnail = await generateThumbnail(objectToExport);
-
-      // 커스텀 객체 저장
-      const customObjects = JSON.parse(localStorage.getItem('customObjects') || '[]');
-      
-      const newObject = {
-        id: `custom_${Date.now()}`,
-        name: customName,
-        glbData: Array.from(new Uint8Array(gltfData)),
-        thumbnail: thumbnail,
-        createdAt: new Date().toISOString()
-      };
-
-      customObjects.push(newObject);
-      localStorage.setItem('customObjects', JSON.stringify(customObjects));
-
-      console.log('커스텀 객체 저장 완료:', newObject.name);
-      showToast(`"${customName}"이 라이브러리에 추가되었습니다!`, 'success');
-
-      // 패널 새로고침
-      setForceRefresh(prev => prev + 1);
-    } catch (error) {
-      console.error('GLB 내보내기 실패:', error);
-      showToast('객체를 라이브러리에 추가하는데 실패했습니다.', 'error');
-    }
-  };
-
-  const exportObjectToLibrary = async (threeObject, customName) => {
-    try {
-      // 1. 객체를 복제하고 원점 중심으로 이동
-      const clonedObject = threeObject.clone();
-      
-      // 바운딩 박스 계산
-      const box = new THREE.Box3().setFromObject(clonedObject);
-      const center = box.getCenter(new THREE.Vector3());
-      
-      // 원점 중심으로 이동
-      clonedObject.position.sub(center);
-      
-      // 2. 씬 생성 및 객체 추가
-      const exportScene = new THREE.Scene();
-      exportScene.add(clonedObject);
-      
-      // 3. GLB 파일로 내보내기
-      const exporter = new GLTFExporter();
-      
-      const glbData = await new Promise((resolve, reject) => {
-        exporter.parse(
-          exportScene,
-          (result) => resolve(result),
-          (error) => reject(error),
-          { binary: true }
-        );
-      });
-
-      // 4. 썸네일 생성
-      const thumbnail = await generateThumbnail(clonedObject);
-      
-      // 5. 파일 저장을 위한 Blob 생성
-      const glbBlob = new Blob([glbData], { type: 'application/octet-stream' });
-      const glbUrl = URL.createObjectURL(glbBlob);
-      
-      // 6. 라이브러리 객체 정보 생성
-      const customObject = {
-        id: `custom_${Date.now()}`,
-        name: customName,
-        type: 'custom',
-        geometry: 'CustomGeometry',
-        glbUrl: glbUrl,
-        glbData: Array.from(new Uint8Array(glbData)), // 저장을 위해 배열로 변환
-        thumbnail: thumbnail,
-        createdAt: new Date().toISOString(),
-        originalObject: {
-          position: threeObject.position.toArray(),
-          rotation: threeObject.rotation.toArray(),
-          scale: threeObject.scale.toArray()
-        }
-      };
-
-      // 7. 로컬 스토리지에 저장
-      const savedCustomObjects = JSON.parse(localStorage.getItem('customLibraryObjects') || '[]');
-      savedCustomObjects.push(customObject);
-      localStorage.setItem('customLibraryObjects', JSON.stringify(savedCustomObjects));
-
-      alert(`"${customName}"이(가) 라이브러리에 추가되었습니다!`);
-      
-      // 라이브러리 패널 새로고침
-      if (showLibrary) {
-        setShowLibrary(false);
-        setTimeout(() => setShowLibrary(true), 100);
-      }
-
-    } catch (error) {
-      console.error('GLB 내보내기 오류:', error);
-      alert('객체를 GLB 파일로 내보내는 중 오류가 발생했습니다.');
-    }
-  }
-
-  const generateThumbnail = async (object) => {
-    try {
-      // 썸네일 생성을 위한 임시 씬과 카메라 설정
-      const thumbnailScene = new THREE.Scene();
-      const thumbnailCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-      const thumbnailRenderer = new THREE.WebGLRenderer({ 
-        antialias: true, 
-        alpha: true,
-        preserveDrawingBuffer: true 
-      });
-      
-      thumbnailRenderer.setSize(128, 128);
-      thumbnailRenderer.setClearColor(0x2a2a2a, 1);
-      
-      // 객체 복제 및 추가
-      const clonedForThumbnail = object.clone();
-      thumbnailScene.add(clonedForThumbnail);
-      
-      // 조명 추가
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(1, 1, 1);
-      thumbnailScene.add(ambientLight);
-      thumbnailScene.add(directionalLight);
-      
-      // 카메라 위치 설정 (객체를 잘 보이도록)
-      const box = new THREE.Box3().setFromObject(clonedForThumbnail);
-      const size = box.getSize(new THREE.Vector3());
-      const maxSize = Math.max(size.x, size.y, size.z);
-      
-      thumbnailCamera.position.set(maxSize * 1.5, maxSize * 1.2, maxSize * 1.5);
-      thumbnailCamera.lookAt(box.getCenter(new THREE.Vector3()));
-      
-      // 렌더링
-      thumbnailRenderer.render(thumbnailScene, thumbnailCamera);
-      
-      // 캔버스를 데이터 URL로 변환
-      const canvas = thumbnailRenderer.domElement;
-      const dataURL = canvas.toDataURL('image/png');
-      
-      // 리소스 정리
-      thumbnailRenderer.dispose();
-      
-      return dataURL;
-    } catch (error) {
-      console.error('썸네일 생성 오류:', error);
-      return null;
-    }
-  }
-
   return (
     <div className="editor-ui">
       {/* 좌측 도구 모음 */}
@@ -582,7 +384,6 @@ function EditorUI({ editorControls }) {
         y={contextMenu.y}
         isVisible={contextMenu.isVisible}
         onClose={handleCloseContextMenu}
-        onAddToLibrary={handleAddToLibrary}
         selectedObject={selectedObject}
       />
 

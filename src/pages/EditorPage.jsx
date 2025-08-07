@@ -211,7 +211,16 @@ function EditorPage() {
     <div className="editor-page">
       <MenuBar onMenuAction={handleMenuAction} />
       <div className="editor-container">
-        <PlainEditorCanvas onEditorControlsReady={setEditorControls} />
+        <PlainEditorCanvas 
+          onEditorControlsReady={setEditorControls}
+          onContextMenu={(e) => {
+            // 커스텀 이벤트를 통해 전달
+            const contextMenuEvent = new CustomEvent('editorContextMenu', {
+              detail: { originalEvent: e }
+            });
+            window.dispatchEvent(contextMenuEvent);
+          }}
+        />
         <EditorUI editorControls={editorControlsRef.current} />
       </div>
 
