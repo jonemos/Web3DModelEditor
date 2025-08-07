@@ -76,14 +76,28 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
         const meshObjects = [];
         
-        // 각 파일에 대해 썸네일 생성
+        // 각 파일에 대해 존재 여부 확인 및 썸네일 생성
         for (const file of meshFiles) {
+          const glbUrl = `/library/mesh/${file.filename}`;
+          
+          // 파일 존재 여부 확인
+          try {
+            const response = await fetch(glbUrl, { method: 'HEAD' });
+            if (!response.ok) {
+              console.warn(`GLB 파일이 존재하지 않습니다: ${glbUrl}`);
+              continue; // 파일이 없으면 건너뛰기
+            }
+          } catch (error) {
+            console.warn(`GLB 파일 확인 실패: ${glbUrl}`, error);
+            continue; // 파일 확인 실패 시 건너뛰기
+          }
+          
           const meshObject = {
             id: `library_${file.filename.replace('.glb', '')}`,
             name: file.name,
             type: 'library',
             geometry: 'LibraryMesh',
-            glbUrl: `/library/mesh/${file.filename}`,
+            glbUrl: glbUrl,
             filename: file.filename,
             thumbnail: null,
             isLoadingThumbnail: true

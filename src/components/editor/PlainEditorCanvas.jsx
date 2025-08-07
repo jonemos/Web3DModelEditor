@@ -176,6 +176,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         const data = event.dataTransfer.getData('text/plain');
         if (data) {
           const objectData = JSON.parse(data);
+          console.log('드롭된 객체 데이터:', objectData);
           
           // 마우스 위치를 3D 좌표로 변환
           const rect = canvas.getBoundingClientRect();
@@ -290,6 +291,63 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
                 geometry = new THREE.BoxGeometry(1, 1, 1); // 기본값
               }
               break;
+            case 'LibraryMesh':
+              // 라이브러리 메쉬 로드
+              if (objectData.glbUrl) {
+                const loader = new GLTFLoader();
+                loader.load(objectData.glbUrl, (gltf) => {
+                  const model = gltf.scene;
+                  model.position.copy(intersection);
+                  
+                  // 고유 ID 생성
+                  const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                  model.name = uniqueId;
+                  model.userData = {
+                    id: uniqueId,
+                    name: objectData.name,
+                    type: objectData.type || 'library',
+                    originalName: objectData.name
+                  };
+                  
+                  // 그림자 설정
+                  model.traverse((child) => {
+                    if (child.isMesh) {
+                      child.castShadow = true;
+                      child.receiveShadow = true;
+                    }
+                  });
+                  
+                  scene.add(model);
+                  
+                  // 선택 가능한 오브젝트로 등록
+                  editorControls.addSelectableObject(model);
+                  
+                  // 로드된 오브젝트로 기록
+                  loadedObjectsRef.current.set(uniqueId, model);
+                  
+                  // 에디터 스토어에 객체 등록
+                  const addObject = useEditorStore.getState().addObject;
+                  addObject({
+                    id: uniqueId,
+                    name: objectData.name,
+                    type: 'mesh',
+                    position: [intersection.x, intersection.y, intersection.z],
+                    rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
+                    scale: [1, 1, 1],
+                    visible: true,
+                    userData: model.userData
+                  });
+                  
+                  // 새로 추가된 객체 선택
+                  setSelectedObject(uniqueId);
+                }, undefined, (error) => {
+                  console.error('라이브러리 메쉬 로드 오류:', error);
+                });
+                return; // 여기서 함수 종료
+              } else {
+                geometry = new THREE.BoxGeometry(1, 1, 1); // 기본값
+              }
+              break;
             default:
               geometry = new THREE.BoxGeometry(1, 1, 1);
           }
@@ -386,16 +444,19 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
       // 이미 로드된 오브젝트는 건너뛰기
       if (loadedObjectsRef.current.has(obj.id)) return;
       
-      if (obj.type === 'glb' && obj.file) {
+      if (obj.type === 'glb' && (obj.file || obj.url)) {
         // GLB file loading started
         
-        // GLB 파일 로드
+        // GLB 파일 로드 (file 또는 url 사용)
+        const glbSource = obj.file || obj.url;
         loader.load(
-          obj.file,
+          glbSource,
           (gltf) => {
             const model = gltf.scene;
             
             // GLB loaded successfully
+            console.log(`GLB 파일 로딩 성공: ${obj.name}`, model);
+            console.log(`GLB 파일 경로: ${glbSource}`);
             
             // 바운딩 박스 계산하여 모델 크기 확인
             const box = new THREE.Box3().setFromObject(model);
@@ -463,9 +524,123 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
           },
           (progress) => {
             // GLB loading progress
+            console.log(`GLB 로딩 진행 중: ${obj.name}`, progress);
           },
           (error) => {
             // GLB file loading error
+            console.error(`GLB 파일 로딩 실패: ${obj.name}`, error);
+            console.error(`GLB 파일 경로: ${glbSource}`);
+            console.error('객체 정보:', obj);
+            
+            // GLB 로딩 실패 시 기본 도형으로 대체
+            console.warn(`GLB 로딩 실패로 인해 기본 박스로 대체: ${obj.name}`);
+            
+            // 기본 박스 생성
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshLambertMaterial({ 
+              color: 0xff6b6b,  // 빨간색으로 에러 표시
+              transparent: true,
+              opacity: 0.7
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            // 위치 및 기본 속성 설정
+            mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
+            mesh.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+            mesh.scale.set(obj.scale.x, obj.scale.y, obj.scale.z);
+            mesh.name = `${obj.name} (로딩실패)`;
+            mesh.userData = { id: obj.id, type: obj.type, loadError: true };
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.visible = obj.visible !== false;
+            
+            // 씬에 추가
+            scene.add(mesh);
+            editorControlsRef.current.addSelectableObject(mesh);
+            loadedObjectsRef.current.set(obj.id, mesh);
+            setSelectedObject(obj.id);
+          }
+        );
+      } else if (obj.type === 'glb' && obj.glbData) {
+        // GLB 데이터가 있는 경우 (사용자 정의 객체)
+        // GLB data loading started
+        
+        // Blob에서 URL 생성
+        const blob = new Blob([obj.glbData], { type: 'model/gltf-binary' });
+        const url = URL.createObjectURL(blob);
+        
+        loader.load(
+          url,
+          (gltf) => {
+            const model = gltf.scene;
+            
+            // GLB data loaded successfully
+            
+            // 바운딩 박스 계산하여 모델 크기 확인
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            // 모델이 너무 크거나 작으면 스케일 조정
+            const maxSize = Math.max(size.x, size.y, size.z);
+            let targetScale = 1;
+            
+            if (maxSize > 10) {
+              targetScale = 5 / maxSize;
+            } else if (maxSize < 0.1) {
+              targetScale = 1 / maxSize;
+            }
+            
+            // 모델을 원점 중심으로 이동
+            model.position.sub(center);
+            
+            // 모델 위치 설정
+            model.position.set(obj.position.x, obj.position.y, obj.position.z);
+            model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+            model.scale.set(
+              obj.scale.x * targetScale, 
+              obj.scale.y * targetScale, 
+              obj.scale.z * targetScale
+            );
+            
+            // 메타데이터 설정
+            model.name = obj.name;
+            model.userData = { id: obj.id, type: obj.type };
+            
+            // 가시성 설정
+            model.visible = obj.visible !== false;
+            
+            // 그림자 설정
+            model.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+            
+            // 씬에 추가
+            scene.add(model);
+            
+            // 선택 가능한 오브젝트로 등록
+            editorControlsRef.current.addSelectableObject(model);
+            
+            // 로드된 오브젝트로 기록
+            loadedObjectsRef.current.set(obj.id, model);
+            
+            // 자동으로 선택
+            setSelectedObject(obj.id);
+            
+            // URL 해제 (메모리 누수 방지)
+            URL.revokeObjectURL(url);
+            
+            // GLB data loading completed
+          },
+          (progress) => {
+            // GLB data loading progress
+          },
+          (error) => {
+            // GLB data loading error
+            URL.revokeObjectURL(url); // 에러 시에도 URL 해제
           }
         );
       } else if (obj.type === 'cube') {

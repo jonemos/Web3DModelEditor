@@ -96,10 +96,27 @@
   justify-content: center;
   margin-bottom: 0; /* 여백 제거 */
   color: #ffffff;
-  transition: color 0.2s ease;
+  transition: all 0.3s ease;
   position: relative;
-  overflow: hidden;
+  overflow: visible; /* hover 시 확대되는 썸네일이 보이도록 */
   border-radius: 4px;
+  z-index: 1;
+}
+
+/* 라이브러리 메쉬 전용 썸네일 hover 효과 */
+.library-mesh .object-thumbnail {
+  position: relative;
+}
+
+.library-mesh:hover .object-thumbnail {
+  transform: scale(2.5);
+  z-index: 1000;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.8));
+}
+
+.library-mesh:hover .thumbnail-image {
+  border: 2px solid rgba(100, 150, 255, 0.8);
+  border-radius: 6px;
 }
 
 .thumbnail-image {
@@ -162,11 +179,13 @@
   border: 1px solid rgba(0, 255, 127, 0.3);
   background: rgba(0, 255, 127, 0.05);
   position: relative;
+  overflow: visible; /* 확대된 썸네일이 보이도록 */
 }
 
 .object-item.library-mesh:hover {
   background: rgba(0, 255, 127, 0.15);
   border-color: rgba(0, 255, 127, 0.6);
+  z-index: 999; /* 다른 요소들보다 위에 표시 */
 }
 
 .object-item.library-mesh .object-thumbnail {
@@ -260,4 +279,32 @@
   .object-name {
     font-size: 9px;
   }
+}
+
+/* 라이브러리 메쉬 썸네일 확대 효과 추가 개선 */
+.library-mesh .thumbnail-image {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-origin: center;
+}
+
+.library-mesh:hover .thumbnail-image {
+  border: 2px solid rgba(100, 150, 255, 0.8);
+  border-radius: 6px;
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+/* 로딩 스피너도 확대 시 적절한 크기로 조정 */
+.library-mesh:hover .loading-spinner {
+  transform: scale(1.5);
+}
+
+/* 확대된 썸네일이 다른 요소들을 가리지 않도록 z-index 관리 */
+.library-mesh {
+  z-index: 1;
+}
+
+.library-mesh:hover {
+  z-index: 1001;
 }
