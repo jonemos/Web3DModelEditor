@@ -319,6 +319,7 @@ function EditorUI({ editorControls }) {
 
   const handleLibraryDrop = (objectData, position) => {
     // 라이브러리에서 드롭된 오브젝트를 씬에 추가
+    console.log('라이브러리 드롭 시작:', objectData);
     let newObject;
 
     if (objectData.type === 'library') {
@@ -332,6 +333,7 @@ function EditorUI({ editorControls }) {
         scale: { x: 1, y: 1, z: 1 },
         name: objectData.name
       };
+      console.log('라이브러리 메쉬 객체 생성:', newObject);
     } else if (objectData.type === 'custom') {
       // 사용자 정의 객체 (저장된 GLB 데이터)
       newObject = {
