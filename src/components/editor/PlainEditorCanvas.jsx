@@ -178,6 +178,120 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
           const objectData = JSON.parse(data);
           console.log('드롭된 객체 데이터:', objectData);
           
+          // 커스텀 메쉬나 라이브러리 메쉬인 경우 별도 처리
+          if (objectData.type === 'custom' || objectData.type === 'library') {
+            console.log('커스텀/라이브러리 메쉬 드롭 처리:', objectData.type, objectData.name);
+            
+            // 마우스 위치를 3D 좌표로 변환
+            const rect = canvas.getBoundingClientRect();
+            const mouse = new THREE.Vector2();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            
+            // 바닥과의 교차점 계산 (y=0 평면)
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersection = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersection);
+            
+            // GLB 로더로 메쉬 로드
+            const loader = new GLTFLoader();
+            let modelUrl;
+            
+            if (objectData.type === 'custom') {
+              // 커스텀 메쉬: GLB 데이터를 Blob URL로 변환
+              console.log('커스텀 메쉬 GLB 데이터:', typeof objectData.glbData, objectData.glbData);
+              
+              let binaryData;
+              if (objectData.glbData instanceof ArrayBuffer) {
+                binaryData = objectData.glbData;
+              } else if (objectData.glbData instanceof Uint8Array) {
+                binaryData = objectData.glbData.buffer;
+              } else if (Array.isArray(objectData.glbData)) {
+                binaryData = new Uint8Array(objectData.glbData).buffer;
+              } else if (typeof objectData.glbData === 'object' && objectData.glbData.type === 'Buffer') {
+                binaryData = new Uint8Array(objectData.glbData.data || objectData.glbData).buffer;
+              } else {
+                console.error('지원되지 않는 GLB 데이터 형식:', typeof objectData.glbData, objectData.glbData);
+                return;
+              }
+              
+              const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
+              modelUrl = URL.createObjectURL(blob);
+            } else if (objectData.type === 'library') {
+              // 라이브러리 메쉬: glbUrl 사용
+              modelUrl = objectData.glbUrl;
+            }
+            
+            loader.load(
+              modelUrl,
+              (gltf) => {
+                const model = gltf.scene;
+                model.position.copy(intersection);
+                
+                // 그림자 설정
+                model.traverse((child) => {
+                  if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                  }
+                });
+                
+                scene.add(model);
+                
+                // 선택 가능한 오브젝트로 등록
+                editorControls.addSelectableObject(model);
+                
+                // 고유 ID 생성
+                const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                model.name = uniqueId;
+                model.userData = {
+                  id: uniqueId,
+                  name: objectData.name,
+                  type: objectData.type,
+                  originalData: objectData
+                };
+                
+                // 로드된 오브젝트로 기록
+                loadedObjectsRef.current.set(uniqueId, model);
+                
+                // 에디터 스토어에 객체 등록
+                const addObject = useEditorStore.getState().addObject;
+                addObject({
+                  id: uniqueId,
+                  name: objectData.name,
+                  type: 'mesh',
+                  position: [intersection.x, intersection.y, intersection.z],
+                  rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
+                  scale: [1, 1, 1],
+                  visible: true,
+                  userData: model.userData
+                });
+                
+                // 새로 추가된 객체 선택
+                setSelectedObject(uniqueId);
+                
+                // URL 정리 (커스텀 메쉬의 경우에만)
+                if (objectData.type === 'custom') {
+                  URL.revokeObjectURL(modelUrl);
+                }
+                
+                console.log('커스텀/라이브러리 메쉬 로드 완료:', uniqueId);
+              },
+              undefined,
+              (error) => {
+                console.error('커스텀/라이브러리 메쉬 로드 실패:', error);
+                if (objectData.type === 'custom') {
+                  URL.revokeObjectURL(modelUrl);
+                }
+              }
+            );
+            
+            return; // 기본 geometry 처리 로직을 건너뛰기
+          }
+          
           // 마우스 위치를 3D 좌표로 변환
           const rect = canvas.getBoundingClientRect();
           const mouse = new THREE.Vector2();
@@ -225,9 +339,27 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
             case 'CustomGeometry':
               // 사용자 정의 객체 복제
               if (objectData.glbData) {
+                console.log('커스텀 지오메트리 GLB 데이터 처리:', typeof objectData.glbData, objectData.glbData);
+                
+                // GLB 데이터를 올바른 형태로 변환
+                let binaryData;
+                if (objectData.glbData instanceof ArrayBuffer) {
+                  binaryData = objectData.glbData;
+                } else if (objectData.glbData instanceof Uint8Array) {
+                  binaryData = objectData.glbData.buffer;
+                } else if (Array.isArray(objectData.glbData)) {
+                  // 배열 형태로 저장된 경우
+                  binaryData = new Uint8Array(objectData.glbData).buffer;
+                } else if (typeof objectData.glbData === 'object' && objectData.glbData.type === 'Buffer') {
+                  // Node.js Buffer 객체
+                  binaryData = new Uint8Array(objectData.glbData.data || objectData.glbData).buffer;
+                } else {
+                  console.error('지원되지 않는 GLB 데이터 형식:', typeof objectData.glbData, objectData.glbData);
+                  return;
+                }
+                
                 // GLB 데이터에서 Blob 생성
-                const uint8Array = new Uint8Array(objectData.glbData);
-                const blob = new Blob([uint8Array], { type: 'application/octet-stream' });
+                const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
                 const url = URL.createObjectURL(blob);
                 
                 // GLB 파일 로드
@@ -563,10 +695,29 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         );
       } else if (obj.type === 'glb' && obj.glbData) {
         // GLB 데이터가 있는 경우 (사용자 정의 객체)
-        // GLB data loading started
+        console.log('GLB 데이터 로딩 시작:', obj.name, typeof obj.glbData, obj.glbData);
+        
+        // GLB 데이터를 올바른 형태로 변환
+        let binaryData;
+        if (obj.glbData instanceof ArrayBuffer) {
+          binaryData = obj.glbData;
+        } else if (obj.glbData instanceof Uint8Array) {
+          binaryData = obj.glbData.buffer;
+        } else if (Array.isArray(obj.glbData)) {
+          // 배열 형태로 저장된 경우
+          binaryData = new Uint8Array(obj.glbData).buffer;
+        } else if (typeof obj.glbData === 'object' && obj.glbData.type === 'Buffer') {
+          // Node.js Buffer 객체
+          binaryData = new Uint8Array(obj.glbData.data || obj.glbData).buffer;
+        } else {
+          console.error('지원되지 않는 GLB 데이터 형식:', typeof obj.glbData, obj.glbData);
+          return;
+        }
+        
+        console.log('변환된 GLB 데이터:', binaryData.byteLength, 'bytes');
         
         // Blob에서 URL 생성
-        const blob = new Blob([obj.glbData], { type: 'model/gltf-binary' });
+        const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
         const url = URL.createObjectURL(blob);
         
         loader.load(

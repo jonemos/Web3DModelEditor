@@ -5,6 +5,8 @@ import EditorUI from '../components/editor/EditorUI'
 import MenuBar from '../components/editor/MenuBar'
 import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
+import { MeshLibraryManager } from '../utils/meshLibraryManager'
+import Toast from '../components/ui/Toast'
 import './EditorPage.css'
 
 // 메시지 상수
@@ -30,12 +32,14 @@ const MESSAGES = {
 
 function EditorPage() {
   const navigate = useNavigate()
-  const { clearMap, saveMap, loadMap, addObject, setSelectedObject } = useEditorStore()
+  const { clearMap, saveMap, loadMap, addObject, setSelectedObject, addCustomMesh, selectedObject } = useEditorStore()
   const [showDialog, setShowDialog] = useState(null)
   const [dialogInput, setDialogInput] = useState('')
+  const [toast, setToast] = useState(null)
   
   // EditorControls 인스턴스를 관리하기 위한 ref
   const editorControlsRef = useRef(null)
+  const meshLibraryManager = useRef(new MeshLibraryManager())
 
   // EditorControls 인스턴스를 설정하는 함수
   const setEditorControls = (controls) => {
@@ -208,6 +212,36 @@ function EditorPage() {
     setDialogInput('')
   }
 
+  // 메쉬를 라이브러리에 추가하는 핸들러
+  const handleAddToLibrary = async (object) => {
+    try {
+      const name = prompt('메쉬 이름을 입력하세요:', object.name || '커스텀 메쉬');
+      if (!name) return;
+
+      setToast({ message: '라이브러리에 추가 중...', type: 'info' });
+
+      const meshData = await meshLibraryManager.current.addMeshToLibrary(object, name);
+      console.log('EditorPage: 생성된 메쉬 데이터:', meshData);
+      
+      // 스토어에 추가
+      addCustomMesh(meshData);
+      
+      // 강제로 LibraryPanel 새로고침을 위한 이벤트 발생
+      window.dispatchEvent(new CustomEvent('customMeshAdded', { detail: meshData }));
+
+      setToast({ message: `"${name}"이(가) 라이브러리에 추가되었습니다!`, type: 'success' });
+      
+      // 5초 후 토스트 자동 닫기
+      setTimeout(() => setToast(null), 5000);
+    } catch (error) {
+      console.error('라이브러리 추가 실패:', error);
+      setToast({ message: '라이브러리 추가에 실패했습니다.', type: 'error' });
+      
+      // 5초 후 토스트 자동 닫기
+      setTimeout(() => setToast(null), 5000);
+    }
+  }
+
   return (
     <div className="editor-page">
       <MenuBar onMenuAction={handleMenuAction} />
@@ -223,7 +257,10 @@ function EditorPage() {
           }}
         />
         <ViewportControls editorControls={editorControlsRef.current} />
-        <EditorUI editorControls={editorControlsRef.current} />
+        <EditorUI 
+          editorControls={editorControlsRef.current} 
+          onAddToLibrary={handleAddToLibrary}
+        />
       </div>
 
       {/* 다이얼로그 */}
@@ -248,6 +285,15 @@ function EditorPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Toast 메시지 */}
+      {toast && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   )

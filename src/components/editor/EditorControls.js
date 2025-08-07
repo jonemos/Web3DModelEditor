@@ -419,4 +419,19 @@ export class EditorControls {
       });
     }
   }
+
+  // 기즈모 좌표계 업데이트
+  updateGizmoSpace() {
+    this.objectSelector.updateGizmoSpace();
+  }
+
+  // 자석 기능 업데이트
+  updateMagnet() {
+    this.objectSelector.updateMagnet();
+  }
+
+  // 자석 레이 표시 업데이트
+  updateMagnetRays() {
+    this.objectSelector.updateMagnetRays();
+  }
 }

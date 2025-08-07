@@ -23,6 +23,11 @@ export class ObjectSelector {
     this.gizmoMode = 'translate'; // translate, rotate, scale
     this.isDragging = false;
     
+    // 자석 기능 상태
+    this.isMagnetEnabled = false;
+    this.showMagnetRays = false;
+    this.rayHelpers = []; // 레이 시각화를 위한 헬퍼들
+    
     // ?�중 ?�택 변?�을 ?�한 초기 ?�태 ?�??
     this.initialTransformStates = new Map(); // object -> initial transform state
     
@@ -130,7 +135,10 @@ export class ObjectSelector {
           this.saveInitialTransformStates();
           // Transform drag started, saved initial states
         } else {
-          // ?�래�?종료 - 초기 ?�태 ?�리??
+          // ?�래�?종료 - 자석 기능 적용 후 초기 ?�태 ?�리??
+          if (this.transformControls.getMode() === 'translate' && this.lastSelectedObject) {
+            this.applyMagnetToSelectedObjects();
+          }
           this.initialTransformStates.clear();
           // Transform drag ended, cleared initial states
         }
@@ -804,6 +812,213 @@ export class ObjectSelector {
     const editorState = this.editorStore.getState();
     this.setGridSnap(editorState.isGridSnap, editorState.gridSize);
   }
+
+  // 기즈모 좌표계 업데이트
+  updateGizmoSpace() {
+    const editorState = this.editorStore.getState();
+    if (this.transformControls) {
+      this.transformControls.setSpace(editorState.gizmoSpace);
+    }
+  }
+
+  // 자석 기능 업데이트
+  updateMagnet() {
+    const editorState = this.editorStore.getState();
+    this.isMagnetEnabled = editorState.isMagnetEnabled;
+  }
+
+  // 자석 레이 표시 업데이트
+  updateMagnetRays() {
+    const editorState = this.editorStore.getState();
+    this.showMagnetRays = editorState.showMagnetRays;
+    
+    if (!this.showMagnetRays) {
+      this.clearRayHelpers();
+    }
+  }
+
+  // 레이 헬퍼 생성
+  createRayHelper(origin, direction, distance, color = 0xff0000) {
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      origin,
+      origin.clone().add(direction.clone().multiplyScalar(distance))
+    ]);
+    const material = new THREE.LineBasicMaterial({ color: color });
+    const line = new THREE.Line(geometry, material);
+    line.userData.isRayHelper = true;
+    return line;
+  }
+
+  // 레이 헬퍼들 제거
+  clearRayHelpers() {
+    this.rayHelpers.forEach(helper => {
+      this.scene.remove(helper);
+      helper.geometry.dispose();
+      helper.material.dispose();
+    });
+    this.rayHelpers = [];
+  }
+
+  // 오브젝트가 다른 오브젝트의 자식인지 확인
+  isChildOf(child, parent) {
+    let currentParent = child.parent;
+    while (currentParent) {
+      if (currentParent === parent) {
+        return true;
+      }
+      currentParent = currentParent.parent;
+    }
+    return false;
+  }
+
+  // 자석 기능: 메쉬 표면에 스냅
+  snapToMeshSurface(object, targetPosition) {
+    if (!this.isMagnetEnabled || !object) return targetPosition;
+
+    // 이전 레이 헬퍼들 제거
+    if (this.showMagnetRays) {
+      this.clearRayHelpers();
+    }
+
+    const raycaster = new THREE.Raycaster();
+    const direction = new THREE.Vector3(0, -1, 0); // 아래쪽 방향으로 레이캐스팅
+    
+    // 오브젝트의 바운딩 박스 계산
+    const boundingBox = new THREE.Box3().setFromObject(object);
+    const objectHeight = boundingBox.max.y - boundingBox.min.y;
+    const objectBottomY = boundingBox.min.y; // 오브젝트 바닥 Y 좌표
+    const pivotToBottomOffset = object.position.y - objectBottomY; // 피봇에서 바닥까지의 거리
+    
+    // 씬의 모든 메쉬 오브젝트들과 교차점 검사 (현재 오브젝트와 선택된 오브젝트들 제외)
+    const intersectableObjects = [];
+    this.scene.traverse((child) => {
+      if (child.isMesh && child.visible && !child.userData.isRayHelper) {
+        // 현재 오브젝트 제외
+        if (child === object) return;
+        
+        // 선택된 오브젝트들과 그 자식들 제외
+        let isSelected = false;
+        for (const selectedObj of this.selectedObjects) {
+          if (child === selectedObj || 
+              child.parent === selectedObj || 
+              this.isChildOf(child, selectedObj) ||
+              this.isChildOf(selectedObj, child)) {
+            isSelected = true;
+            break;
+          }
+        }
+        
+        // 현재 드래그 중인 오브젝트와 관련된 것들도 제외
+        if (this.lastSelectedObject && 
+            (child === this.lastSelectedObject || 
+             child.parent === this.lastSelectedObject || 
+             this.isChildOf(child, this.lastSelectedObject) ||
+             this.isChildOf(this.lastSelectedObject, child))) {
+          isSelected = true;
+        }
+        
+        if (!isSelected) {
+          intersectableObjects.push(child);
+        }
+      }
+    });
+    
+    if (intersectableObjects.length === 0) return targetPosition;
+    
+    // 여러 지점에서 레이캐스팅을 시도 (중심, 앞/뒤/좌/우)
+    const testPoints = [
+      new THREE.Vector3(0, 0, 0), // 중심
+      new THREE.Vector3(0.5, 0, 0), // 우
+      new THREE.Vector3(-0.5, 0, 0), // 좌
+      new THREE.Vector3(0, 0, 0.5), // 앞
+      new THREE.Vector3(0, 0, -0.5), // 뒤
+    ];
+    
+    let bestIntersect = null;
+    let shortestDistance = Infinity;
+    
+    for (let i = 0; i < testPoints.length; i++) {
+      const offset = testPoints[i];
+      const rayOrigin = new THREE.Vector3(
+        targetPosition.x + offset.x, 
+        targetPosition.y - pivotToBottomOffset + 2, // 오브젝트 바닥에서 약간 위에서 시작
+        targetPosition.z + offset.z
+      );
+      
+      raycaster.set(rayOrigin, direction);
+      const intersects = raycaster.intersectObjects(intersectableObjects, true);
+      
+      // 레이 시각화
+      if (this.showMagnetRays) {
+        const rayDistance = intersects.length > 0 ? rayOrigin.distanceTo(intersects[0].point) : 10;
+        const rayColor = intersects.length > 0 ? (i === 0 ? 0x00ff00 : 0x0000ff) : 0xff0000; // 중심: 녹색, 다른점: 파란색, 충돌없음: 빨간색
+        const rayHelper = this.createRayHelper(rayOrigin, direction, rayDistance, rayColor);
+        this.scene.add(rayHelper);
+        this.rayHelpers.push(rayHelper);
+        
+        // 교차점 표시
+        if (intersects.length > 0) {
+          const sphereGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+          const sphereMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+          const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+          sphere.position.copy(intersects[0].point);
+          sphere.userData.isRayHelper = true;
+          this.scene.add(sphere);
+          this.rayHelpers.push(sphere);
+        }
+      }
+      
+      if (intersects.length > 0) {
+        const intersect = intersects[0];
+        const distance = rayOrigin.distanceTo(intersect.point);
+        
+        // 가장 가까운 교차점 선택
+        if (distance < shortestDistance) {
+          shortestDistance = distance;
+          bestIntersect = intersect;
+        }
+      }
+    }
+    
+    if (bestIntersect) {
+      // 교차점이 현재 위치보다 너무 높거나 낮지 않은지 확인
+      const heightDifference = Math.abs(bestIntersect.point.y - (targetPosition.y - pivotToBottomOffset));
+      if (heightDifference > 20) { // 20 유닛 이상 차이나면 스냅하지 않음
+        return targetPosition;
+      }
+      
+      // 피봇을 바닥 표면 + 피봇 오프셋만큼 위로 이동
+      // 이렇게 하면 오브젝트 바닥이 정확히 표면에 닿게 됨
+      return new THREE.Vector3(
+        targetPosition.x,
+        bestIntersect.point.y + pivotToBottomOffset, // 표면 + 피봇 오프셋
+        targetPosition.z
+      );
+    }
+    
+    return targetPosition;
+  }
+
+  // 선택된 모든 오브젝트에 자석 기능 적용
+  applyMagnetToSelectedObjects() {
+    if (!this.isMagnetEnabled) return;
+    
+    // 기본 오브젝트에 자석 기능 적용
+    if (this.lastSelectedObject) {
+      const currentPosition = this.lastSelectedObject.position.clone();
+      const snappedPosition = this.snapToMeshSurface(this.lastSelectedObject, currentPosition);
+      this.lastSelectedObject.position.copy(snappedPosition);
+    }
+    
+    // 다른 선택된 오브젝트들에도 자석 기능 적용
+    for (const object of this.selectedObjects) {
+      if (object && object !== this.lastSelectedObject) {
+        const currentPosition = object.position.clone();
+        const snappedPosition = this.snapToMeshSurface(object, currentPosition);
+        object.position.copy(snappedPosition);
+      }
+    }
+  }
   
   // 카메???�데?�트 (카메?��? 변경될 ???�출)
   updateCamera(camera) {
@@ -863,6 +1078,9 @@ export class ObjectSelector {
   
   // ?�리
   dispose() {
+    // Ray helpers 정리
+    this.clearRayHelpers();
+    
     // Transform controls ?�제
     if (this.transformControls) {
       this.transformControls.dispose();

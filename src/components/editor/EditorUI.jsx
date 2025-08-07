@@ -10,7 +10,7 @@ import ContextMenu from './ContextMenu'
 import Toast from '../ui/Toast'
 import './EditorUI.css'
 
-function EditorUI({ editorControls }) {
+function EditorUI({ editorControls, onAddToLibrary }) {
   const {
     selectedObject,
     transformMode,
@@ -336,6 +336,7 @@ function EditorUI({ editorControls }) {
       console.log('라이브러리 메쉬 객체 생성:', newObject);
     } else if (objectData.type === 'custom') {
       // 사용자 정의 객체 (저장된 GLB 데이터)
+      console.log('커스텀 메쉬 처리 중:', objectData.name, 'GLB 데이터:', typeof objectData.glbData, objectData.glbData);
       newObject = {
         id: Date.now(),
         type: 'glb',
@@ -345,6 +346,7 @@ function EditorUI({ editorControls }) {
         scale: { x: 1, y: 1, z: 1 },
         name: objectData.name
       };
+      console.log('생성된 커스텀 객체:', newObject);
     } else {
       // 기본 도형
       newObject = {
@@ -416,6 +418,7 @@ function EditorUI({ editorControls }) {
         isVisible={contextMenu.isVisible}
         onClose={handleCloseContextMenu}
         selectedObject={selectedObject}
+        onAddToLibrary={onAddToLibrary}
       />
 
       {/* 우측 패널 - 오브젝트 목록 */}

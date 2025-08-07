@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 
-export const useEditorStore = create((set, get) => ({
+console.log('🔥 에디터 스토어 파일 로드됨');
+
+export const useEditorStore = create((set, get) => {
+  console.log('🔥 에디터 스토어 생성 시작');
+  
+  return {
   // Scene state
   scene: null,
   camera: null,
@@ -18,9 +23,26 @@ export const useEditorStore = create((set, get) => ({
   isWireframe: false,
   isGridSnap: false,
   gridSize: 1, // 그리드 크기 (단위: Three.js 유닛)
+  
+  // Gizmo settings
+  gizmoSpace: 'world', // 'world' or 'local'
+  isMagnetEnabled: false, // 자석 기능 활성화
+  showMagnetRays: false, // 자석 레이 표시
 
   // Assets
   savedObjects: new Map(),
+  customMeshes: (() => {
+    // 스토어 초기화 시 로컬 스토리지에서 커스텀 메쉬 로드
+    try {
+      const stored = localStorage.getItem('customMeshes');
+      const meshes = stored ? JSON.parse(stored) : [];
+      console.log('에디터 스토어 초기화: 로컬 스토리지에서 커스텀 메쉬 로드:', meshes.length, '개');
+      return meshes;
+    } catch (error) {
+      console.error('로컬 스토리지에서 커스텀 메쉬 로드 실패:', error);
+      return [];
+    }
+  })(), // 즉시 실행 함수로 초기값 설정
   objects: [],
   walls: [],
   
@@ -34,10 +56,36 @@ export const useEditorStore = create((set, get) => ({
   toggleGridSnap: () => set((state) => ({ isGridSnap: !state.isGridSnap })),
   setGridSize: (size) => set({ gridSize: size }),
   
+  // Gizmo actions
+  toggleGizmoSpace: () => set((state) => ({ 
+    gizmoSpace: state.gizmoSpace === 'world' ? 'local' : 'world' 
+  })),
+  toggleMagnet: () => set((state) => ({ isMagnetEnabled: !state.isMagnetEnabled })),
+  toggleMagnetRays: () => set((state) => ({ showMagnetRays: !state.showMagnetRays })),
+  
   addAsset: (name, url) => set((state) => {
     const newMap = new Map(state.savedObjects)
     newMap.set(name, url)
     return { savedObjects: newMap }
+  }),
+
+  addCustomMesh: (meshData) => set((state) => {
+    console.log('에디터 스토어: 커스텀 메쉬 추가', meshData.name, '기존 개수:', state.customMeshes.length);
+    const newCustomMeshes = [...state.customMeshes, meshData];
+    console.log('에디터 스토어: 업데이트 후 개수:', newCustomMeshes.length);
+    return { customMeshes: newCustomMeshes };
+  }),
+
+  deleteCustomMesh: (meshId) => set((state) => {
+    console.log('에디터 스토어: 커스텀 메쉬 삭제', meshId);
+    const filteredMeshes = state.customMeshes.filter(mesh => mesh.id !== meshId);
+    console.log('에디터 스토어: 삭제 후 개수:', filteredMeshes.length);
+    return { customMeshes: filteredMeshes };
+  }),
+
+  loadCustomMeshes: (meshes) => set((state) => {
+    console.log('에디터 스토어: 커스텀 메쉬 로드', meshes.length, '개');
+    return { customMeshes: meshes };
   }),
   
   addObject: (object) => set((state) => ({
@@ -141,4 +189,5 @@ export const useEditorStore = create((set, get) => ({
   
   // Scene setup
   setScene: (scene, camera, renderer) => set({ scene, camera, renderer })
-}))
+  };
+});

@@ -1,12 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { generateThumbnail } from '../../../utils/thumbnailGenerator';
+import { useEditorStore } from '../../../store/editorStore';
+import { MeshLibraryManager } from '../../../utils/meshLibraryManager';
 import './LibraryPanel.css';
 
+console.log('🔥 실제 LibraryPanel 파일 로드됨');
+
 const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
+  console.log('🔥 실제 LibraryPanel 컴포넌트 렌더링 시작');
+  
   const [isDragging, setIsDragging] = useState(false);
   const [customObjects, setCustomObjects] = useState([]);
   const [libraryMeshes, setLibraryMeshes] = useState([]); // 라이브러리 메쉬 상태 추가
   const draggedObject = useRef(null);
+  const { customMeshes, loadCustomMeshes } = useEditorStore();
+  const libraryManager = useRef(new MeshLibraryManager());
+
+  console.log('🔥 실제 LibraryPanel - customMeshes 상태:', customMeshes.length, '개');
 
   // 3D 객체 라이브러리 데이터
   const objectLibrary = [
@@ -54,7 +64,37 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     }
   ];
 
-  // 사용자 정의 객체 로드
+  // 컴포넌트 마운트 시 커스텀 메쉬 로드
+  useEffect(() => {
+    console.log('=== 실제 LibraryPanel useEffect 시작 ===');
+    const meshes = libraryManager.current.getCustomMeshes();
+    console.log('실제 LibraryPanel 마운트 시 로드된 커스텀 메쉬:', meshes.length, '개');
+    console.log('메쉬 상세 데이터:', meshes);
+    loadCustomMeshes(meshes);
+    console.log('=== 실제 LibraryPanel useEffect 끝 ===');
+  }, [loadCustomMeshes]);
+
+  // 커스텀 메쉬 추가 이벤트 리스너
+  useEffect(() => {
+    const handleCustomMeshAdded = (event) => {
+      console.log('실제 LibraryPanel: 커스텀 메쉬 추가 이벤트 수신:', event.detail);
+      const meshes = libraryManager.current.getCustomMeshes();
+      loadCustomMeshes(meshes);
+    };
+
+    window.addEventListener('customMeshAdded', handleCustomMeshAdded);
+    
+    return () => {
+      window.removeEventListener('customMeshAdded', handleCustomMeshAdded);
+    };
+  }, [loadCustomMeshes]);
+
+  // customMeshes 상태 변화 감지
+  useEffect(() => {
+    console.log('실제 LibraryPanel customMeshes 업데이트:', customMeshes.length, '개', customMeshes);
+  }, [customMeshes]);
+
+  // 사용자 정의 객체 로드 (기존 로직 유지)
   useEffect(() => {
     const loadCustomObjects = () => {
       const saved = JSON.parse(localStorage.getItem('customObjects') || '[]');
@@ -147,8 +187,24 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   }, []); // 컴포넌트 마운트 시 한 번만 실행
 
   const handleDragStart = (e, object) => {
+    console.log('LibraryPanel handleDragStart 호출됨:', object);
+    
     setIsDragging(true);
     draggedObject.current = object;
+    
+    // 커스텀 메쉬의 경우 GLB 데이터를 처리
+    let dataToTransfer = object;
+    if (object.type === 'custom') {
+      console.log('커스텀 메쉬 드래그 처리:', object.name);
+      console.log('GLB 데이터:', typeof object.glbData, object.glbData);
+      
+      // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함
+      dataToTransfer = {
+        ...object,
+        type: 'custom' // type을 'custom'으로 유지
+      };
+      console.log('커스텀 메쉬 드래그용 변환된 객체:', dataToTransfer);
+    }
     
     // 드래그 이미지를 위한 캔버스 생성
     const canvas = document.createElement('canvas');
@@ -168,7 +224,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     
     // 캔버스를 드래그 이미지로 설정
     e.dataTransfer.setDragImage(canvas, 25, 25);
-    e.dataTransfer.setData('text/plain', JSON.stringify(object));
+    e.dataTransfer.setData('text/plain', JSON.stringify(dataToTransfer));
   };
 
   const handleDragEnd = () => {
@@ -177,9 +233,32 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   };
 
   const handleClick = (object) => {
+    console.log('LibraryPanel handleClick 호출됨:', object);
+    
     // 클릭으로 객체를 중앙에 추가
     if (onObjectDrop) {
-      onObjectDrop(object, { x: 0, y: 0, z: 0 });
+      if (object.type === 'custom') {
+        console.log('커스텀 메쉬 클릭 처리:', object.name);
+        console.log('GLB 데이터:', typeof object.glbData, object.glbData);
+        
+        try {
+          // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함
+          const customObject = {
+            ...object,
+            type: 'custom' // type을 'custom'으로 유지
+          };
+          console.log('커스텀 메쉬 변환된 객체:', customObject);
+          onObjectDrop(customObject, { x: 0, y: 0, z: 0 });
+        } catch (error) {
+          console.error('커스텀 메쉬 처리 실패:', error);
+          alert('커스텀 메쉬를 로드할 수 없습니다. 데이터가 손상되었을 수 있습니다.');
+        }
+      } else {
+        console.log('기본/라이브러리 메쉬 클릭 처리:', object.name);
+        onObjectDrop(object, { x: 0, y: 0, z: 0 });
+      }
+    } else {
+      console.warn('onObjectDrop 함수가 정의되지 않음');
     }
   };
 
@@ -199,6 +278,21 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
       
       // 상태 업데이트
       setCustomObjects(filteredObjects);
+    }
+  };
+
+  const handleDeleteCustomMesh = (meshToDelete, event) => {
+    event.stopPropagation(); // 부모 클릭 이벤트 방지
+    
+    if (window.confirm(`"${meshToDelete.name}"을(를) 라이브러리에서 삭제하시겠습니까?`)) {
+      // 로컬 스토리지에서 삭제
+      libraryManager.current.deleteCustomMesh(meshToDelete.id);
+      
+      // 메쉬 목록 새로고침
+      const meshes = libraryManager.current.getCustomMeshes();
+      loadCustomMeshes(meshes);
+      
+      console.log('커스텀 메쉬 삭제 완료:', meshToDelete.name);
     }
   };
 
@@ -291,6 +385,67 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
             </div>
           </div>
         )}
+
+        {/* 구분선 */}
+        <div className="section-divider"></div>
+
+        {/* 커스텀 메쉬 섹션 */}
+        <div className="category-section">
+          <div className="object-grid">
+            {customMeshes.length > 0 ? (
+              customMeshes.map((mesh) => (
+                <div
+                  key={mesh.id}
+                  className="object-item custom-mesh"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, mesh)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => handleClick(mesh)}
+                  title={mesh.name}
+                >
+                  <div className="object-thumbnail">
+                    <img 
+                      src={mesh.thumbnail} 
+                      alt={mesh.name}
+                      width="40" 
+                      height="40"
+                      onError={(e) => {
+                        // 썸네일 로드 실패 시 기본 아이콘 표시
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'block';
+                      }}
+                    />
+                    <svg 
+                      width="40" 
+                      height="40" 
+                      viewBox="0 0 24 24" 
+                      fill="currentColor"
+                      style={{ display: 'none' }}
+                    >
+                      <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                    </svg>
+                  </div>
+                  <button 
+                    className="delete-btn"
+                    onClick={(e) => handleDeleteCustomMesh(mesh, e)}
+                    title="삭제"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+                    </svg>
+                  </button>
+                </div>
+              ))
+            ) : (
+              <div className="empty-library">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" opacity="0.5">
+                  <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20Z"/>
+                </svg>
+                <p>메쉬를 우클릭하여<br/>라이브러리에 추가하세요</p>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* 구분선 */}
         {customObjects.length > 0 && <div className="section-divider"></div>}
