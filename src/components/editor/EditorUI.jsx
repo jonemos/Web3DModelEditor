@@ -6,6 +6,7 @@ import FloorSizePanel from './panels/FloorSizePanel'
 import SceneHierarchyPanel from './panels/SceneHierarchyPanel'
 import ObjectPropertiesPanel from './panels/ObjectPropertiesPanel'
 import LibraryPanel from './panels/LibraryPanel'
+import AssetsPanel from './panels/AssetsPanel'
 import ContextMenu from './ContextMenu'
 import Toast from '../ui/Toast'
 import './EditorUI.css'
@@ -36,6 +37,7 @@ function EditorUI({ editorControls, onAddToLibrary }) {
   const [mapName, setMapName] = useState('')
   const [assetName, setAssetName] = useState('')
   const [showLibrary, setShowLibrary] = useState(false)
+  const [showAssets, setShowAssets] = useState(false)
   const [contextMenu, setContextMenu] = useState({
     isVisible: false,
     x: 0,
@@ -315,6 +317,119 @@ function EditorUI({ editorControls, onAddToLibrary }) {
 
   const handleLibraryToggle = () => {
     setShowLibrary(!showLibrary)
+    if (showAssets) setShowAssets(false) // 다른 패널 닫기
+  }
+
+  const handleAssetsToggle = () => {
+    setShowAssets(!showAssets)
+    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
+  }
+
+  const handleAssetDrop = (assetData, position) => {
+    // 기본 에셋을 씬에 추가
+    console.log('에셋 드롭 시작:', assetData);
+    let newObject;
+
+    switch (assetData.type) {
+      case 'start_position':
+        newObject = {
+          id: Date.now(),
+          type: 'start_position',
+          name: assetData.name,
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          color: 0x00ff00,
+          geometry: 'marker'
+        };
+        break;
+      case 'directional_light':
+        newObject = {
+          id: Date.now(),
+          type: 'directional_light',
+          name: assetData.name,
+          position: position || { x: 5, y: 10, z: 5 },
+          rotation: { x: -Math.PI/4, y: Math.PI/4, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 1,
+          color: 0xffffff,
+          castShadow: true
+        };
+        break;
+      case 'point_light':
+        newObject = {
+          id: Date.now(),
+          type: 'point_light',
+          name: assetData.name,
+          position: position || { x: 0, y: 3, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 1,
+          color: 0xffffff,
+          distance: 10,
+          decay: 2
+        };
+        break;
+      case 'spot_light':
+        newObject = {
+          id: Date.now(),
+          type: 'spot_light',
+          name: assetData.name,
+          position: position || { x: 0, y: 5, z: 0 },
+          rotation: { x: -Math.PI/2, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 1,
+          color: 0xffffff,
+          distance: 10,
+          angle: Math.PI/6,
+          penumbra: 0.1
+        };
+        break;
+      case 'ambient_light':
+        newObject = {
+          id: Date.now(),
+          type: 'ambient_light',
+          name: assetData.name,
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 0.3,
+          color: 0x404040
+        };
+        break;
+      case 'audio_source':
+        newObject = {
+          id: Date.now(),
+          type: 'audio_source',
+          name: assetData.name,
+          position: position || { x: 0, y: 1, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          volume: 1,
+          loop: false,
+          autoplay: false
+        };
+        break;
+      default:
+        // 기타 헬퍼나 효과들
+        newObject = {
+          id: Date.now(),
+          type: assetData.type,
+          name: assetData.name,
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 }
+        };
+    }
+
+    addObject(newObject);
+    
+    // 추가된 오브젝트를 선택 상태로 만들기
+    setTimeout(() => {
+      setSelectedObject(newObject);
+    }, 100);
+
+    showToast(`${assetData.name}이(가) 씬에 추가되었습니다.`, 'success');
   }
 
   const handleLibraryDrop = (objectData, position) => {
@@ -383,6 +498,15 @@ function EditorUI({ editorControls, onAddToLibrary }) {
       <div className="tool-panel">
         <div className="tool-section">
           <button 
+            className={`tool-btn assets-btn ${showAssets ? 'active' : ''}`}
+            onClick={handleAssetsToggle}
+            title="기본 에셋"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12,2L13.09,8.26L22,9L14.74,14.74L17.18,22L12,18.5L6.82,22L9.26,14.74L2,9L10.91,8.26L12,2Z"/>
+            </svg>
+          </button>
+          <button 
             className={`tool-btn library-btn ${showLibrary ? 'active' : ''}`}
             onClick={handleLibraryToggle}
             title="라이브러리"
@@ -393,6 +517,14 @@ function EditorUI({ editorControls, onAddToLibrary }) {
           </button>
         </div>
       </div>
+
+      {/* 기본 에셋 패널 */}
+      {showAssets && (
+        <AssetsPanel 
+          onAssetDrop={handleAssetDrop}
+          onClose={() => setShowAssets(false)}
+        />
+      )}
 
       {/* 라이브러리 패널 */}
       {showLibrary && (

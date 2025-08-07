@@ -75,6 +75,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
+  position: relative; /* 삭제 버튼 위치 설정을 위해 추가 */
 }
 
 .object-item:hover {
@@ -217,6 +218,11 @@
 }
 
 .object-item.custom-object:hover .delete-btn {
+  display: flex;
+}
+
+/* 커스텀 메쉬 삭제 버튼도 표시 */
+.object-item.custom-mesh:hover .delete-btn {
   display: flex;
 }
 

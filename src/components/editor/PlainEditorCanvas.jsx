@@ -178,6 +178,177 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
           const objectData = JSON.parse(data);
           console.log('드롭된 객체 데이터:', objectData);
           
+          // 기본 에셋인 경우 별도 처리
+          if (objectData.type === 'start_position' || objectData.type === 'directional_light' || 
+              objectData.type === 'point_light' || objectData.type === 'spot_light' || 
+              objectData.type === 'ambient_light' || objectData.type === 'audio_source' ||
+              objectData.type === 'fog' || objectData.type === 'skybox' || 
+              objectData.type === 'post_process' || objectData.type === 'camera_helper' ||
+              objectData.type === 'grid_helper' || objectData.type === 'axes_helper') {
+            
+            console.log('기본 에셋 드롭 처리:', objectData.type, objectData.name);
+            
+            // 마우스 위치를 3D 좌표로 변환
+            const rect = canvas.getBoundingClientRect();
+            const mouse = new THREE.Vector2();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            
+            // 바닥과의 교차점 계산 (y=0 평면)
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersection = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersection);
+            
+            // 에셋 타입에 따라 3D 객체 생성
+            let assetObject;
+            
+            switch (objectData.type) {
+              case 'start_position':
+                // 스타트 위치 마커
+                const markerGeometry = new THREE.ConeGeometry(0.3, 1, 8);
+                const markerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+                assetObject = new THREE.Mesh(markerGeometry, markerMaterial);
+                assetObject.position.copy(intersection);
+                break;
+                
+              case 'directional_light':
+                // 디렉셔널 라이트
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+                directionalLight.position.set(intersection.x + 5, intersection.y + 10, intersection.z + 5);
+                directionalLight.target.position.copy(intersection);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                
+                // 라이트 헬퍼 추가
+                const directionalHelper = new THREE.DirectionalLightHelper(directionalLight, 1);
+                scene.add(directionalHelper);
+                
+                assetObject = directionalLight;
+                scene.add(directionalLight.target); // target도 씬에 추가
+                break;
+                
+              case 'point_light':
+                // 포인트 라이트
+                const pointLight = new THREE.PointLight(0xffffff, 1, 10, 2);
+                pointLight.position.set(intersection.x, intersection.y + 3, intersection.z);
+                pointLight.castShadow = true;
+                
+                // 라이트 헬퍼 추가
+                const pointHelper = new THREE.PointLightHelper(pointLight, 0.5);
+                scene.add(pointHelper);
+                
+                assetObject = pointLight;
+                break;
+                
+              case 'spot_light':
+                // 스포트 라이트
+                const spotLight = new THREE.SpotLight(0xffffff, 1, 10, Math.PI/6, 0.1, 2);
+                spotLight.position.set(intersection.x, intersection.y + 5, intersection.z);
+                spotLight.target.position.copy(intersection);
+                spotLight.castShadow = true;
+                
+                // 라이트 헬퍼 추가
+                const spotHelper = new THREE.SpotLightHelper(spotLight);
+                scene.add(spotHelper);
+                
+                assetObject = spotLight;
+                scene.add(spotLight.target); // target도 씬에 추가
+                break;
+                
+              case 'ambient_light':
+                // 앰비언트 라이트 (위치가 없으므로 표시용 구체 생성)
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+                const ambientGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+                const ambientMaterial = new THREE.MeshBasicMaterial({ 
+                  color: 0x404040, 
+                  wireframe: true, 
+                  transparent: true, 
+                  opacity: 0.5 
+                });
+                assetObject = new THREE.Mesh(ambientGeometry, ambientMaterial);
+                assetObject.position.copy(intersection);
+                scene.add(ambientLight); // 실제 라이트도 씬에 추가
+                break;
+                
+              case 'audio_source':
+                // 오디오 소스 마커
+                const audioGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+                const audioMaterial = new THREE.MeshStandardMaterial({ color: 0xff9900 });
+                assetObject = new THREE.Mesh(audioGeometry, audioMaterial);
+                assetObject.position.set(intersection.x, intersection.y + 1, intersection.z);
+                break;
+                
+              case 'grid_helper':
+                // 그리드 헬퍼
+                assetObject = new THREE.GridHelper(10, 10);
+                assetObject.position.copy(intersection);
+                break;
+                
+              case 'axes_helper':
+                // 축 헬퍼
+                assetObject = new THREE.AxesHelper(2);
+                assetObject.position.copy(intersection);
+                break;
+                
+              default:
+                // 기본 마커
+                const defaultGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const defaultMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+                assetObject = new THREE.Mesh(defaultGeometry, defaultMaterial);
+                assetObject.position.copy(intersection);
+            }
+            
+            if (assetObject) {
+              // 그림자 설정
+              if (assetObject.isMesh) {
+                assetObject.castShadow = true;
+                assetObject.receiveShadow = true;
+              }
+              
+              // 고유 ID 생성
+              const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              assetObject.name = uniqueId;
+              assetObject.userData = {
+                id: uniqueId,
+                name: objectData.name,
+                type: objectData.type,
+                originalData: objectData
+              };
+              
+              scene.add(assetObject);
+              
+              // 선택 가능한 오브젝트로 등록
+              editorControls.addSelectableObject(assetObject);
+              
+              // 로드된 오브젝트로 기록
+              loadedObjectsRef.current.set(uniqueId, assetObject);
+              
+              // 에디터 스토어에 객체 등록
+              const addObject = useEditorStore.getState().addObject;
+              addObject({
+                id: uniqueId,
+                name: objectData.name,
+                type: objectData.type,
+                position: [assetObject.position.x, assetObject.position.y, assetObject.position.z],
+                rotation: [assetObject.rotation.x, assetObject.rotation.y, assetObject.rotation.z],
+                scale: [assetObject.scale.x, assetObject.scale.y, assetObject.scale.z],
+                visible: true,
+                userData: assetObject.userData
+              });
+              
+              // 새로 추가된 객체 선택
+              setSelectedObject(uniqueId);
+              
+              console.log('기본 에셋 추가 완료:', uniqueId);
+            }
+            
+            return; // 기본 geometry 처리 로직을 건너뛰기
+          }
+          
           // 커스텀 메쉬나 라이브러리 메쉬인 경우 별도 처리
           if (objectData.type === 'custom' || objectData.type === 'library') {
             console.log('커스텀/라이브러리 메쉬 드롭 처리:', objectData.type, objectData.name);
