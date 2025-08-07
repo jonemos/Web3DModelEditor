@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { generateThumbnail } from '../../../utils/thumbnailGenerator';
 import './LibraryPanel.css';
 
 const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [customObjects, setCustomObjects] = useState([]);
+  const [libraryMeshes, setLibraryMeshes] = useState([]); // 라이브러리 메쉬 상태 추가
   const draggedObject = useRef(null);
 
   // 3D 객체 라이브러리 데이터
@@ -61,6 +63,74 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     
     loadCustomObjects();
   }, [forceRefresh]); // forceRefresh가 변경될 때마다 다시 로드
+
+  // 라이브러리 메쉬 로드
+  useEffect(() => {
+    const loadLibraryMeshes = async () => {
+      try {
+        // library/mesh 폴더의 GLB 파일 목록
+        const meshFiles = [
+          { filename: '111.glb', name: '메쉬 111' },
+          { filename: '222.glb', name: '메쉬 222' }
+        ];
+
+        const meshObjects = [];
+        
+        // 각 파일에 대해 썸네일 생성
+        for (const file of meshFiles) {
+          const meshObject = {
+            id: `library_${file.filename.replace('.glb', '')}`,
+            name: file.name,
+            type: 'library',
+            geometry: 'LibraryMesh',
+            glbUrl: `/library/mesh/${file.filename}`,
+            filename: file.filename,
+            thumbnail: null,
+            isLoadingThumbnail: true
+          };
+          
+          meshObjects.push(meshObject);
+        }
+        
+        // 먼저 기본 객체들을 설정
+        setLibraryMeshes(meshObjects);
+        
+        // 각 객체의 썸네일을 비동기로 생성
+        for (let i = 0; i < meshObjects.length; i++) {
+          const meshObject = meshObjects[i];
+          
+          try {
+            const thumbnailUrl = await generateThumbnail(meshObject.glbUrl);
+            
+            // 썸네일이 생성되면 해당 객체만 업데이트
+            setLibraryMeshes(prevMeshes => 
+              prevMeshes.map(mesh => 
+                mesh.id === meshObject.id 
+                  ? { ...mesh, thumbnail: thumbnailUrl, isLoadingThumbnail: false }
+                  : mesh
+              )
+            );
+          } catch (error) {
+            console.error(`${meshObject.filename} 썸네일 생성 실패:`, error);
+            
+            // 썸네일 생성 실패 시 로딩 상태만 해제
+            setLibraryMeshes(prevMeshes => 
+              prevMeshes.map(mesh => 
+                mesh.id === meshObject.id 
+                  ? { ...mesh, isLoadingThumbnail: false }
+                  : mesh
+              )
+            );
+          }
+        }
+        
+      } catch (error) {
+        console.error('라이브러리 메쉬 로드 실패:', error);
+      }
+    };
+
+    loadLibraryMeshes();
+  }, []); // 컴포넌트 마운트 시 한 번만 실행
 
   const handleDragStart = (e, object) => {
     setIsDragging(true);
@@ -165,7 +235,57 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
                 </div>
               </div>
             ))}
-            
+          </div>
+        </div>
+
+        {/* 구분선 */}
+        {libraryMeshes.length > 0 && <div className="section-divider"></div>}
+
+        {/* 라이브러리 메쉬 섹션 */}
+        {libraryMeshes.length > 0 && (
+          <div className="category-section">
+            <div className="object-grid">
+              {libraryMeshes.map((object) => (
+                <div
+                  key={object.id}
+                  className="object-item library-mesh"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, object)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => handleClick(object)}
+                  title={`${object.name} (라이브러리)`}
+                >
+                  <div className="object-thumbnail">
+                    {object.isLoadingThumbnail ? (
+                      <div className="thumbnail-loading">
+                        <div className="loading-spinner"></div>
+                      </div>
+                    ) : object.thumbnail ? (
+                      <img 
+                        src={object.thumbnail} 
+                        alt={object.name}
+                        className="thumbnail-image"
+                      />
+                    ) : (
+                      <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12,2L2,7L12,12L22,7L12,2M2,17L12,22L22,17L20.84,16.47L12,21.17L3.16,16.47L2,17Z"/>
+                      </svg>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 구분선 */}
+        {customObjects.length > 0 && <div className="section-divider"></div>}
+
+        {/* 사용자 정의 객체 섹션 */}
+        {customObjects.length > 0 && (
+          <div className="category-section">
+            <h4>사용자 정의</h4>
+            <div className="object-grid">
             {/* 사용자 정의 객체들 */}
             {customObjects.map((object) => (
               <div
@@ -206,8 +326,9 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
                 </button>
               </div>
             ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

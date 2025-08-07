@@ -319,21 +319,50 @@ function EditorUI({ editorControls }) {
 
   const handleLibraryDrop = (objectData, position) => {
     // 라이브러리에서 드롭된 오브젝트를 씬에 추가
-    const newObject = {
-      id: Date.now(),
-      type: 'glb',
-      file: objectData.file,
-      position: position || { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1, y: 1, z: 1 },
-      name: objectData.name
+    let newObject;
+
+    if (objectData.type === 'library') {
+      // 라이브러리 메쉬 (GLB 파일)
+      newObject = {
+        id: Date.now(),
+        type: 'glb',
+        url: objectData.glbUrl, // GLB 파일 URL
+        position: position || { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        name: objectData.name
+      };
+    } else if (objectData.type === 'custom') {
+      // 사용자 정의 객체 (저장된 GLB 데이터)
+      newObject = {
+        id: Date.now(),
+        type: 'glb',
+        glbData: objectData.glbData, // 저장된 GLB 데이터
+        position: position || { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        name: objectData.name
+      };
+    } else {
+      // 기본 도형
+      newObject = {
+        id: Date.now(),
+        type: objectData.type || 'basic',
+        geometry: objectData.geometry,
+        params: objectData.params,
+        position: position || { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        name: objectData.name
+      };
     }
-    addObject(newObject)
+
+    addObject(newObject);
     
     // 추가된 오브젝트를 선택 상태로 만들기
     setTimeout(() => {
-      setSelectedObject(newObject.id)
-    }, 100)
+      setSelectedObject(newObject);
+    }, 100);
   }
 
   const handleCloseContextMenu = () => {

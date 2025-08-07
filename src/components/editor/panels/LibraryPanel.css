@@ -17,9 +17,9 @@
   display: flex;
   justify-content: flex-end; /* 닫기 버튼을 오른쪽에 배치 */
   align-items: center;
-  padding: 8px 12px; /* 패딩 더 축소 */
+  padding: 6px 8px; /* 패딩 더 축소 */
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(20, 20, 20, 0.8);
+  background: rgba(20, 20, 20, 0.9);
   position: sticky;
   top: 0;
   z-index: 10;
@@ -48,6 +48,13 @@
 
 .category-section {
   margin-bottom: 20px; /* 기존 30px에서 축소 */
+}
+
+.section-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, #555, transparent);
+  margin: 16px 0;
+  opacity: 0.6;
 }
 
 .object-grid {
@@ -90,6 +97,40 @@
   margin-bottom: 0; /* 여백 제거 */
   color: #ffffff;
   transition: color 0.2s ease;
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
+.thumbnail-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.thumbnail-loading {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top: 2px solid #ffffff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
 .object-item:hover .object-thumbnail {
@@ -114,6 +155,26 @@
 
 .object-item.custom-object:hover .object-thumbnail {
   color: #ffeb3b;
+}
+
+/* 라이브러리 메쉬 스타일 */
+.object-item.library-mesh {
+  border: 1px solid rgba(0, 255, 127, 0.3);
+  background: rgba(0, 255, 127, 0.05);
+  position: relative;
+}
+
+.object-item.library-mesh:hover {
+  background: rgba(0, 255, 127, 0.15);
+  border-color: rgba(0, 255, 127, 0.6);
+}
+
+.object-item.library-mesh .object-thumbnail {
+  color: #00ff7f;
+}
+
+.object-item.library-mesh:hover .object-thumbnail {
+  color: #7fffd4;
 }
 
 /* 삭제 버튼 스타일 */
