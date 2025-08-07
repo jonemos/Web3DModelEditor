@@ -54,10 +54,7 @@ export class ObjectSelector {
   // ?�중 ?�택???�브?�트?�에 변???�용
   applyTransformToSelectedObjects() {
     if (!this.lastSelectedObject || !this.transformControls.object || this.selectedObjects.length <= 1) {
-      // ?�일 ?�택??경우?�도 ?�웃?�인 ?�데?�트
-      if (this.lastSelectedObject) {
-        this.updateSelectionOutline(this.lastSelectedObject);
-      }
+      // 아웃라인 기능 비활성화로 인해 updateSelectionOutline 호출 제거됨
       return;
     }
     
@@ -76,12 +73,7 @@ export class ObjectSelector {
       }
     }
     
-    // 모든 ?�택???�브?�트???�웃?�인 ?�데?�트
-    for (const object of this.selectedObjects) {
-      if (object) { // undefined??null 체크
-        this.updateSelectionOutline(object);
-      }
-    }
+    // 아웃라인 기능 비활성화로 인해 updateSelectionOutline 호출 제거됨
   }
   
   // ?��???변???�용 (개선??버전)
@@ -256,7 +248,7 @@ export class ObjectSelector {
       if (object && !this.selectedObjects.includes(object)) {
         this.selectedObjects.push(object);
         this.lastSelectedObject = object; // 마�?막으�?추�????�브?�트�?마�?�??�택?�로 ?�정
-        this.addSelectionOutline(object);
+        // 아웃라인 기능 비활성화로 인해 addSelectionOutline 호출 제거됨
       }
     }
     
@@ -309,7 +301,7 @@ export class ObjectSelector {
       // ?�로???�브?�트 ?�택
       this.selectedObjects.push(object);
       this.lastSelectedObject = object; // ?�로 ?�택???�브?�트�?마�?�??�택?�로 ?�정
-      this.addSelectionOutline(object);
+      // 아웃라인 기능 비활성화로 인해 addSelectionOutline 호출 제거됨
       
       // Transform controls�?마�?�??�택???�브?�트???�결
       if (this.transformControls) {
@@ -441,164 +433,20 @@ export class ObjectSelector {
   
   // ?�택 ?�웃?�인 추�?
   addSelectionOutline(object) {
-    // ?�전??검??
-    if (!object) {
-      // Console output removed
-      return;
-    }
-    
-    // Group??경우 ?�식 메시?�에 ?�웃?�인 ?�용
-    if (object.isGroup || (object.children && object.children.length > 0)) {
-      this.addSelectionOutlineToGroup(object);
-      return;
-    }
-    
-    // ?�일 메시??경우
-    if (!object.isMesh) return;
-    
-    // ?��? ?�웃?�인???�으�??�거
-    this.removeSelectionOutline(object);
-    
-    // ?�본 머티리얼 ?�??
-    if (!object.userData.originalMaterial) {
-      object.userData.originalMaterial = object.material;
-    }
-    
-    try {
-      // 1. 백페?�스�??�더링되???�웃?�인 ?�성
-      const outlineGeometry = object.geometry.clone();
-      const outlineMaterial = new THREE.MeshBasicMaterial({
-        color: 0x00aaff,
-        side: THREE.BackSide,
-        transparent: true,
-        opacity: 0.6,
-        depthWrite: false
-      });
-      
-      const outlineObject = new THREE.Mesh(outlineGeometry, outlineMaterial);
-      
-      // ?�브?�트?� 같�? transform ?�용
-      outlineObject.position.copy(object.position);
-      outlineObject.rotation.copy(object.rotation);
-      outlineObject.scale.copy(object.scale);
-      
-      // ?�웃?�인???�해 ?�간 ?�게 ?��??�링
-      outlineObject.scale.multiplyScalar(1.03);
-      
-      // ?�더 ?�서 ?�정
-      outlineObject.renderOrder = object.renderOrder - 1;
-      
-      // 부모에 추�?
-      if (object.parent) {
-        object.parent.add(outlineObject);
-      } else {
-        this.scene.add(outlineObject);
-      }
-      
-      // 참조 ?�??
-      object.userData.outlineObject = outlineObject;
-      
-      // 2. ?�본 ?�브?�트??미묘??발광 ?�과 추�? (?�는 경우?�만)
-      if (object.material && object.material.emissive !== undefined) {
-        object.userData.originalEmissive = object.material.emissive.clone();
-        object.userData.originalEmissiveIntensity = object.material.emissiveIntensity || 0;
-        
-        object.material.emissive.setHex(0x001122);
-        object.material.emissiveIntensity = 0.1;
-      }
-      
-      // Console output removed
-    } catch (error) {
-      // Console output removed
-    }
+    // 아웃라인 기능 비활성화됨 - 선택 시 아웃라인 표시하지 않음
+    return;
   }
   
   // Group ?�는 복합 ?�브?�트???�웃?�인 추�?
   addSelectionOutlineToGroup(group) {
-    // ?�전??검??
-    if (!group || !group.traverse) {
-      // Console output removed
-      return;
-    }
-    
-    try {
-      // Group??모든 ?�식 메시???�웃?�인 ?�용
-      group.traverse((child) => {
-        // child가 ?�효?��? ?�인
-        if (child && child.isMesh && child !== group) {
-          this.addSelectionOutlineToSingleMesh(child);
-        }
-      });
-    } catch (error) {
-      // Console output removed
-      // Console output removed
-    }
-    
-    // Group???�웃?�인 ?�보 ?�??
-    if (group.userData) {
-      if (!group.userData.outlineChildren) {
-        group.userData.outlineChildren = [];
-      }
-    }
-    
-    // Console output removed
+    // 아웃라인 기능 비활성화됨
+    return;
   }
   
   // ?�일 메시???�웃?�인 추�? (Group???�식??
   addSelectionOutlineToSingleMesh(mesh) {
-    if (!mesh.isMesh) return;
-    
-    // ?��? ?�웃?�인???�으�??�거
-    this.removeSelectionOutlineFromMesh(mesh);
-    
-    // ?�본 머티리얼 ?�??
-    if (!mesh.userData.originalMaterial) {
-      mesh.userData.originalMaterial = mesh.material;
-    }
-    
-    try {
-      // 백페?�스�??�더링되???�웃?�인 ?�성
-      const outlineGeometry = mesh.geometry.clone();
-      const outlineMaterial = new THREE.MeshBasicMaterial({
-        color: 0x00aaff,
-        side: THREE.BackSide,
-        transparent: true,
-        opacity: 0.6,
-        depthWrite: false
-      });
-      
-      const outlineObject = new THREE.Mesh(outlineGeometry, outlineMaterial);
-      
-      // 메시?� 같�? transform ?�용
-      outlineObject.position.copy(mesh.position);
-      outlineObject.rotation.copy(mesh.rotation);
-      outlineObject.scale.copy(mesh.scale);
-      
-      // ?�웃?�인???�해 ?�간 ?�게 ?��??�링
-      outlineObject.scale.multiplyScalar(1.03);
-      
-      // ?�더 ?�서 ?�정
-      outlineObject.renderOrder = mesh.renderOrder - 1;
-      
-      // 메시??부모에 추�?
-      if (mesh.parent) {
-        mesh.parent.add(outlineObject);
-      }
-      
-      // 참조 ?�??
-      mesh.userData.outlineObject = outlineObject;
-      
-      // 발광 ?�과 추�?
-      if (mesh.material && mesh.material.emissive !== undefined) {
-        mesh.userData.originalEmissive = mesh.material.emissive.clone();
-        mesh.userData.originalEmissiveIntensity = mesh.material.emissiveIntensity || 0;
-        
-        mesh.material.emissive.setHex(0x001122);
-        mesh.material.emissiveIntensity = 0.1;
-      }
-    } catch (error) {
-      // Console output removed
-    }
+    // 아웃라인 기능 비활성화됨
+    return;
   }
   
   // ?�택 ?�웃?�인 ?�거
@@ -683,72 +531,26 @@ export class ObjectSelector {
   
   // ?�웃?�인 ?�치/?�전/?��????�데?�트
   updateSelectionOutline(object) {
-    // ?�전??검??
-    if (!object) {
-      // Console output removed
-      return;
-    }
-    
-    // Group??경우 ?�식 메시?�의 ?�웃?�인 ?�데?�트
-    if (object.isGroup || (object.children && object.children.length > 0)) {
-      this.updateSelectionOutlineForGroup(object);
-      return;
-    }
-    
-    // ?�일 메시??경우
-    this.updateSelectionOutlineForMesh(object);
+    // 아웃라인 기능 비활성화됨
+    return;
   }
   
   // Group???�웃?�인 ?�데?�트
   updateSelectionOutlineForGroup(group) {
-    // ?�전??검??
-    if (!group || !group.traverse) {
-      // Console output removed
-      return;
-    }
-    
-    try {
-      // Group??모든 ?�식 메시???�웃?�인 ?�데?�트
-      group.traverse((child) => {
-        // child가 ?�효?��? ?�인
-        if (child && child.isMesh && child !== group) {
-          this.updateSelectionOutlineForMesh(child);
-        }
-      });
-    } catch (error) {
-      // Console output removed
-      // Console output removed
-    }
+    // 아웃라인 기능 비활성화됨
+    return;
   }
   
   // ?�일 메시???�웃?�인 ?�데?�트
   updateSelectionOutlineForMesh(object) {
-    // ?�전??검??
-    if (!object || !object.userData || !object.userData.outlineObject) {
-      return;
-    }
-    
-    const outlineObject = object.userData.outlineObject;
-    
-    // ?�본 ?�브?�트??transform???�웃?�인???�용
-    outlineObject.position.copy(object.position);
-    outlineObject.rotation.copy(object.rotation);
-    outlineObject.scale.copy(object.scale);
-    
-    // ?�웃?�인???�해 ?�간 ?�게 ?��??�링
-    outlineObject.scale.multiplyScalar(1.03);
+    // 아웃라인 기능 비활성화됨
+    return;
   }
   
   // 모든 ?�택???�브?�트???�웃?�인 ?�데?�트 (?�니메이??중인 ?�브?�트??
   updateAllSelectionOutlines() {
-    // 배열 ?�리 먼�? ?�행
+    // 아웃라인 기능 비활성화됨
     this.cleanupSelectedObjects();
-    
-    for (const object of this.selectedObjects) {
-      if (object) { // undefined??null 체크
-        this.updateSelectionOutline(object);
-      }
-    }
   }
   
   // selectedObjects 배열?�서 ?�효?��? ?��? 객체???�거

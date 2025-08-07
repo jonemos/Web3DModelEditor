@@ -110,13 +110,29 @@
 }
 
 .library-mesh:hover .object-thumbnail {
-  transform: scale(2.5);
+  transform: scale(1.8);
   z-index: 1000;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.8));
 }
 
 .library-mesh:hover .thumbnail-image {
   border: 2px solid rgba(100, 150, 255, 0.8);
+  border-radius: 6px;
+}
+
+/* 커스텀 메쉬 전용 썸네일 hover 효과 */
+.custom-mesh .object-thumbnail {
+  position: relative;
+}
+
+.custom-mesh:hover .object-thumbnail {
+  transform: scale(1.8);
+  z-index: 1000;
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.8));
+}
+
+.custom-mesh:hover .object-thumbnail img {
+  border: 2px solid rgba(76, 175, 80, 0.8);
   border-radius: 6px;
 }
 
@@ -186,7 +202,6 @@
 .object-item.library-mesh:hover {
   background: rgba(0, 255, 127, 0.15);
   border-color: rgba(0, 255, 127, 0.6);
-  z-index: 999; /* 다른 요소들보다 위에 표시 */
 }
 
 .object-item.library-mesh .object-thumbnail {
@@ -195,6 +210,27 @@
 
 .object-item.library-mesh:hover .object-thumbnail {
   color: #7fffd4;
+}
+
+/* 커스텀 메쉬 스타일 */
+.object-item.custom-mesh {
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  background: rgba(76, 175, 80, 0.05);
+  position: relative;
+  overflow: visible; /* 확대된 썸네일이 보이도록 */
+}
+
+.object-item.custom-mesh:hover {
+  background: rgba(76, 175, 80, 0.15);
+  border-color: rgba(76, 175, 80, 0.6);
+}
+
+.object-item.custom-mesh .object-thumbnail {
+  color: #4caf50;
+}
+
+.object-item.custom-mesh:hover .object-thumbnail {
+  color: #81c784;
 }
 
 /* 삭제 버튼 스타일 */
@@ -214,21 +250,26 @@
   justify-content: center;
   font-size: 10px;
   transition: all 0.2s ease;
-  z-index: 10;
+  z-index: 1001; /* 호버된 썸네일(z-index: 1000)보다 높게 설정 */
 }
 
 .object-item.custom-object:hover .delete-btn {
   display: flex;
+  z-index: 1002; /* 호버 시 더 높은 z-index */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); /* 그림자 추가로 더 명확하게 */
 }
 
 /* 커스텀 메쉬 삭제 버튼도 표시 */
 .object-item.custom-mesh:hover .delete-btn {
   display: flex;
+  z-index: 1002; /* 호버 시 더 높은 z-index */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); /* 그림자 추가로 더 명확하게 */
 }
 
 .delete-btn:hover {
   background: rgba(244, 67, 54, 1);
   transform: scale(1.1);
+  z-index: 1003; /* 버튼 자체 호버 시 최고 우선순위 */
 }
 
 .delete-btn svg {

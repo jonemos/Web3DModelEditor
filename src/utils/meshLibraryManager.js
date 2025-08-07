@@ -17,6 +17,21 @@ export class MeshLibraryManager {
       clonedObject.rotation.set(0, 0, 0);
       clonedObject.scale.set(1, 1, 1);
       
+      // 머티리얼 복사를 위한 재귀 함수
+      const cloneMaterials = (obj) => {
+        if (obj.material) {
+          if (Array.isArray(obj.material)) {
+            obj.material = obj.material.map(mat => mat.clone());
+          } else {
+            obj.material = obj.material.clone();
+          }
+        }
+        obj.children.forEach(child => cloneMaterials(child));
+      };
+      
+      // 머티리얼 복사 적용
+      cloneMaterials(clonedObject);
+      
       this.exporter.parse(
         clonedObject,
         (gltf) => {
@@ -25,7 +40,14 @@ export class MeshLibraryManager {
         (error) => {
           reject(error);
         },
-        { binary: true } // GLB 형식으로 익스포트
+        { 
+          binary: true, // GLB 형식으로 익스포트
+          includeCustomExtensions: true, // 커스텀 확장 포함
+          embedImages: true, // 이미지를 GLB에 포함
+          maxTextureSize: 1024, // 텍스처 최대 크기
+          forcePowerOfTwoTextures: false, // 2의 거듭제곱 텍스처 강제 비활성화
+          truncateDrawRange: false // 드로우 범위 절단 비활성화
+        }
       );
     });
   }
@@ -42,7 +64,7 @@ export class MeshLibraryManager {
     });
     
     tempRenderer.setSize(size, size);
-    tempRenderer.setClearColor(0x000000, 0); // 투명 배경
+    tempRenderer.setClearColor(0x2a2a2a, 1); // 어두운 배경 (라이브러리 메쉬와 동일)
     
     // 임시 컨테이너에 렌더러 추가 (보이지 않게)
     const tempContainer = document.createElement('div');
@@ -52,32 +74,40 @@ export class MeshLibraryManager {
     document.body.appendChild(tempContainer);
     tempContainer.appendChild(tempRenderer.domElement);
 
-    // 오브젝트 복제 및 씬에 추가
-    const clonedObject = object.clone();
-    clonedObject.position.set(0, 0, 0);
-    clonedObject.rotation.set(0, 0, 0);
-    clonedObject.scale.set(1, 1, 1);
-    tempScene.add(clonedObject);
-
-    // 조명 추가
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    // 조명 설정 (라이브러리 메쉬와 동일)
+    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     tempScene.add(ambientLight);
     
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(1, 1, 1);
     tempScene.add(directionalLight);
+    
+    const directionalLight2 = new THREE.DirectionalLight(0xffffff, 0.4);
+    directionalLight2.position.set(-1, -1, -1);
+    tempScene.add(directionalLight2);
 
-    // 오브젝트 바운딩 박스 계산
+    // 오브젝트 복제 및 씬에 추가
+    const clonedObject = object.clone();
+    tempScene.add(clonedObject);
+
+    // 바운딩 박스 계산
     const box = new THREE.Box3().setFromObject(clonedObject);
     const center = box.getCenter(new THREE.Vector3());
     const size3 = box.getSize(new THREE.Vector3());
 
-    // 카메라 위치 설정
+    // 모델을 중앙으로 이동
+    clonedObject.position.sub(center);
+
+    // 카메라 위치 조정 (라이브러리 메쉬와 동일한 방식)
     const maxDim = Math.max(size3.x, size3.y, size3.z);
-    const distance = maxDim * 2;
+    const fov = tempCamera.fov * (Math.PI / 180);
+    let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
     
-    tempCamera.position.set(distance, distance, distance);
-    tempCamera.lookAt(center);
+    // 적절한 거리로 조정 (약간 더 멀리)
+    cameraZ *= 1.5;
+    
+    tempCamera.position.set(cameraZ * 0.7, cameraZ * 0.5, cameraZ);
+    tempCamera.lookAt(0, 0, 0);
 
     // 렌더링
     tempRenderer.render(tempScene, tempCamera);
