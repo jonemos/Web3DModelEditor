@@ -5,11 +5,13 @@ function ViewportControls({ editorControls }) {
   const { 
     isWireframe, 
     isGridSnap,
+    isGridVisible,
     gizmoSpace,
     isMagnetEnabled,
     showMagnetRays,
     toggleWireframe, 
     toggleGridSnap,
+    toggleGridVisible,
     toggleGizmoSpace,
     toggleMagnet,
     toggleMagnetRays
@@ -30,6 +32,15 @@ function ViewportControls({ editorControls }) {
     // EditorControls를 통해 그리드 스냅 업데이트
     if (editorControls) {
       editorControls.updateGridSnap();
+    }
+  }
+
+  const handleGridVisibleToggle = () => {
+    toggleGridVisible()
+    
+    // EditorControls를 통해 그리드 가시성 업데이트
+    if (editorControls) {
+      editorControls.toggleGrid();
     }
   }
 
@@ -86,6 +97,22 @@ function ViewportControls({ editorControls }) {
           <path d="M3 15h18"/>
           <path d="M9 3v18"/>
           <path d="M15 3v18"/>
+        </svg>
+      </button>
+
+      <button 
+        className={`viewport-control-btn ${isGridVisible ? 'active' : ''}`}
+        onClick={handleGridVisibleToggle}
+        title="그리드 표시/숨기기"
+      >
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M3 3h18v18H3z"/>
+          <path d="M8 3v18"/>
+          <path d="M13 3v18"/>
+          <path d="M18 3v18"/>
+          <path d="M3 8h18"/>
+          <path d="M3 13h18"/>
+          <path d="M3 18h18"/>
         </svg>
       </button>
 

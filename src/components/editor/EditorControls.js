@@ -27,6 +27,9 @@ export class EditorControls {
     // Transform Manager 초기화 (KeyboardController와 연동)
     this.transformManager = new TransformManager(this.objectSelector, editorStore, this.keyboardController);
     
+    // 그리드 헬퍼 초기화
+    this.initializeGrid();
+    
     // 마우스 이벤트 설정
     this.inputManager.setupMouseEvents(renderer.domElement);
     
@@ -350,6 +353,13 @@ export class EditorControls {
     this.objectSelector.dispose();
     this.transformManager.dispose();
     
+    // 그리드 헬퍼 정리
+    if (this.gridHelper) {
+      this.scene.remove(this.gridHelper);
+      this.gridHelper.dispose();
+      this.gridHelper = null;
+    }
+    
     console.log('EditorControls disposed');
   }
   
@@ -389,5 +399,102 @@ export class EditorControls {
   // 자석 레이 표시 업데이트
   updateMagnetRays() {
     this.objectSelector.updateMagnetRays();
+  }
+
+  // 그리드 헬퍼 초기화
+  initializeGrid() {
+    const size = 20; // 그리드 크기
+    const divisions = 20; // 그리드 분할 수
+    
+    console.log('Initializing grid helper...');
+    
+    // 더 밝은 색상으로 그리드 생성
+    this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
+    this.gridHelper.name = 'EditorGrid';
+    this.gridHelper.position.y = 0.05; // 바닥보다 더 높게 위치하여 Z-fighting 방지
+    
+    // 그리드 머티리얼 설정 개선
+    this.gridHelper.material.opacity = 0.8;
+    this.gridHelper.material.transparent = true;
+    this.gridHelper.material.depthWrite = false; // 깊이 쓰기 비활성화로 Z-fighting 방지
+    
+    // 스토어에서 초기 그리드 가시성 상태 가져오기
+    const currentState = this.editorStore.getState();
+    const isGridVisible = currentState.isGridVisible;
+    this.gridHelper.visible = isGridVisible;
+    this.scene.add(this.gridHelper);
+    
+    console.log('Grid helper initialized:', {
+      size,
+      divisions,
+      visible: this.gridHelper.visible,
+      position: this.gridHelper.position,
+      name: this.gridHelper.name,
+      material: {
+        opacity: this.gridHelper.material.opacity,
+        transparent: this.gridHelper.material.transparent,
+        depthWrite: this.gridHelper.material.depthWrite
+      }
+    });
+    console.log('Grid helper added to scene. Scene children count:', this.scene.children.length);
+  }
+
+  // 그리드 표시/숨기기 토글
+  toggleGrid() {
+    console.log('toggleGrid called, gridHelper:', this.gridHelper);
+    
+    if (!this.gridHelper) {
+      console.error('Grid helper not initialized!');
+      return false;
+    }
+    
+    // 스토어에서 현재 상태 가져오기
+    const currentState = this.editorStore.getState();
+    const isGridVisible = currentState.isGridVisible;
+    
+    // 그리드 헬퍼의 가시성 설정
+    this.gridHelper.visible = isGridVisible;
+    
+    // 강제로 씬 업데이트
+    this.gridHelper.updateMatrixWorld(true);
+    
+    console.log(`Grid ${isGridVisible ? 'shown' : 'hidden'}`);
+    console.log('Grid helper visible property:', this.gridHelper.visible);
+    console.log('Grid helper in scene:', this.scene.children.includes(this.gridHelper));
+    
+    return isGridVisible;
+  }
+
+  // 그리드 표시 상태 확인
+  isGridShown() {
+    const currentState = this.editorStore.getState();
+    return currentState.isGridVisible;
+  }
+
+  // 그리드 크기 설정
+  setGridSize(size, divisions = 20) {
+    if (!this.gridHelper) return;
+    
+    // 기존 그리드 제거
+    this.scene.remove(this.gridHelper);
+    this.gridHelper.dispose();
+    
+    // 스토어에서 현재 그리드 가시성 상태 가져오기
+    const currentState = this.editorStore.getState();
+    const isGridVisible = currentState.isGridVisible;
+    
+    // 새 그리드 생성 (더 밝은 색상과 개선된 설정으로)
+    this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
+    this.gridHelper.name = 'EditorGrid';
+    this.gridHelper.position.y = 0.05;
+    this.gridHelper.visible = isGridVisible;
+    
+    // 머티리얼 설정 개선
+    this.gridHelper.material.opacity = 0.8;
+    this.gridHelper.material.transparent = true;
+    this.gridHelper.material.depthWrite = false;
+    
+    this.scene.add(this.gridHelper);
+    console.log(`Grid size updated: ${size}x${size}, divisions: ${divisions}`);
   }
 }

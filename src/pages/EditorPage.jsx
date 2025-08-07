@@ -32,7 +32,7 @@ const MESSAGES = {
 
 function EditorPage() {
   const navigate = useNavigate()
-  const { clearMap, saveMap, loadMap, addObject, setSelectedObject, addCustomMesh, selectedObject } = useEditorStore()
+  const { clearMap, saveMap, loadMap, addObject, setSelectedObject, addCustomMesh, selectedObject, toggleGridVisible } = useEditorStore()
   const [showDialog, setShowDialog] = useState(null)
   const [dialogInput, setDialogInput] = useState('')
   const [toast, setToast] = useState(null)
@@ -165,7 +165,21 @@ function EditorPage() {
         break
         
       case 'toggle-grid':
-        alert(MESSAGES.TOGGLE_GRID_NOT_READY)
+        console.log('Grid toggle menu action triggered');
+        toggleGridVisible();
+        const currentState = useEditorStore.getState();
+        const isVisible = currentState.isGridVisible;
+        
+        // EditorControls에 변경사항 반영
+        if (editorControlsRef.current) {
+          editorControlsRef.current.toggleGrid();
+        }
+        
+        setToast({ 
+          message: `그리드가 ${isVisible ? '표시' : '숨김'} 되었습니다`, 
+          type: 'info' 
+        })
+        setTimeout(() => setToast(null), 2000)
         break
         
       case 'toggle-stats':

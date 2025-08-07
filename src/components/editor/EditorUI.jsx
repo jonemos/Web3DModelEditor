@@ -8,6 +8,7 @@ import ObjectPropertiesPanel from './panels/ObjectPropertiesPanel'
 import LibraryPanel from './panels/LibraryPanel'
 import AssetsPanel from './panels/AssetsPanel'
 import PostProcessingPanel from './panels/PostProcessingPanel'
+import HDRIPanel from './panels/HDRIPanel'
 import ContextMenu from './ContextMenu'
 import Toast from '../ui/Toast'
 import './EditorUI.css'
@@ -41,6 +42,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
   const [showLibrary, setShowLibrary] = useState(false)
   const [showAssets, setShowAssets] = useState(false)
   const [showPostProcessing, setShowPostProcessing] = useState(false)
+  const [showHDRI, setShowHDRI] = useState(false)
   const [isPostProcessingPanelOpen, setIsPostProcessingPanelOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState({
     isVisible: false,
@@ -327,18 +329,28 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
     setShowLibrary(!showLibrary)
     if (showAssets) setShowAssets(false) // 다른 패널 닫기
     if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
+    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
   }
 
   const handleAssetsToggle = () => {
     setShowAssets(!showAssets)
     if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
     if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
+    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
   }
 
   const handlePostProcessingToggle = () => {
     setIsPostProcessingPanelOpen(!isPostProcessingPanelOpen)
     if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
     if (showAssets) setShowAssets(false) // 다른 패널 닫기
+    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
+  }
+
+  const handleHDRIToggle = () => {
+    setShowHDRI(!showHDRI)
+    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
+    if (showAssets) setShowAssets(false) // 다른 패널 닫기
+    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
   }
 
   const handleAssetDrop = (assetData, position) => {
@@ -540,6 +552,15 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
               <path d="M9,12L11,14L15,10L20,15H4L9,12Z"/>
             </svg>
           </button>
+          <button 
+            className={`tool-btn hdri-btn ${showHDRI ? 'active' : ''}`}
+            onClick={handleHDRIToggle}
+            title="HDRI 환경"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17Z"/>
+            </svg>
+          </button>
 
           {/* 포스트프로세싱 패널 - 버튼 바로 옆에 */}
           {isPostProcessingPanelOpen && (
@@ -573,6 +594,14 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
         <PostProcessingPanel 
           postProcessingManager={postProcessingManager}
           isVisible={showPostProcessing}
+        />
+      )}
+
+      {/* HDRI 패널 */}
+      {showHDRI && (
+        <HDRIPanel 
+          scene={editorControls?.scene}
+          onClose={() => setShowHDRI(false)}
         />
       )}
 

@@ -22,6 +22,7 @@ export const useEditorStore = create((set, get) => {
   // Viewport settings
   isWireframe: false,
   isGridSnap: false,
+  isGridVisible: true, // 그리드 가시성
   gridSize: 1, // 그리드 크기 (단위: Three.js 유닛)
   
   // Gizmo settings
@@ -68,6 +69,7 @@ export const useEditorStore = create((set, get) => {
   // Viewport actions
   toggleWireframe: () => set((state) => ({ isWireframe: !state.isWireframe })),
   toggleGridSnap: () => set((state) => ({ isGridSnap: !state.isGridSnap })),
+  toggleGridVisible: () => set((state) => ({ isGridVisible: !state.isGridVisible })),
   setGridSize: (size) => set({ gridSize: size }),
   
   // Gizmo actions
