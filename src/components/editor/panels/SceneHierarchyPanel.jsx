@@ -6,6 +6,7 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
   walls, 
   selectedObject, 
   onObjectVisibilityToggle, 
+  onObjectFreezeToggle,
   onObjectSelect, 
   onObjectRemove,
   onObjectFocus,
@@ -17,64 +18,58 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
   const [editingName, setEditingName] = useState('')
   const inputRef = useRef(null)
 
-  // 디버깅용 로그 (필요시에만)
-  // Scene hierarchy panel rendering
+  // 다중 선택된 객체들을 가져오기
+  const selectedObjects = editorControls?.selectedObjects || []
+  
+  // 다중 선택 디버깅
+  console.log('SceneHierarchyPanel - 선택 상태:', {
+    selectedObject,
+    selectedObjects,
+    selectedObjectsCount: selectedObjects.length,
+    isArray: Array.isArray(selectedObject),
+    type: typeof selectedObject
+  })
 
   const handleNameClick = (obj) => {
-    // Name clicked in hierarchy
-    
     // EditorControls를 통해 실제 Three.js 오브젝트 선택
     if (editorControls) {
       const threeObject = editorControls.findObjectById(obj.id)
       if (threeObject) {
-        // EditorControls의 선택 기능 사용 (3D 뷰에서 클릭하는 것과 동일)
         editorControls.selectObject(threeObject)
-        // Three.js object selected via hierarchy
-      } else {
-        // Three.js object not found for ID
       }
     } else {
-      // fallback: EditorControls가 없는 경우 기존 방식 사용
       onObjectSelect(obj)
     }
   }
 
   const handleNameDoubleClick = (obj) => {
-    // Name double clicked in hierarchy
-    
     // EditorControls를 통해 포커스 (카메라 이동)
     if (editorControls) {
       const threeObject = editorControls.findObjectById(obj.id)
       if (threeObject) {
-        // 먼저 선택하고
         editorControls.selectObject(threeObject)
-        // 그 다음 포커스 (카메라 이동)
-        if (editorControls.focusOnObject) {
-          editorControls.focusOnObject(threeObject)
-        }
-        // Focused on Three.js object via hierarchy
-      } else {
-        // Three.js object not found for focus
+        onObjectFocus(obj)
       }
     } else {
-      // fallback: EditorControls가 없는 경우 기존 방식 사용
       onObjectFocus(obj)
     }
-  }
-
-  const handleRename = (obj) => {
+    
     setEditingId(obj.id)
     setEditingName(obj.name)
+    
     setTimeout(() => {
       if (inputRef.current) {
         inputRef.current.focus()
         inputRef.current.select()
       }
-    }, 0)
+    }, 50)
   }
 
-  const handleRenameSubmit = (obj) => {
-    // Rename submission in hierarchy
+  const handleNameChange = (e) => {
+    setEditingName(e.target.value)
+  }
+
+  const handleNameSubmit = (obj) => {
     if (editingName.trim() && editingName !== obj.name) {
       onObjectRename(obj, editingName.trim())
     }
@@ -82,147 +77,222 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
     setEditingName('')
   }
 
-  const handleRenameCancel = () => {
-    setEditingId(null)
-    setEditingName('')
-  }
-
-  const handleKeyDown = (e, obj) => {
+  const handleNameKeyDown = (e, obj) => {
     if (e.key === 'Enter') {
-      handleRenameSubmit(obj)
+      handleNameSubmit(obj)
     } else if (e.key === 'Escape') {
-      handleRenameCancel()
-    } else if (e.key === 'F2' && !editingId) {
-      e.preventDefault()
-      handleRename(obj)
+      setEditingId(null)
+      setEditingName('')
     }
   }
 
-  const handleObjectDelete = (obj) => {
-    // Delete object from hierarchy
-    
-    // 객체 삭제 실행 (EditorUI의 handleObjectRemove가 기즈모 해제를 처리함)
-    onObjectRemove(obj)
+  const handleNameBlur = (obj) => {
+    handleNameSubmit(obj)
   }
+
+  const renderObjectItem = (obj, isWall = false) => {
+    // 단일 선택 확인
+    const isSingleSelected = selectedObject?.name === obj.name || selectedObject?.id === obj.id
+    
+    // 다중 선택 확인 - editorControls에서 selectedObjects 배열 사용
+    const isMultiSelected = selectedObjects.some(selectedObj => 
+      selectedObj?.name === obj.name || 
+      selectedObj?.id === obj.id ||
+      selectedObj?.userData?.id === obj.id
+    )
+    
+    const isSelected = isSingleSelected || isMultiSelected
+    const isEditing = editingId === obj.id
+    const isSystemObject = obj.id === 'ground_floor'
+    
+    // 디버깅용 로그 - 선택된 경우만
+    if (isSelected) {
+      console.log('선택된 오브젝트:', {
+        objId: obj.id,
+        objName: obj.name,
+        isSingleSelected,
+        isMultiSelected,
+        selectedObjectsCount: selectedObjects.length
+      })
+    }
+    
+    return (
+      <div 
+        key={obj.id} 
+        className={`object-item ${isSelected ? 'selected' : ''}`}
+        data-selected={isSelected ? 'true' : 'false'}
+        style={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '4px 8px',
+          margin: '2px 0',
+          borderRadius: '3px',
+          backgroundColor: isSelected ? '#ff8c00' : '#252525',
+          borderLeft: `3px solid ${isSelected ? '#ff6600' : 'transparent'}`,
+          border: isSelected ? '2px solid #ff6600' : '1px solid transparent',
+          transition: 'all 0.2s ease',
+          minHeight: '28px',
+          width: '100%',
+          boxSizing: 'border-box',
+          boxShadow: isSelected ? '0 0 8px rgba(255, 140, 0, 0.8)' : 'none',
+          transform: isSelected ? 'scale(1.02)' : 'scale(1)'
+        }}
+        onContextMenu={(e) => onContextMenu && onContextMenu(e, obj)}
+      >
+        <button
+          className="visibility-btn"
+          onClick={() => onObjectVisibilityToggle(obj)}
+          title={obj.visible !== false ? "숨기기" : "보이기"}
+          style={{
+            background: 'none',
+            border: 'none',
+            color: isSelected ? '#ffffff' : '#cccccc',
+            cursor: 'pointer',
+            padding: '2px',
+            borderRadius: '2px',
+            fontSize: '14px',
+            width: '20px',
+            height: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            flexGrow: 0
+          }}
+        >
+          {obj.visible !== false ? '👁' : '�'}
+        </button>
+        
+        <span className="object-icon" style={{
+          fontSize: '16px',
+          flexShrink: 0,
+          flexGrow: 0,
+          width: '20px',
+          textAlign: 'center'
+        }}>
+          {isWall ? '🧱' : obj.type === 'player' ? '🚶' : '📦'}
+        </span>
+        
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            value={editingName}
+            onChange={handleNameChange}
+            onBlur={() => handleNameBlur(obj)}
+            onKeyDown={(e) => handleNameKeyDown(e, obj)}
+            className="object-name-input"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span 
+            className="object-name"
+            onClick={() => handleNameClick(obj)}
+            onDoubleClick={() => handleNameDoubleClick(obj)}
+            style={{
+              flex: '1',
+              flexGrow: 1,
+              flexShrink: 1,
+              cursor: 'pointer',
+              padding: '2px 4px',
+              borderRadius: '3px',
+              fontSize: '12px',
+              color: isSelected ? '#ffffff' : '#cccccc',
+              userSelect: 'none',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              minWidth: 0,
+              fontWeight: isSelected ? 'bold' : 'normal'
+            }}
+          >
+            {obj.name}
+          </span>
+        )}
+        
+        <button
+          className={`freeze-btn ${obj.frozen ? 'frozen' : ''}`}
+          onClick={() => onObjectFreezeToggle(obj)}
+          title={obj.frozen ? "고정 해제" : "고정"}
+          style={{
+            background: obj.frozen ? '#ff6b6b' : 'none',
+            border: 'none',
+            color: obj.frozen ? '#ffffff' : (isSelected ? '#ffffff' : '#cccccc'),
+            cursor: 'pointer',
+            padding: '2px',
+            borderRadius: '2px',
+            fontSize: '14px',
+            width: '20px',
+            height: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+            flexGrow: 0
+          }}
+        >
+          {obj.frozen ? '🔒' : '🔓'}
+        </button>
+        
+        {!isSystemObject && (
+          <button
+            className="delete-btn"
+            onClick={() => onObjectRemove(obj)}
+            title="삭제"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: isSelected ? '#ffcccc' : '#ff6b6b',
+              cursor: 'pointer',
+              padding: '2px',
+              borderRadius: '2px',
+              fontSize: '12px',
+              width: '20px',
+              height: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+              flexGrow: 0,
+              fontWeight: 'bold'
+            }}
+          >
+            ×
+          </button>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div className="panel-section hierarchy-section expanded-section">
-      <h3>씬 오브젝트 ({objects.length + walls.length})</h3>
-      <div className="hierarchy-list">
-        {/* 오브젝트 섹션 */}
-        {objects.length > 0 && (
-          <div className="hierarchy-category">
-            <div className="category-header">
-              <span className="category-icon">📦</span>
-              <span>모델 ({objects.length})</span>
+    <div className="scene-hierarchy-panel">
+      <div className="panel-header">
+        <h3>씬 계층구조</h3>
+      </div>
+      <div className="panel-content">
+        <div className="objects-list">
+          {objects && objects.length > 0 && (
+            <>
+              <h4>오브젝트</h4>
+              {objects.map(obj => renderObjectItem(obj, false))}
+            </>
+          )}
+          
+          {walls && walls.length > 0 && (
+            <>
+              <h4>벽</h4>
+              {walls.map(wall => renderObjectItem(wall, true))}
+            </>
+          )}
+          
+          {(!objects || objects.length === 0) && (!walls || walls.length === 0) && (
+            <div className="empty-state">
+              씬에 오브젝트가 없습니다
             </div>
-            {objects.map((obj, index) => (
-              <div 
-                key={obj.id || index} 
-                className="hierarchy-item"
-                onKeyDown={(e) => handleKeyDown(e, obj)}
-                onContextMenu={(e) => onContextMenu && onContextMenu(e, obj)}
-                tabIndex={0}
-              >
-                <button 
-                  className="visibility-btn"
-                  onClick={() => onObjectVisibilityToggle(obj)}
-                  title={obj.visible !== false ? "숨기기" : "보이기"}
-                >
-                  {obj.visible !== false ? '👁️' : '🙈'}
-                </button>
-                {editingId === obj.id ? (
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onBlur={() => handleRenameSubmit(obj)}
-                    onKeyDown={(e) => handleKeyDown(e, obj)}
-                    className="object-name-input"
-                  />
-                ) : (
-                  <span 
-                    className={`object-name ${selectedObject?.id === obj.id ? 'selected' : ''}`}
-                    onClick={() => handleNameClick(obj)}
-                    onDoubleClick={() => handleNameDoubleClick(obj)}
-                    title={`모델: ${obj.name} (더블클릭: 포커스, F2: 이름변경)`}
-                  >
-                    {obj.name}
-                  </span>
-                )}
-                <button 
-                  className="delete-btn"
-                  onClick={() => handleObjectDelete(obj)}
-                  title="삭제"
-                >
-                  🗑️
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {/* 벽 섹션 */}
-        {walls.length > 0 && (
-          <div className="hierarchy-category">
-            <div className="category-header">
-              <span className="category-icon">🧱</span>
-              <span>벽 ({walls.length})</span>
-            </div>
-            {walls.map((wall, index) => (
-              <div 
-                key={wall.id || index} 
-                className="hierarchy-item"
-                onKeyDown={(e) => handleKeyDown(e, wall)}
-                onContextMenu={(e) => onContextMenu && onContextMenu(e, wall)}
-                tabIndex={0}
-              >
-                <button 
-                  className="visibility-btn"
-                  onClick={() => onObjectVisibilityToggle(wall)}
-                  title={wall.visible !== false ? "숨기기" : "보이기"}
-                >
-                  {wall.visible !== false ? '👁️' : '🙈'}
-                </button>
-                {editingId === wall.id ? (
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={editingName}
-                    onChange={(e) => setEditingName(e.target.value)}
-                    onBlur={() => handleRenameSubmit(wall)}
-                    onKeyDown={(e) => handleKeyDown(e, wall)}
-                    className="object-name-input"
-                  />
-                ) : (
-                  <span 
-                    className={`object-name ${selectedObject?.id === wall.id ? 'selected' : ''}`}
-                    onClick={() => handleNameClick(wall)}
-                    onDoubleClick={() => handleNameDoubleClick(wall)}
-                    title={`벽: ${wall.name} (더블클릭: 포커스, F2: 이름변경)`}
-                  >
-                    {wall.name}
-                  </span>
-                )}
-                <button 
-                  className="delete-btn"
-                  onClick={() => handleObjectDelete(wall)}
-                  title="삭제"
-                >
-                  🗑️
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        
-        {/* 오브젝트가 없는 경우 */}
-        {objects.length === 0 && walls.length === 0 && (
-          <div className="empty-hierarchy">
-            <p>씬에 오브젝트가 없습니다</p>
-            <small>메뉴에서 오브젝트를 추가하세요</small>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )

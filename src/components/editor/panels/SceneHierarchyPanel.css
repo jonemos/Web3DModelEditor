@@ -1,4 +1,137 @@
 /* SceneHierarchyPanel 스타일 */
+
+/* 선택된 오브젝트 스타일 - 최고 우선순위 */
+.scene-hierarchy-panel .objects-list .object-item.selected,
+.scene-hierarchy-panel .object-item.selected,
+.object-item.selected {
+  background-color: #ff8c00 !important;
+  border: 2px solid #ff6600 !important;
+  border-left: 3px solid #ff6600 !important;
+  box-shadow: 0 0 8px rgba(255, 140, 0, 0.8) !important;
+  transform: scale(1.02) !important;
+}
+
+/* 객체 아이템 가로 정렬 스타일 - 최고 우선순위 */
+.scene-hierarchy-panel .objects-list .object-item,
+.scene-hierarchy-panel .object-item,
+.object-item {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  padding: 4px 8px !important;
+  margin: 2px 0 !important;
+  border-radius: 3px !important;
+  background: #252525 !important;
+  border-left: 2px solid transparent !important;
+  transition: all 0.2s ease !important;
+  min-height: 28px !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+.scene-hierarchy-panel .objects-list .object-item:hover,
+.scene-hierarchy-panel .object-item:hover,
+.object-item:hover {
+  background: #2d2d2d !important;
+  border-left-color: #007acc !important;
+}
+
+.scene-hierarchy-panel .objects-list .object-item.selected,
+.scene-hierarchy-panel .object-item.selected,
+.object-item.selected {
+  background: #1e3a5f !important;
+  border-left-color: #007acc !important;
+}
+
+.scene-hierarchy-panel .objects-list .object-item .visibility-btn,
+.scene-hierarchy-panel .objects-list .object-item .freeze-btn,
+.scene-hierarchy-panel .objects-list .object-item .delete-btn,
+.scene-hierarchy-panel .object-item .visibility-btn,
+.scene-hierarchy-panel .object-item .freeze-btn,
+.scene-hierarchy-panel .object-item .delete-btn,
+.object-item .visibility-btn,
+.object-item .freeze-btn,
+.object-item .delete-btn {
+  background: none !important;
+  border: none !important;
+  color: #cccccc !important;
+  cursor: pointer !important;
+  padding: 2px !important;
+  border-radius: 2px !important;
+  font-size: 12px !important;
+  transition: all 0.2s ease !important;
+  width: 20px !important;
+  height: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+}
+
+.scene-hierarchy-panel .object-item .visibility-btn:hover,
+.scene-hierarchy-panel .object-item .freeze-btn:hover,
+.scene-hierarchy-panel .object-item .delete-btn:hover {
+  background: #333 !important;
+  color: #ffffff !important;
+}
+
+.scene-hierarchy-panel .object-item .freeze-btn.frozen {
+  background: #ff6b6b !important;
+  color: #ffffff !important;
+}
+
+.scene-hierarchy-panel .object-item .freeze-btn.frozen:hover {
+  background: #ff5252 !important;
+}
+
+.scene-hierarchy-panel .objects-list .object-item .object-icon,
+.scene-hierarchy-panel .object-item .object-icon,
+.object-item .object-icon {
+  font-size: 14px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  width: 16px !important;
+  text-align: center !important;
+}
+
+.scene-hierarchy-panel .objects-list .object-item .object-name,
+.scene-hierarchy-panel .object-item .object-name,
+.object-item .object-name {
+  flex: 1 !important;
+  flex-grow: 1 !important;
+  flex-shrink: 1 !important;
+  cursor: pointer !important;
+  padding: 2px 4px !important;
+  border-radius: 3px !important;
+  font-size: 12px !important;
+  color: #cccccc !important;
+  transition: all 0.2s ease !important;
+  user-select: none !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  min-width: 0 !important;
+}
+
+.scene-hierarchy-panel .object-item .object-name:hover {
+  background: #333 !important;
+  color: #ffffff !important;
+}
+
+.scene-hierarchy-panel .object-item .object-name-input {
+  flex: 1 !important;
+  background: #333 !important;
+  border: 1px solid #007acc !important;
+  color: #ffffff !important;
+  padding: 2px 4px !important;
+  border-radius: 3px !important;
+  font-size: 12px !important;
+  outline: none !important;
+}
+
 .hierarchy-section.expanded-section {
   flex: 1;
   min-height: 200px;
@@ -78,6 +211,38 @@
   color: #ffffff;
 }
 
+.freeze-btn {
+  background: none;
+  border: none;
+  color: #cccccc;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 2px;
+  font-size: 12px;
+  transition: all 0.2s ease;
+  flex-shrink: 0; /* 버튼 크기 고정 */
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  order: 1.5; /* visibility-btn과 object-name 사이에 위치 */
+}
+
+.freeze-btn:hover {
+  background: #333;
+  color: #ffffff;
+}
+
+.freeze-btn.frozen {
+  background: #ff6b6b;
+  color: #ffffff;
+}
+
+.freeze-btn.frozen:hover {
+  background: #ff5252;
+}
+
 .object-name {
   flex: 0 1 auto; /* flex-grow: 0, flex-shrink: 1, flex-basis: auto */
   cursor: pointer;
@@ -98,6 +263,17 @@
 .object-name:hover {
   background: #333;
   color: #ffffff;
+}
+
+.object-name.system-object {
+  color: #4CAF50;
+  font-style: italic;
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.object-name.system-object:hover {
+  background: rgba(76, 175, 80, 0.2);
+  color: #66BB6A;
 }
 
 .object-name.selected {

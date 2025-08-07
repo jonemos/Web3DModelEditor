@@ -35,7 +35,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       0.1,
       1000
     );
-    camera.position.set(20, 30, 20);
+    camera.position.set(15, 20, 15);
     camera.lookAt(0, 0, 0);
 
     // Renderer setup
@@ -99,16 +99,85 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
 
-    // Add floor
+    // Add floor with texture
     const floorGeometry = new THREE.PlaneGeometry(floorWidth, floorDepth);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+    
+    // 텍스처 로더 생성
+    const textureLoader = new THREE.TextureLoader();
+    
+    // 체크보드 패턴 텍스처 생성 (기본)
+    const textureCanvas = document.createElement('canvas');
+    textureCanvas.width = 512;
+    textureCanvas.height = 512;
+    const context = textureCanvas.getContext('2d');
+    
+    const tileSize = 64;
+    const tilesPerRow = textureCanvas.width / tileSize;
+    
+    for (let x = 0; x < tilesPerRow; x++) {
+      for (let y = 0; y < tilesPerRow; y++) {
+        const isEven = (x + y) % 2 === 0;
+        context.fillStyle = isEven ? '#f0f0f0' : '#e0e0e0';
+        context.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+      }
+    }
+    
+    const floorTexture = new THREE.CanvasTexture(textureCanvas);
+    floorTexture.wrapS = THREE.RepeatWrapping;
+    floorTexture.wrapT = THREE.RepeatWrapping;
+    floorTexture.repeat.set(floorWidth / 4, floorDepth / 4); // 텍스처 반복
+    
+    const floorMaterial = new THREE.MeshStandardMaterial({ 
+      map: floorTexture,
+      roughness: 0.8,
+      metalness: 0.1
+    });
+    
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
     floor.receiveShadow = true;
+    floor.name = 'Ground';
+    floor.userData = { 
+      id: 'ground_floor',
+      type: 'ground',
+      isSystemObject: true // 시스템 객체임을 표시
+    };
     scene.add(floor);
+    
+    // 선택 가능한 오브젝트로 등록
+    editorControls.addSelectableObject(floor);
+    
+    // 로드된 오브젝트로 기록 (중복 생성 방지)
+    loadedObjectsRef.current.set('ground_floor', floor);
+    
+    // 바닥을 에디터 스토어에 등록 (중복 확인)
+    const { addObject, objects } = useEditorStore.getState();
+    const existingGround = objects.find(obj => obj.id === 'ground_floor');
+    
+    if (!existingGround) {
+      addObject({
+        id: 'ground_floor',
+        name: 'Ground',
+        type: 'ground',
+        geometry: 'PlaneGeometry',
+        params: [floorWidth, floorDepth],
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: -Math.PI / 2, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        visible: true,
+        isSystemObject: true,
+        material: {
+          type: 'MeshStandardMaterial',
+          color: 0xffffff,
+          roughness: 0.8,
+          metalness: 0.1,
+          hasTexture: true
+        }
+      });
+    }
 
     // Add grid helper
-    const gridHelper = new THREE.GridHelper(floorWidth, floorWidth);
+    const gridHelper = new THREE.GridHelper(floorWidth, Math.min(floorWidth, 20));
     gridHelper.position.y = 0.01;
     gridHelper.material.color.setHex(0x666666);
     scene.add(gridHelper);
@@ -1005,6 +1074,66 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         scene.add(mesh);
         editorControlsRef.current.addSelectableObject(mesh);
         loadedObjectsRef.current.set(obj.id, mesh);
+      } else if (obj.type === 'basic' || (obj.geometry && obj.params)) {
+        // 기본 도형 처리 (라이브러리 패널에서 추가된 기본 도형들)
+        console.log('기본 도형 생성:', obj);
+        
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x4CAF50,
+          roughness: 0.3,
+          metalness: 0.1
+        });
+        
+        let geometry;
+        
+        // 기하학적 도형 생성
+        switch (obj.geometry) {
+          case 'BoxGeometry':
+            geometry = new THREE.BoxGeometry(...obj.params);
+            break;
+          case 'SphereGeometry':
+            geometry = new THREE.SphereGeometry(...obj.params);
+            break;
+          case 'CylinderGeometry':
+            geometry = new THREE.CylinderGeometry(...obj.params);
+            break;
+          case 'ConeGeometry':
+            geometry = new THREE.ConeGeometry(...obj.params);
+            break;
+          case 'PlaneGeometry':
+            geometry = new THREE.PlaneGeometry(...obj.params);
+            break;
+          case 'TorusGeometry':
+            geometry = new THREE.TorusGeometry(...obj.params);
+            break;
+          default:
+            geometry = new THREE.BoxGeometry(1, 1, 1);
+        }
+        
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
+        mesh.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+        mesh.scale.set(obj.scale.x, obj.scale.y, obj.scale.z);
+        mesh.name = obj.name;
+        mesh.userData = { id: obj.id, type: obj.type };
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.visible = obj.visible !== false;
+        
+        // 평면의 경우 회전 조정
+        if (obj.geometry === 'PlaneGeometry') {
+          mesh.rotation.x = -Math.PI / 2;
+        }
+        
+        scene.add(mesh);
+        editorControlsRef.current.addSelectableObject(mesh);
+        loadedObjectsRef.current.set(obj.id, mesh);
+        
+        console.log('기본 도형 씬에 추가 완료:', mesh);
+      } else if (obj.type === 'ground') {
+        // 바닥 객체 처리 (시스템 객체, 이미 생성되어 있으므로 스킵)
+        console.log('바닥 객체는 이미 생성되어 있습니다:', obj.name);
+        // 바닥은 초기화 시 이미 생성되므로 여기서는 처리하지 않음
       }
     });
     
@@ -1012,6 +1141,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     const currentObjectIds = new Set(objects.map(obj => obj.id));
     for (const [objectId, mesh] of loadedObjectsRef.current) {
       if (!currentObjectIds.has(objectId)) {
+        // 시스템 객체는 삭제하지 않음
+        if (mesh.userData?.isSystemObject) {
+          continue;
+        }
+        
         scene.remove(mesh);
         editorControlsRef.current.removeSelectableObject(mesh);
         loadedObjectsRef.current.delete(objectId);

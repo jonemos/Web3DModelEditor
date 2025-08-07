@@ -16,8 +16,8 @@ export const useEditorStore = create((set, get) => {
   transformMode: 'translate',
   
   // Floor settings
-  floorWidth: 50,
-  floorDepth: 50,
+  floorWidth: 20,
+  floorDepth: 20,
   
   // Viewport settings
   isWireframe: false,
@@ -49,7 +49,21 @@ export const useEditorStore = create((set, get) => {
   // Actions
   setSelectedObject: (object) => set({ selectedObject: object }),
   setTransformMode: (mode) => set({ transformMode: mode }),
-  setFloorSize: (width, depth) => set({ floorWidth: width, floorDepth: depth }),
+  setFloorSize: (width, depth) => set((state) => {
+    // 바닥 크기 변경 시 바닥 객체도 업데이트
+    const updatedObjects = state.objects.map(obj => 
+      obj.id === 'ground_floor' ? { 
+        ...obj, 
+        params: [width, depth]
+      } : obj
+    );
+    
+    return { 
+      floorWidth: width, 
+      floorDepth: depth,
+      objects: updatedObjects
+    };
+  }),
   
   // Viewport actions
   toggleWireframe: () => set((state) => ({ isWireframe: !state.isWireframe })),
@@ -92,10 +106,18 @@ export const useEditorStore = create((set, get) => {
     objects: [...state.objects, object]
   })),
   
-  removeObject: (object) => set((state) => ({
-    objects: state.objects.filter(obj => obj !== object),
-    selectedObject: state.selectedObject === object ? null : state.selectedObject
-  })),
+  removeObject: (object) => set((state) => {
+    // 시스템 객체는 삭제할 수 없음
+    if (object.isSystemObject) {
+      console.warn('시스템 객체는 삭제할 수 없습니다:', object.name);
+      return state;
+    }
+    
+    return {
+      objects: state.objects.filter(obj => obj !== object),
+      selectedObject: state.selectedObject === object ? null : state.selectedObject
+    };
+  }),
   
   addWall: (wall) => set((state) => ({
     walls: [...state.walls, wall]
@@ -128,6 +150,25 @@ export const useEditorStore = create((set, get) => {
     // 벽 배열에서 찾아서 업데이트
     const updatedWalls = state.walls.map(wall => 
       wall.id === object.id ? { ...wall, visible: newVisibleState } : wall
+    )
+    
+    return {
+      objects: updatedObjects,
+      walls: updatedWalls
+    }
+  }),
+
+  toggleObjectFreeze: (object) => set((state) => {
+    const newFreezeState = object.frozen !== true ? true : false
+    
+    // 오브젝트 배열에서 찾아서 업데이트
+    const updatedObjects = state.objects.map(obj => 
+      obj.id === object.id ? { ...obj, frozen: newFreezeState } : obj
+    )
+    
+    // 벽 배열에서 찾아서 업데이트
+    const updatedWalls = state.walls.map(wall => 
+      wall.id === object.id ? { ...wall, frozen: newFreezeState } : wall
     )
     
     return {
@@ -170,22 +211,31 @@ export const useEditorStore = create((set, get) => {
     const mapDataString = localStorage.getItem(`map_${name}`)
     if (mapDataString) {
       const mapData = JSON.parse(mapDataString)
-      set({
-        floorWidth: mapData.floor.width,
-        floorDepth: mapData.floor.depth,
-        walls: mapData.walls || [],
-        objects: mapData.objects || []
-      })
+      
+      set((state) => {
+        // 기존 시스템 객체들은 유지하고 맵 데이터의 객체들을 추가
+        const systemObjects = state.objects.filter(obj => obj.isSystemObject);
+        const loadedObjects = mapData.objects || [];
+        const nonSystemLoadedObjects = loadedObjects.filter(obj => !obj.isSystemObject);
+        
+        return {
+          floorWidth: mapData.floor.width,
+          floorDepth: mapData.floor.depth,
+          walls: mapData.walls || [],
+          objects: [...systemObjects, ...nonSystemLoadedObjects]
+        };
+      });
+      
       return true
     }
     return false
   },
   
-  clearMap: () => set({
-    objects: [],
+  clearMap: () => set((state) => ({
+    objects: state.objects.filter(obj => obj.isSystemObject), // 시스템 객체는 유지
     walls: [],
     selectedObject: null
-  }),
+  })),
   
   // Scene setup
   setScene: (scene, camera, renderer) => set({ scene, camera, renderer })

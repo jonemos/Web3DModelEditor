@@ -214,6 +214,8 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   const handleClick = (object) => {
     // 클릭으로 객체를 중앙에 추가
     if (onObjectDrop) {
+      console.log('Library panel click:', object); // 디버깅용 로그
+      
       if (object.type === 'custom') {
         try {
           // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함
@@ -225,7 +227,11 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         } catch (error) {
           alert('커스텀 메쉬를 로드할 수 없습니다. 데이터가 손상되었을 수 있습니다.');
         }
+      } else if (object.type === 'library') {
+        // 라이브러리 메쉬의 경우
+        onObjectDrop(object, { x: 0, y: 0, z: 0 });
       } else {
+        // 기본 도형의 경우 (type === 'basic' 또는 undefined)
         onObjectDrop(object, { x: 0, y: 0, z: 0 });
       }
     }

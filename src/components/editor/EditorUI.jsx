@@ -31,6 +31,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
     loadMap,
     clearMap,
     toggleObjectVisibility,
+    toggleObjectFreeze,
     renameObject,
     setSelectedObject
   } = useEditorStore()
@@ -188,6 +189,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
 
   const handleObjectVisibilityToggle = (obj) => {
     toggleObjectVisibility(obj)
+  }
+
+  const handleObjectFreezeToggle = (obj) => {
+    toggleObjectFreeze(obj)
   }
 
   const handleObjectSelect = (obj) => {
@@ -604,6 +609,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
           walls={walls}
           selectedObject={selectedObject}
           onObjectVisibilityToggle={handleObjectVisibilityToggle}
+          onObjectFreezeToggle={handleObjectFreezeToggle}
           onObjectSelect={handleObjectSelect}
           onObjectRemove={handleObjectRemove}
           onObjectFocus={handleObjectFocus}

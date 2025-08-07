@@ -327,10 +327,21 @@ export class ObjectSelector {
   
   // 객체가 ?�택???�효?��? 검?�하???�퍼 메서??
   isObjectValidForSelection(object) {
-    return object && 
-           (object.isMesh || object.isGroup) && 
-           object.userData && 
-           object.visible;
+    if (!object || !(object.isMesh || object.isGroup) || !object.userData || !object.visible) {
+      return false;
+    }
+    
+    // 프리즈된 객체는 선택할 수 없음
+    const editorState = this.editorStore.getState();
+    const objectInStore = editorState.objects.find(obj => obj.id === object.userData.id) || 
+                         editorState.walls.find(wall => wall.id === object.userData.id);
+    
+    if (objectInStore && objectInStore.frozen) {
+      console.log('프리즈된 객체는 선택할 수 없습니다:', objectInStore.name);
+      return false;
+    }
+    
+    return true;
   }
   
   // ?�일 ?�브?�트 ?�택
@@ -624,12 +635,17 @@ export class ObjectSelector {
     const maxY = Math.max(startPos.y, endPos.y);
     
     for (const object of this.selectableObjects) {
-      // ?�브?�트???�면 좌표 계산
+      // 프리즈된 객체는 드래그 선택에서 제외
+      if (!this.isObjectValidForSelection(object)) {
+        continue;
+      }
+      
+      // 오브젝트의 화면 좌표 계산
       const objectPosition = new THREE.Vector3();
       object.getWorldPosition(objectPosition);
       objectPosition.project(this.camera);
       
-      // ?�택 ?�역 ?�에 ?�는지 ?�인
+      // 선택 영역 내에 있는지 확인
       if (objectPosition.x >= minX && objectPosition.x <= maxX &&
           objectPosition.y >= minY && objectPosition.y <= maxY) {
         selectedInArea.push(object);
