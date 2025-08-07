@@ -14,44 +14,25 @@ export const useEditorStore = create((set, get) => ({
   floorWidth: 50,
   floorDepth: 50,
   
+  // Viewport settings
+  isWireframe: false,
+  isGridSnap: false,
+  gridSize: 1, // 그리드 크기 (단위: Three.js 유닛)
+
   // Assets
   savedObjects: new Map(),
-  objects: [
-    // 테스트용 기본 오브젝트들
-    {
-      id: 'test_cube',
-      name: 'Test Cube',
-      position: [0, 1, 0],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
-      type: 'test',
-      visible: true
-    },
-    {
-      id: 'tree_trunk',
-      name: 'Tree Trunk',
-      position: [5, 1.5, 0],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
-      type: 'test',
-      visible: true
-    },
-    {
-      id: 'tree_leaves',
-      name: 'Tree Leaves',
-      position: [5, 4, 0],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
-      type: 'test',
-      visible: true
-    }
-  ],
+  objects: [],
   walls: [],
   
   // Actions
   setSelectedObject: (object) => set({ selectedObject: object }),
   setTransformMode: (mode) => set({ transformMode: mode }),
   setFloorSize: (width, depth) => set({ floorWidth: width, floorDepth: depth }),
+  
+  // Viewport actions
+  toggleWireframe: () => set((state) => ({ isWireframe: !state.isWireframe })),
+  toggleGridSnap: () => set((state) => ({ isGridSnap: !state.isGridSnap })),
+  setGridSize: (size) => set({ gridSize: size }),
   
   addAsset: (name, url) => set((state) => {
     const newMap = new Map(state.savedObjects)

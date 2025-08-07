@@ -784,6 +784,27 @@ export class ObjectSelector {
     }
   }
   
+  // 그리드 스냅 설정
+  setGridSnap(enabled, gridSize = 1) {
+    if (!this.transformControls) return;
+    
+    if (enabled) {
+      this.transformControls.setTranslationSnap(gridSize);
+      this.transformControls.setRotationSnap(THREE.MathUtils.degToRad(15)); // 15도 단위
+      this.transformControls.setScaleSnap(0.1); // 0.1 단위
+    } else {
+      this.transformControls.setTranslationSnap(null);
+      this.transformControls.setRotationSnap(null);
+      this.transformControls.setScaleSnap(null);
+    }
+  }
+  
+  // 그리드 스냅 상태 업데이트
+  updateGridSnap() {
+    const editorState = this.editorStore.getState();
+    this.setGridSnap(editorState.isGridSnap, editorState.gridSize);
+  }
+  
   // 카메???�데?�트 (카메?��? 변경될 ???�출)
   updateCamera(camera) {
     this.camera = camera;

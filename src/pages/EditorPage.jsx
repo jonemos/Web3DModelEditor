@@ -3,6 +3,7 @@ import { useState, useRef } from 'react'
 import PlainEditorCanvas from '../components/editor/PlainEditorCanvas'
 import EditorUI from '../components/editor/EditorUI'
 import MenuBar from '../components/editor/MenuBar'
+import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
 import './EditorPage.css'
 
@@ -221,6 +222,7 @@ function EditorPage() {
             window.dispatchEvent(contextMenuEvent);
           }}
         />
+        <ViewportControls editorControls={editorControlsRef.current} />
         <EditorUI editorControls={editorControlsRef.current} />
       </div>
 

@@ -1,0 +1,73 @@
+.viewport-controls {
+  position: absolute;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(45, 45, 45, 0.3);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  padding: 8px 12px;
+  z-index: 10000;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.viewport-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #ffffff;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.viewport-control-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.viewport-control-btn.active {
+  background: rgba(74, 144, 226, 0.3);
+  border-color: #4a90e2;
+  color: #4a90e2;
+}
+
+.viewport-control-btn.active:hover {
+  background: rgba(74, 144, 226, 0.4);
+}
+
+.viewport-control-btn svg {
+  pointer-events: none;
+}
+
+/* 툴팁 스타일 */
+.viewport-control-btn::after {
+  content: attr(title);
+  position: absolute;
+  bottom: -35px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1001;
+}
+
+.viewport-control-btn:hover::after {
+  opacity: 1;
+}

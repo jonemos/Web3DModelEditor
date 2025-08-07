@@ -12,7 +12,7 @@ export class EditorControls {
     this.cameraController = new CameraController(camera, renderer, onCameraChange);
     this.objectSelector = new ObjectSelector(scene, camera, renderer, editorStore);
     
-    // 컨트�??�태
+    // 컨트�??�태
     this.isMouseDown = false;
     this.isPanning = false;
     this.isOrbiting = false;
@@ -27,13 +27,13 @@ export class EditorControls {
     // Console output removed
   }
   
-  // 카메???�근??(?�환?�을 ?�해 ?��?)
+  // 카메???�근??(?�환?�을 ?�해 ?��?)
   get camera() {
     return this.cameraController.getCamera();
   }
   
   set camera(newCamera) {
-    // ??setter???��??�서 직접 카메?��? ?�정?????�용
+    // ??setter???��??�서 직접 카메?��? ?�정?????�용
     this.cameraController.camera = newCamera;
     this.objectSelector.updateCamera(newCamera);
   }
@@ -41,7 +41,7 @@ export class EditorControls {
   setupEventListeners() {
     const canvas = this.renderer.domElement;
     
-    // ?�벤???�들?��? 바인?�해???�??
+    // ?�벤???�들?��? 바인?�해???�??
     this.boundOnMouseDown = this.onMouseDown.bind(this);
     this.boundOnMouseMove = this.onMouseMove.bind(this);
     this.boundOnMouseUp = this.onMouseUp.bind(this);
@@ -50,18 +50,18 @@ export class EditorControls {
     this.boundOnKeyUp = this.onKeyUp.bind(this);
     this.boundOnWindowResize = this.onWindowResize.bind(this);
     
-    // 마우???�벤??- canvas?� document???�록
+    // 마우???�벤??- canvas?� document???�록
     canvas.addEventListener('mousedown', this.boundOnMouseDown);
     document.addEventListener('mousemove', this.boundOnMouseMove);
     document.addEventListener('mouseup', this.boundOnMouseUp);
     canvas.addEventListener('wheel', this.boundOnWheel);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     
-    // ?�보???�벤??
+    // ?�보???�벤??
     document.addEventListener('keydown', this.boundOnKeyDown);
     document.addEventListener('keyup', this.boundOnKeyUp);
     
-    // ?�도???�벤??
+    // ?�도???�벤??
     window.addEventListener('resize', this.boundOnWindowResize);
     
     // Console output removed
@@ -75,21 +75,21 @@ export class EditorControls {
     this.previousMousePosition.copy(this.mousePosition);
     this.dragStartPosition.copy(this.mousePosition);
     
-    // ?�쪽 버튼: ?�브?�트 ?�택 ?�는 ?�래�??�택 ?�작
+    // ?�쪽 버튼: ?�브?�트 ?�택 ?�는 ?�래�??�택 ?�작
     if (event.button === 0) {
-      // 기즈�??�릭 체크
+      // 기즈�??�릭 체크
       if (this.objectSelector.isDraggingGizmo()) {
         // Console output removed
         return;
       }
       
-      // ?�중 ?�택 모드 ?�인 (Ctrl/Cmd ?�는 Shift ??
+      // ?�중 ?�택 모드 ?�인 (Ctrl/Cmd ?�는 Shift ??
       const isMultiSelect = event.ctrlKey || event.metaKey || event.shiftKey;
       
-      // ?�래�??�택 모드 ?�작
+      // ?�래�??�택 모드 ?�작
       this.isDragSelecting = true;
       
-      // 즉시 ?�브?�트 ?�택???�도 (?�릭�??�을 ?��? ?�해)
+      // 즉시 ?�브?�트 ?�택???�도 (?�릭�??�을 ?��? ?�해)
       this.objectSelector.handleObjectSelection(this.mousePosition, isMultiSelect);
     }
     // 중간 버튼(??버튼): ??모드
@@ -97,7 +97,7 @@ export class EditorControls {
       event.preventDefault();
       this.isPanning = true;
       
-      // Alt + 중간 버튼: 궤도 ?�전
+      // Alt + 중간 버튼: 궤도 ?�전
       if (event.altKey) {
         this.isOrbiting = true;
         this.isPanning = false;
@@ -115,7 +115,7 @@ export class EditorControls {
     const deltaX = this.mousePosition.x - this.previousMousePosition.x;
     const deltaY = this.mousePosition.y - this.previousMousePosition.y;
     
-    // ?�래�??�택 중인지 ?�인
+    // ?�래�??�택 중인지 ?�인
     if (this.isDragSelecting && event.button === 0) {
       this.updateSelectionBox(event);
     }
@@ -131,12 +131,12 @@ export class EditorControls {
   onMouseUp(event) {
     // Console output removed
     
-    // ?�래�??�택 ?�료
+    // ?�래�??�택 ?�료
     if (this.isDragSelecting && event.button === 0) {
       this.finishDragSelection(event);
     }
     
-    // ??모드 ?�료 ???�전 중심 ?�데?�트
+    // ??모드 ?�료 ???�전 중심 ?�데?�트
     if (this.isPanning && event.button === 1) {
       // Console output removed
       // Console output removed
@@ -148,7 +148,7 @@ export class EditorControls {
     this.isOrbiting = false;
     this.isDragSelecting = false;
     
-    // ?�택 박스 ?�기�?
+    // ?�택 박스 ?�기�?
     this.objectSelector.hideSelectionBox();
   }
   
@@ -157,7 +157,7 @@ export class EditorControls {
     
     if (this.objectSelector.isDraggingGizmo()) return;
     
-    // 기본?�으�??��? �??�작
+    // 기본?�으�??��? �??�작
     const zoomSpeed = 0.3;
     const direction = event.deltaY > 0 ? 1 : -1;
     this.cameraController.zoom(direction * zoomSpeed);
@@ -191,7 +191,7 @@ export class EditorControls {
         // Console output removed
         this.objectSelector.deselectAllObjects();
         break;
-      // ?�패??기능
+      // ?�패??기능
       case 'Numpad5':
         // Console output removed
         const newCamera = this.cameraController.toggleProjection();
@@ -221,7 +221,7 @@ export class EditorControls {
   }
   
   onKeyUp(event) {
-    // ?????�벤??처리
+    // ?????�벤??처리
   }
   
   onWindowResize() {
@@ -247,7 +247,7 @@ export class EditorControls {
     const width = Math.abs(currentX - startX);
     const height = Math.abs(currentY - startY);
     
-    // ?�택 박스가 충분?????�만 ?�시
+    // ?�택 박스가 충분?????�만 ?�시
     if (width > 5 || height > 5) {
       this.objectSelector.showSelectionBox(left, top, width, height);
     }
@@ -263,32 +263,32 @@ export class EditorControls {
     const currentX = (endX + 1) * rect.width / 2;
     const currentY = (-endY + 1) * rect.height / 2;
     
-    // ?�래�?거리가 ?�으�??�일 ?�릭?�로 간주
+    // ?�래�?거리가 ?�으�??�일 ?�릭?�로 간주
     const dragDistance = Math.sqrt(
       Math.pow(currentX - startX, 2) + Math.pow(currentY - startY, 2)
     );
     
     if (dragDistance < 5) {
-      // ?�일 ?�릭 - ?��? handleObjectSelection?�서 처리??
+      // ?�일 ?�릭 - ?��? handleObjectSelection?�서 처리??
       return;
     }
     
-    // ?�래�??�택 ?�역 ?�의 ?�브?�트??찾기
+    // ?�래�??�택 ?�역 ?�의 ?�브?�트??찾기
     const selectedInArea = this.objectSelector.getObjectsInArea(this.dragStartPosition, { x: endX, y: endY });
     
-    // ?�중 ?�택 ?��? ?�렸?��? ?�인 (Ctrl/Cmd ?�는 Shift)
+    // ?�중 ?�택 ?��? ?�렸?��? ?�인 (Ctrl/Cmd ?�는 Shift)
     const isMultiSelect = event.ctrlKey || event.metaKey || event.shiftKey;
     
     if (selectedInArea.length > 0) {
       this.objectSelector.selectMultipleObjects(selectedInArea, isMultiSelect);
     } else if (!isMultiSelect) {
-      // �??�역???�래그했�?Ctrl?????�렸?�면 모든 ?�택 ?�제
+      // �??�역???�래그했�?Ctrl?????�렸?�면 모든 ?�택 ?�제
       this.objectSelector.deselectAllObjects();
     }
   }
   
   
-  // 공개 API - ?�브?�트 ?�택 관??
+  // 공개 API - ?�브?�트 ?�택 관??
   addSelectableObject(object) {
     this.objectSelector.addSelectableObject(object);
   }
@@ -313,9 +313,9 @@ export class EditorControls {
     this.objectSelector.selectSingleObject(object);
   }
   
-  // ID�??�브?�트�?찾는 메서??
+  // ID�??�브?�트�?찾는 메서??
   findObjectById(id) {
-    // ?�에???�당 ID�?가�??�브?�트 찾기
+    // ?�에???�당 ID�?가�??�브?�트 찾기
     let foundObject = null;
     this.scene.traverse((child) => {
       if (child.userData && child.userData.id === id) {
@@ -338,7 +338,7 @@ export class EditorControls {
     this.cameraController.focusOnObject(object);
   }
   
-  // ?�택???�브?�트?�의 ?�웃?�인 ?�데?�트 (?�니메이?�용)
+  // ?�택???�브?�트?�의 ?�웃?�인 ?�데?�트 (?�니메이?�용)
   updateSelectedOutlines() {
     this.objectSelector.updateAllSelectionOutlines();
   }
@@ -365,7 +365,7 @@ export class EditorControls {
     this.cameraController.resetCamera();
   }
 
-  // ?�환?�을 ?�한 ?�성??
+  // ?�환?�을 ?�한 ?�성??
   get transformControls() {
     return this.objectSelector.getTransformControls();
   }
@@ -378,9 +378,9 @@ export class EditorControls {
     return this.objectSelector.isDraggingGizmo();
   }
   
-  // ?�리
+  // ?�리
   dispose() {
-    // ?�벤??리스???�거
+    // ?�벤??리스???�거
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('mousedown', this.boundOnMouseDown);
     document.removeEventListener('mousemove', this.boundOnMouseMove);
@@ -391,9 +391,32 @@ export class EditorControls {
     document.removeEventListener('keyup', this.boundOnKeyUp);
     window.removeEventListener('resize', this.boundOnWindowResize);
     
-    // 모듈 ?�리
+    // 모듈 ?�리
     this.objectSelector.dispose();
     
     // Console output removed
+  }
+  
+  // 그리드 스냅 업데이트
+  updateGridSnap() {
+    this.objectSelector.updateGridSnap();
+  }
+  
+  // 와이어프레임 모드 업데이트
+  updateWireframe() {
+    const editorState = this.editorStore.getState();
+    if (editorState.scene) {
+      editorState.scene.traverse((child) => {
+        if (child.isMesh && child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach(mat => {
+              mat.wireframe = editorState.isWireframe;
+            });
+          } else {
+            child.material.wireframe = editorState.isWireframe;
+          }
+        }
+      });
+    }
   }
 }
