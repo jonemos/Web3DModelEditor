@@ -166,12 +166,19 @@ export class EditorControls {
   onKeyDown(event) {
     // Console output removed
     
-    const selectedObjectId = this.editorService.getSelectedObject ? this.editorService.getSelectedObject() : null;
+    // 먼저 ObjectSelector에서 현재 선택된 Three.js 객체들을 확인
+    const selectedObjects = this.objectSelector.getSelectedObjects();
     let selectedObject = null;
     
-    // 선택된 객체 ID로 실제 Three.js 객체 찾기
-    if (selectedObjectId) {
-      selectedObject = this.findObjectById(selectedObjectId);
+    // 선택된 객체가 있으면 마지막 선택된 객체 사용
+    if (selectedObjects && selectedObjects.length > 0) {
+      selectedObject = selectedObjects[selectedObjects.length - 1]; // 마지막 선택된 객체
+    } else {
+      // ObjectSelector에 선택된 객체가 없다면 EditorService에서 확인
+      const selectedObjectId = this.editorService.getSelectedObject ? this.editorService.getSelectedObject() : null;
+      if (selectedObjectId) {
+        selectedObject = this.findObjectById(selectedObjectId);
+      }
     }
     
     switch (event.code) {
@@ -189,8 +196,12 @@ export class EditorControls {
         break;
       case 'KeyF':
         if (selectedObject) {
-          // Console output removed
+          console.log('F키 포커스: 선택된 객체로 포커스 이동', selectedObject);
           this.cameraController.focusOnObject(selectedObject);
+        } else {
+          console.log('F키 포커스: 선택된 객체가 없습니다.');
+          // EditorService를 통해 포커스 요청 (이벤트 기반)
+          this.editorService.focusOnSelectedObject();
         }
         break;
       case 'Escape':
@@ -341,7 +352,7 @@ export class EditorControls {
   
   // 공개 API - 카메라 관련
   focusOnObject(object) {
-    this.cameraController.focusOnObject(object);
+    return this.cameraController.focusOnObject(object);
   }
   
   // 선택된 오브젝트들의 아웃라인 업데이트 (애니메이션용)

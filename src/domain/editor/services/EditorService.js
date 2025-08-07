@@ -787,6 +787,41 @@ export class EditorService {
     return this.currentTransformMode || 'translate';
   }
 
+  /**
+   * 선택된 오브젝트로 카메라 포커스
+   */
+  focusOnSelectedObject() {
+    try {
+      const selectedObjects = this.selectionManager.getSelectedObjects();
+      
+      if (!selectedObjects || selectedObjects.length === 0) {
+        this.eventBus.publish(EVENT_TYPES.ERROR_OCCURRED, {
+          source: 'EditorService.focusOnSelectedObject',
+          error: 'No object selected for focus'
+        });
+        return false;
+      }
+
+      // 마지막 선택된 오브젝트로 포커스
+      const targetObjectId = selectedObjects[selectedObjects.length - 1];
+      
+      // 포커스 성공 이벤트 발행
+      this.eventBus.publish(EVENT_TYPES.CAMERA_FOCUS_REQUESTED, { 
+        objectId: targetObjectId,
+        selectedObjects: selectedObjects 
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Failed to focus on selected object:', error);
+      this.eventBus.publish(EVENT_TYPES.ERROR_OCCURRED, {
+        source: 'EditorService.focusOnSelectedObject',
+        error: error.message
+      });
+      return false;
+    }
+  }
+
   // History methods
   canUndo() {
     return this.historyManager.canUndo();

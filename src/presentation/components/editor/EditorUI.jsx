@@ -61,14 +61,45 @@ function EditorUI({ editorControls }) {
     const unsubscribeObjectUpdated = eventBus.subscribe('OBJECT_UPDATED', updateState)
     const unsubscribeSceneChanged = eventBus.subscribe('SCENE_CHANGED', updateState)
 
+    // 카메라 포커스 이벤트 구독
+    const unsubscribeCameraFocus = eventBus.subscribe('camera:focus_requested', (event) => {
+      const { objectId } = event.data;
+      
+      // EditorControls를 통해 실제 포커스 실행
+      if (editorControls) {
+        const threeObject = editorControls.findObjectById(objectId);
+        if (threeObject) {
+          const success = editorControls.focusOnObject(threeObject);
+          if (success) {
+            showToast(`오브젝트 '${threeObject.name || threeObject.userData?.name || 'Unnamed'}'로 포커스했습니다.`, 'success');
+          } else {
+            showToast('포커스에 실패했습니다.', 'error');
+          }
+        } else {
+          showToast('포커스할 오브젝트를 찾을 수 없습니다.', 'error');
+        }
+      } else {
+        showToast('에디터가 준비되지 않았습니다.', 'error');
+      }
+    });
+
+    // 에러 이벤트 구독
+    const unsubscribeError = eventBus.subscribe('error:occurred', (event) => {
+      if (event.data.source === 'EditorService.focusOnSelectedObject') {
+        showToast('선택된 오브젝트가 없습니다. 먼저 오브젝트를 선택해주세요.', 'warning');
+      }
+    });
+
     return () => {
       unsubscribeObjectAdded()
       unsubscribeObjectDeleted()
       unsubscribeObjectSelected()
       unsubscribeObjectUpdated()
       unsubscribeSceneChanged()
+      unsubscribeCameraFocus()
+      unsubscribeError()
     }
-  }, [editorService, eventBus])
+  }, [editorService, eventBus, editorControls, showToast])
 
   // Extract values from editor state
   const {
@@ -87,17 +118,11 @@ function EditorUI({ editorControls }) {
   // Console output removed
   // Console output removed
 
-  // 전역 키보드 이벤트 처리
+  // 전역 키보드 이벤트 처리 (컨텍스트 메뉴용)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // F키 - 포커스
-      if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault()
-        if (selectedObject?.id) {
-          // 선택된 오브젝트가 있으면 포커스
-          handleObjectFocus(selectedObject)
-        }
-      }
+      // F키는 EditorControls에서 처리됨
+      // 다른 키 이벤트들은 여기서 처리
     }
 
     const handleContextMenu = (e) => {

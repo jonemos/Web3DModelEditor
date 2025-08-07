@@ -19,6 +19,11 @@ export const EVENT_TYPES = {
   OBJECT_DELETED: 'object:deleted',
   OBJECT_PROPERTIES_CHANGED: 'object:properties_changed',
   
+  // 카메라 관련 이벤트
+  CAMERA_FOCUS_REQUESTED: 'camera:focus_requested',
+  CAMERA_POSITION_CHANGED: 'camera:position_changed',
+  CAMERA_TARGET_CHANGED: 'camera:target_changed',
+  
   // 에디터 관련 이벤트
   EDITOR_MODE_CHANGED: 'editor:mode_changed',
   EDITOR_TOOL_CHANGED: 'editor:tool_changed',

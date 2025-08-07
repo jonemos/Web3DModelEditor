@@ -282,15 +282,26 @@ export class CameraController {
   
   // 오브젝트에 포커스
   focusOnObject(object) {
-    if (!object) return;
+    if (!object) {
+      console.warn('focusOnObject: No object provided');
+      return false;
+    }
     
     // 유효한 Three.js 객체인지 확인
     if (!object.isObject3D && !object.isMesh && !object.isGroup) {
-      console.warn('focusOnObject: Invalid object type', object);
-      return;
+      console.warn('focusOnObject: Invalid object type', object.constructor.name, object);
+      return false;
     }
     
     try {
+      console.log('포커스 시작: 객체 정보', {
+        name: object.name || 'Unnamed',
+        type: object.type,
+        id: object.userData?.id,
+        visible: object.visible,
+        position: object.position
+      });
+      
       // 객체의 월드 매트릭스 업데이트
       if (typeof object.updateMatrixWorld === 'function') {
         object.updateMatrixWorld(true);
@@ -301,12 +312,36 @@ export class CameraController {
       
       // 바운딩 박스가 유효한지 확인
       if (box.isEmpty()) {
-        console.warn('focusOnObject: Empty bounding box for object', object);
-        return;
+        console.warn('focusOnObject: Empty bounding box for object', object.name || 'Unnamed');
+        // 빈 바운딩 박스인 경우 객체의 위치를 직접 사용
+        const worldPosition = new THREE.Vector3();
+        object.getWorldPosition(worldPosition);
+        
+        // 기본 거리로 포커스
+        const distance = 10;
+        const direction = new THREE.Vector3();
+        direction.subVectors(this.camera.position, worldPosition).normalize();
+        
+        this.cameraTarget.copy(worldPosition);
+        this.camera.position.copy(worldPosition).add(direction.multiplyScalar(distance));
+        this.camera.lookAt(this.cameraTarget);
+        this.camera.updateMatrixWorld();
+        
+        // 구면 좌표 업데이트
+        this.spherical.setFromVector3(this.camera.position.clone().sub(this.cameraTarget));
+        
+        console.log('포커스 완료: 기본 거리 사용', distance);
+        return true;
       }
       
       const center = box.getCenter(new THREE.Vector3());
       const size = box.getSize(new THREE.Vector3());
+      
+      console.log('바운딩 박스 정보', {
+        center: center,
+        size: size,
+        isEmpty: box.isEmpty()
+      });
       
       // 적절한 거리 계산
       const maxDim = Math.max(size.x, size.y, size.z);
@@ -314,13 +349,15 @@ export class CameraController {
       
       if (this.camera.isPerspectiveCamera) {
         const fov = this.camera.fov * (Math.PI / 180);
-        distance = Math.abs(maxDim / Math.sin(fov / 2)) * 1.5;
+        distance = Math.abs(maxDim / Math.sin(fov / 2)) * 2.0; // 여유 공간 증가
       } else {
-        distance = maxDim * 2; // Orthographic 카메라용
+        distance = maxDim * 3; // Orthographic 카메라용
       }
       
       // 최소 거리 보장
-      distance = Math.max(distance, 1);
+      distance = Math.max(distance, 5);
+      
+      console.log('계산된 포커스 거리', distance);
       
       // 카메라 타겟을 오브젝트 중심으로 설정 (회전 중심 변경)
       this.cameraTarget.copy(center);
@@ -329,15 +366,32 @@ export class CameraController {
       const direction = new THREE.Vector3();
       direction.subVectors(this.camera.position, this.cameraTarget).normalize();
       
-      this.camera.position.copy(center).add(direction.multiplyScalar(distance));
+      // 방향이 잘못된 경우 기본 방향 사용
+      if (direction.length() === 0) {
+        direction.set(1, 1, 1).normalize();
+      }
+      
+      const newPosition = center.clone().add(direction.multiplyScalar(distance));
+      
+      console.log('카메라 이동', {
+        from: this.camera.position.clone(),
+        to: newPosition,
+        target: center
+      });
+      
+      this.camera.position.copy(newPosition);
       this.camera.lookAt(this.cameraTarget);
       this.camera.updateMatrixWorld();
       
       // 구면 좌표 업데이트
       this.spherical.setFromVector3(this.camera.position.clone().sub(this.cameraTarget));
       
+      console.log('포커스 완료: 성공');
+      return true;
+      
     } catch (error) {
       console.error('focusOnObject: Error focusing on object', error);
+      return false;
     }
   }
   
