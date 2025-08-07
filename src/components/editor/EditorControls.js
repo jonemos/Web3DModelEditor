@@ -411,7 +411,7 @@ export class EditorControls {
     // 더 밝은 색상으로 그리드 생성
     this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
     this.gridHelper.name = 'EditorGrid';
-    this.gridHelper.position.y = 0.05; // 바닥보다 더 높게 위치하여 Z-fighting 방지
+    this.gridHelper.position.y = 0; // 정확히 바닥(y=0)에 위치
     
     // 그리드 머티리얼 설정 개선
     this.gridHelper.material.opacity = 0.8;
@@ -486,7 +486,7 @@ export class EditorControls {
     // 새 그리드 생성 (더 밝은 색상과 개선된 설정으로)
     this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
     this.gridHelper.name = 'EditorGrid';
-    this.gridHelper.position.y = 0.05;
+    this.gridHelper.position.y = 0; // 정확히 바닥(y=0)에 위치
     this.gridHelper.visible = isGridVisible;
     
     // 머티리얼 설정 개선

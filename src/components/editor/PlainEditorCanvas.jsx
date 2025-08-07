@@ -176,12 +176,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       });
     }
 
-    // Add grid helper
-    const gridHelper = new THREE.GridHelper(floorWidth, Math.min(floorWidth, 20));
-    gridHelper.position.y = 0.01;
-    gridHelper.material.color.setHex(0x666666);
-    scene.add(gridHelper);
-
     // Test cube
     const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
     const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
@@ -827,7 +821,61 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       }
       renderer.dispose();
     };
-  }, [floorWidth, floorDepth, setScene]);
+  }, [setScene]); // floorWidth, floorDepth 제거하여 씬 재초기화 방지
+
+  // 바닥 크기 변경을 위한 별도 useEffect
+  useEffect(() => {
+    if (!sceneRef.current) return;
+    
+    const scene = sceneRef.current;
+    const existingFloor = scene.getObjectByName('Ground');
+    
+    if (existingFloor) {
+      // 기존 바닥 업데이트
+      const newGeometry = new THREE.PlaneGeometry(floorWidth, floorDepth);
+      
+      // 텍스처 업데이트
+      const textureCanvas = document.createElement('canvas');
+      textureCanvas.width = 512;
+      textureCanvas.height = 512;
+      const context = textureCanvas.getContext('2d');
+      
+      const tileSize = 64;
+      const tilesPerRow = textureCanvas.width / tileSize;
+      
+      for (let x = 0; x < tilesPerRow; x++) {
+        for (let y = 0; y < tilesPerRow; y++) {
+          const isEven = (x + y) % 2 === 0;
+          context.fillStyle = isEven ? '#f0f0f0' : '#e0e0e0';
+          context.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+        }
+      }
+      
+      const floorTexture = new THREE.CanvasTexture(textureCanvas);
+      floorTexture.wrapS = THREE.RepeatWrapping;
+      floorTexture.wrapT = THREE.RepeatWrapping;
+      floorTexture.repeat.set(floorWidth / 4, floorDepth / 4);
+      
+      // 기존 지오메트리와 텍스처 정리
+      existingFloor.geometry.dispose();
+      if (existingFloor.material.map) {
+        existingFloor.material.map.dispose();
+      }
+      
+      // 새 지오메트리와 텍스처 적용
+      existingFloor.geometry = newGeometry;
+      existingFloor.material.map = floorTexture;
+      existingFloor.material.needsUpdate = true;
+      
+      console.log(`바닥 크기 업데이트: ${floorWidth}x${floorDepth}`);
+    }
+    
+    // 그리드 크기도 업데이트 (EditorControls에 있는 그리드)
+    if (editorControlsRef.current && editorControlsRef.current.setGridSize) {
+      const gridSize = Math.max(floorWidth, floorDepth);
+      editorControlsRef.current.setGridSize(gridSize, Math.min(gridSize, 20));
+    }
+  }, [floorWidth, floorDepth]); // 바닥 크기만 변경될 때 실행
 
   // GLB 파일 로드를 위한 별도 useEffect
   useEffect(() => {
