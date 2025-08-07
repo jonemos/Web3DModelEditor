@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { CameraController } from './CameraController.js';
 import { ObjectSelector } from './ObjectSelector.js';
+import { TransformManager } from './TransformManager.js';
+import { InputManager } from './InputManager.js';
+import { KeyboardController } from './KeyboardController.js';
+import { MouseController } from './MouseController.js';
 
 export class EditorControls {
   constructor(scene, camera, renderer, editorStore, onCameraChange = null) {
@@ -8,11 +12,34 @@ export class EditorControls {
     this.renderer = renderer;
     this.editorStore = editorStore;
     
+    // 입력 관리 시스템 초기화
+    this.inputManager = new InputManager();
+    this.keyboardController = new KeyboardController(this.inputManager);
+    this.mouseController = new MouseController(this.inputManager);
+    
     // 모듈 초기화
     this.cameraController = new CameraController(camera, renderer, onCameraChange);
     this.objectSelector = new ObjectSelector(scene, camera, renderer, editorStore);
     
-    // 컨트롤 상태
+    // MouseController에 ObjectSelector 설정 (기즈모 상호작용 감지용)
+    this.mouseController.setObjectSelector(this.objectSelector);
+    
+    // Transform Manager 초기화 (KeyboardController와 연동)
+    this.transformManager = new TransformManager(this.objectSelector, editorStore, this.keyboardController);
+    
+    // 마우스 이벤트 설정
+    this.inputManager.setupMouseEvents(renderer.domElement);
+    
+    // 리사이즈 핸들러 등록
+    this.inputManager.registerResizeHandler(this.onWindowResize.bind(this));
+    
+    // 마우스 핸들러 등록
+    this.setupMouseHandlers();
+    
+    // 뷰포트 제어 키보드 액션 등록
+    this.setupViewportActions();
+    
+    // 컨트롤 상태 (호환성을 위해 유지)
     this.isMouseDown = false;
     this.isPanning = false;
     this.isOrbiting = false;
@@ -21,13 +48,147 @@ export class EditorControls {
     this.previousMousePosition = new THREE.Vector2();
     this.dragStartPosition = new THREE.Vector2();
     
-    // Event listeners
-    this.setupEventListeners();
-    
-    // Console output removed
+    console.log('EditorControls initialized with separated input system');
   }
   
-  // 카메라 접근자(하환성을 위해 유지)
+  /**
+   * 마우스 핸들러 설정
+   */
+  setupMouseHandlers() {
+    // 왼쪽 클릭: 오브젝트 선택
+    this.mouseController.onLeftClick((data) => {
+      const { position, isMultiSelect } = data;
+      this.updateMousePosition(position);
+      
+      // 기즈모 클릭 체크
+      if (this.objectSelector.isDraggingGizmo()) {
+        return;
+      }
+      
+      // 오브젝트 선택 처리
+      this.objectSelector.handleObjectSelection(this.mousePosition, isMultiSelect);
+    });
+
+    // 중간 클릭: 팬/궤도 회전
+    this.mouseController.onMiddleClick((data) => {
+      const { isOrbiting, isPanning } = data;
+      this.isOrbiting = isOrbiting;
+      this.isPanning = isPanning;
+    });
+
+    // 중간 드래그: 카메라 제어
+    this.mouseController.onMiddleDrag((data) => {
+      const { type, delta } = data;
+      
+      if (type === 'pan') {
+        this.cameraController.pan(delta.x, delta.y);
+      } else if (type === 'orbit') {
+        this.cameraController.orbit(delta.x, delta.y);
+      }
+    });
+
+    // 드래그 선택
+    this.mouseController.onDragSelect((data) => {
+      const { left, top, width, height } = data;
+      this.objectSelector.showSelectionBox(left, top, width, height);
+    });
+
+    // 드래그 선택 완료
+    this.mouseController.onDragSelectEnd((data) => {
+      const { startX, startY, endX, endY, isMultiSelect } = data;
+      this.finishDragSelection(startX, startY, endX, endY, isMultiSelect);
+    });
+
+    // 휠: 줌
+    this.mouseController.onWheel((wheelInfo) => {
+      if (this.objectSelector.isDraggingGizmo()) return;
+      
+      const zoomSpeed = 0.3;
+      const direction = wheelInfo.delta > 0 ? 1 : -1;
+      this.cameraController.zoom(direction * zoomSpeed);
+    });
+
+    // 드래그 종료: 회전 중심 업데이트
+    this.mouseController.onDragEnd((data) => {
+      if (data.type === 'pan') {
+        this.cameraController.updateRotationCenterAfterPan(this.scene, this.objectSelector.getSelectableObjects());
+      }
+      
+      // 상태 리셋
+      this.isMouseDown = false;
+      this.isPanning = false;
+      this.isOrbiting = false;
+      this.isDragSelecting = false;
+      this.objectSelector.hideSelectionBox();
+    });
+  }
+
+  /**
+   * 뷰포트 제어 액션 등록
+   */
+  setupViewportActions() {
+    this.keyboardController.registerViewportActions({
+      focusOnSelected: () => {
+        const selectedObject = this.editorStore.getState().selectedObject;
+        if (selectedObject) {
+          this.cameraController.focusOnObject(selectedObject);
+        }
+      },
+      toggleProjection: () => {
+        const newCamera = this.cameraController.toggleProjection();
+        this.objectSelector.updateCamera(newCamera);
+        return newCamera;
+      },
+      setView: (viewType) => {
+        this.cameraController.setView(viewType);
+      },
+      resetCamera: () => {
+        this.cameraController.resetCamera();
+      }
+    });
+  }
+
+  /**
+   * 마우스 위치 업데이트 (호환성을 위해 유지)
+   */
+  updateMousePosition(position) {
+    if (position.x !== undefined && position.y !== undefined) {
+      this.mousePosition.x = position.x;
+      this.mousePosition.y = position.y;
+    }
+  }
+
+  /**
+   * 드래그 선택 완료 처리
+   */
+  finishDragSelection(startX, startY, endX, endY, isMultiSelect) {
+    // 화면 좌표를 정규화된 좌표로 변환
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    
+    const normalizedStart = {
+      x: ((startX - rect.left) / rect.width) * 2 - 1,
+      y: -((startY - rect.top) / rect.height) * 2 + 1
+    };
+    
+    const normalizedEnd = {
+      x: ((endX - rect.left) / rect.width) * 2 - 1,
+      y: -((endY - rect.top) / rect.height) * 2 + 1
+    };
+
+    // 드래그 선택 영역 내의 오브젝트들 찾기
+    const selectedInArea = this.objectSelector.getObjectsInArea(normalizedStart, normalizedEnd);
+    
+    if (selectedInArea.length > 0) {
+      this.objectSelector.selectMultipleObjects(selectedInArea, isMultiSelect);
+    } else if (!isMultiSelect) {
+      // 빈 영역을 드래그했고 Ctrl을 안눌렀으면 모든 선택 해제
+      this.objectSelector.deselectAllObjects();
+    }
+
+    this.objectSelector.hideSelectionBox();
+  }
+  
+  // 카메라 접근자(호환성을 위해 유지)
   get camera() {
     return this.cameraController.getCamera();
   }
@@ -37,254 +198,13 @@ export class EditorControls {
     this.cameraController.camera = newCamera;
     this.objectSelector.updateCamera(newCamera);
   }
-  
-  setupEventListeners() {
-    const canvas = this.renderer.domElement;
-    
-    // 이벤트 핸들러를 바인딩해서 this 유지
-    this.boundOnMouseDown = this.onMouseDown.bind(this);
-    this.boundOnMouseMove = this.onMouseMove.bind(this);
-    this.boundOnMouseUp = this.onMouseUp.bind(this);
-    this.boundOnWheel = this.onWheel.bind(this);
-    this.boundOnKeyDown = this.onKeyDown.bind(this);
-    this.boundOnKeyUp = this.onKeyUp.bind(this);
-    this.boundOnWindowResize = this.onWindowResize.bind(this);
-    
-    // 마우스 이벤트 - canvas와 document에 등록
-    canvas.addEventListener('mousedown', this.boundOnMouseDown);
-    document.addEventListener('mousemove', this.boundOnMouseMove);
-    document.addEventListener('mouseup', this.boundOnMouseUp);
-    canvas.addEventListener('wheel', this.boundOnWheel);
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-    
-    // 키보드 이벤트
-    document.addEventListener('keydown', this.boundOnKeyDown);
-    document.addEventListener('keyup', this.boundOnKeyUp);
-    
-    // 윈도우 이벤트
-    window.addEventListener('resize', this.boundOnWindowResize);
-    
-    // Console output removed
-  }
-  
-  onMouseDown(event) {
-    // Console output removed
-    
-    this.isMouseDown = true;
-    this.updateMousePosition(event);
-    this.previousMousePosition.copy(this.mousePosition);
-    this.dragStartPosition.copy(this.mousePosition);
-    
-    // 왼쪽 버튼: 오브젝트 선택 또는 드래그 선택 시작
-    if (event.button === 0) {
-      // 기즈모 클릭 체크
-      if (this.objectSelector.isDraggingGizmo()) {
-        // Console output removed
-        return;
-      }
-      
-      // 다중 선택 모드 확인 (Ctrl/Cmd 또는 Shift 키)
-      const isMultiSelect = event.ctrlKey || event.metaKey || event.shiftKey;
-      
-      // 드래그 선택 모드 시작
-      this.isDragSelecting = true;
-      
-      // 즉시 오브젝트 선택 시도 (클릭만 했을 경우 대해)
-      this.objectSelector.handleObjectSelection(this.mousePosition, isMultiSelect);
-    }
-    // 중간 버튼(휠 버튼): 팬 모드
-    else if (event.button === 1) {
-      event.preventDefault();
-      this.isPanning = true;
-      
-      // Alt + 중간 버튼: 궤도 회전
-      if (event.altKey) {
-        this.isOrbiting = true;
-        this.isPanning = false;
-        // Console output removed
-      } else {
-        // Console output removed
-      }
-    }
-  }
-  
-  onMouseMove(event) {
-    if (!this.isMouseDown || this.objectSelector.isDraggingGizmo()) return;
-    
-    this.updateMousePosition(event);
-    const deltaX = this.mousePosition.x - this.previousMousePosition.x;
-    const deltaY = this.mousePosition.y - this.previousMousePosition.y;
-    
-    // 드래그 선택 중인지 확인
-    if (this.isDragSelecting && event.button === 0) {
-      this.updateSelectionBox(event);
-    }
-    else if (this.isPanning) {
-      this.cameraController.pan(deltaX, deltaY);
-    } else if (this.isOrbiting) {
-      this.cameraController.orbit(deltaX, deltaY);
-    }
-    
-    this.previousMousePosition.copy(this.mousePosition);
-  }
-  
-  onMouseUp(event) {
-    // Console output removed
-    
-    // 드래그 선택 완료
-    if (this.isDragSelecting && event.button === 0) {
-      this.finishDragSelection(event);
-    }
-    
-    // 팬 모드 완료 시 회전 중심 업데이트
-    if (this.isPanning && event.button === 1) {
-      // Console output removed
-      // Console output removed
-      this.cameraController.updateRotationCenterAfterPan(this.scene, this.objectSelector.getSelectableObjects());
-    }
-    
-    this.isMouseDown = false;
-    this.isPanning = false;
-    this.isOrbiting = false;
-    this.isDragSelecting = false;
-    
-    // 선택 박스 숨기기
-    this.objectSelector.hideSelectionBox();
-  }
-  
-  onWheel(event) {
-    event.preventDefault();
-    
-    if (this.objectSelector.isDraggingGizmo()) return;
-    
-    // 기본적으로 줌인 줌아웃 작업
-    const zoomSpeed = 0.3;
-    const direction = event.deltaY > 0 ? 1 : -1;
-    this.cameraController.zoom(direction * zoomSpeed);
-  }
-  
-  onKeyDown(event) {
-    // Console output removed
-    
-    const selectedObject = this.editorStore.getState().selectedObject;
-    
-    switch (event.code) {
-      case 'KeyW':
-        // Console output removed
-        this.objectSelector.setGizmoMode('translate');
-        break;
-      case 'KeyE':
-        // Console output removed
-        this.objectSelector.setGizmoMode('rotate');
-        break;
-      case 'KeyR':
-        // Console output removed
-        this.objectSelector.setGizmoMode('scale');
-        break;
-      case 'KeyF':
-        if (selectedObject) {
-          // Console output removed
-          this.cameraController.focusOnObject(selectedObject);
-        }
-        break;
-      case 'Escape':
-        // Console output removed
-        this.objectSelector.deselectAllObjects();
-        break;
-      // 뷰포트 기능
-      case 'Numpad5':
-        // Console output removed
-        const newCamera = this.cameraController.toggleProjection();
-        this.objectSelector.updateCamera(newCamera);
-        break;
-      case 'Numpad1':
-        // Console output removed
-        this.cameraController.setView('front');
-        break;
-      case 'Numpad3':
-        // Console output removed
-        this.cameraController.setView('side');
-        break;
-      case 'Numpad7':
-        // Console output removed
-        this.cameraController.setView('top');
-        break;
-      case 'Numpad9':
-        // Console output removed
-        this.cameraController.setView('bottom');
-        break;
-      case 'Numpad0':
-        // Console output removed
-        this.cameraController.resetCamera();
-        break;
-    }
-  }
-  
-  onKeyUp(event) {
-    // 키업 이벤트 처리
-  }
-  
+
+  /**
+   * 윈도우 리사이즈 처리 (InputManager가 호출)
+   */
   onWindowResize() {
     this.cameraController.handleResize();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-  }
-  
-  updateMousePosition(event) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mousePosition.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mousePosition.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-  }
-  
-  updateSelectionBox(event) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const startX = (this.dragStartPosition.x + 1) * rect.width / 2 + rect.left;
-    const startY = (-this.dragStartPosition.y + 1) * rect.height / 2 + rect.top;
-    const currentX = event.clientX;
-    const currentY = event.clientY;
-    
-    const left = Math.min(startX, currentX);
-    const top = Math.min(startY, currentY);
-    const width = Math.abs(currentX - startX);
-    const height = Math.abs(currentY - startY);
-    
-    // 선택 박스가 충분히 클 때만 표시
-    if (width > 5 || height > 5) {
-      this.objectSelector.showSelectionBox(left, top, width, height);
-    }
-  }
-  
-  finishDragSelection(event) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    const endX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-    const endY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-    
-    const startX = (this.dragStartPosition.x + 1) * rect.width / 2;
-    const startY = (-this.dragStartPosition.y + 1) * rect.height / 2;
-    const currentX = (endX + 1) * rect.width / 2;
-    const currentY = (-endY + 1) * rect.height / 2;
-    
-    // 드래그 거리가 작으면 단일 클릭으로 간주
-    const dragDistance = Math.sqrt(
-      Math.pow(currentX - startX, 2) + Math.pow(currentY - startY, 2)
-    );
-    
-    if (dragDistance < 5) {
-      // 단일 클릭 - 이미 handleObjectSelection에서 처리됨
-      return;
-    }
-    
-    // 드래그 선택 영역 내의 오브젝트들 찾기
-    const selectedInArea = this.objectSelector.getObjectsInArea(this.dragStartPosition, { x: endX, y: endY });
-    
-    // 다중 선택 키를 눌렀는지 확인 (Ctrl/Cmd 또는 Shift)
-    const isMultiSelect = event.ctrlKey || event.metaKey || event.shiftKey;
-    
-    if (selectedInArea.length > 0) {
-      this.objectSelector.selectMultipleObjects(selectedInArea, isMultiSelect);
-    } else if (!isMultiSelect) {
-      // 빈 영역을 드래그했고 Ctrl을 안눌렀으면 모든 선택 해제
-      this.objectSelector.deselectAllObjects();
-    }
   }
   
   
@@ -331,6 +251,47 @@ export class EditorControls {
   
   setGizmoMode(mode) {
     this.objectSelector.setGizmoMode(mode);
+  }
+  
+  // Transform Manager 관련 공개 API
+  getTransformState() {
+    return this.transformManager.getState();
+  }
+  
+  setTransformMode(mode) {
+    return this.transformManager.setTransformMode(mode);
+  }
+  
+  toggleTransformSpace() {
+    return this.transformManager.toggleSpace();
+  }
+  
+  toggleGridSnap() {
+    return this.transformManager.toggleGridSnap();
+  }
+  
+  setGridSize(size) {
+    return this.transformManager.setGridSize(size);
+  }
+  
+  toggleMagnet() {
+    return this.transformManager.toggleMagnet();
+  }
+  
+  duplicateSelectedObjects() {
+    return this.transformManager.duplicateSelected();
+  }
+  
+  deleteSelectedObjects() {
+    return this.transformManager.deleteSelected();
+  }
+  
+  groupSelectedObjects() {
+    return this.transformManager.groupSelected();
+  }
+  
+  ungroupSelectedObjects() {
+    return this.transformManager.ungroupSelected();
   }
   
   // 공개 API - 카메라 관련
@@ -380,21 +341,16 @@ export class EditorControls {
   
   // 정리
   dispose() {
-    // 이벤트 리스너 제거
-    const canvas = this.renderer.domElement;
-    canvas.removeEventListener('mousedown', this.boundOnMouseDown);
-    document.removeEventListener('mousemove', this.boundOnMouseMove);
-    document.removeEventListener('mouseup', this.boundOnMouseUp);
-    canvas.removeEventListener('wheel', this.boundOnWheel);
-    
-    document.removeEventListener('keydown', this.boundOnKeyDown);
-    document.removeEventListener('keyup', this.boundOnKeyUp);
-    window.removeEventListener('resize', this.boundOnWindowResize);
+    // 입력 관리 시스템 정리
+    this.inputManager.dispose();
+    this.keyboardController.dispose();
+    this.mouseController.dispose();
     
     // 모듈 정리
     this.objectSelector.dispose();
+    this.transformManager.dispose();
     
-    // Console output removed
+    console.log('EditorControls disposed');
   }
   
   // 그리드 스냅 업데이트

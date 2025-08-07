@@ -4,19 +4,13 @@ import { useEditorStore } from '../../../store/editorStore';
 import { MeshLibraryManager } from '../../../utils/meshLibraryManager';
 import './LibraryPanel.css';
 
-console.log('🔥 실제 LibraryPanel 파일 로드됨');
-
 const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
-  console.log('🔥 실제 LibraryPanel 컴포넌트 렌더링 시작');
-  
   const [isDragging, setIsDragging] = useState(false);
   const [customObjects, setCustomObjects] = useState([]);
   const [libraryMeshes, setLibraryMeshes] = useState([]); // 라이브러리 메쉬 상태 추가
   const draggedObject = useRef(null);
   const { customMeshes, loadCustomMeshes } = useEditorStore();
   const libraryManager = useRef(new MeshLibraryManager());
-
-  console.log('🔥 실제 LibraryPanel - customMeshes 상태:', customMeshes.length, '개');
 
   // 3D 객체 라이브러리 데이터
   const objectLibrary = [
@@ -66,18 +60,13 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
   // 컴포넌트 마운트 시 커스텀 메쉬 로드
   useEffect(() => {
-    console.log('=== 실제 LibraryPanel useEffect 시작 ===');
     const meshes = libraryManager.current.getCustomMeshes();
-    console.log('실제 LibraryPanel 마운트 시 로드된 커스텀 메쉬:', meshes.length, '개');
-    console.log('메쉬 상세 데이터:', meshes);
     loadCustomMeshes(meshes);
-    console.log('=== 실제 LibraryPanel useEffect 끝 ===');
   }, [loadCustomMeshes]);
 
   // 커스텀 메쉬 추가 이벤트 리스너
   useEffect(() => {
     const handleCustomMeshAdded = (event) => {
-      console.log('실제 LibraryPanel: 커스텀 메쉬 추가 이벤트 수신:', event.detail);
       const meshes = libraryManager.current.getCustomMeshes();
       loadCustomMeshes(meshes);
     };
@@ -91,7 +80,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
   // customMeshes 상태 변화 감지
   useEffect(() => {
-    console.log('실제 LibraryPanel customMeshes 업데이트:', customMeshes.length, '개', customMeshes);
+    // 상태 변화 감지용 (필요시 여기에 로직 추가)
   }, [customMeshes]);
 
   // 사용자 정의 객체 로드 (기존 로직 유지)
@@ -124,11 +113,9 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
           try {
             const response = await fetch(glbUrl, { method: 'HEAD' });
             if (!response.ok) {
-              console.warn(`GLB 파일이 존재하지 않습니다: ${glbUrl}`);
               continue; // 파일이 없으면 건너뛰기
             }
           } catch (error) {
-            console.warn(`GLB 파일 확인 실패: ${glbUrl}`, error);
             continue; // 파일 확인 실패 시 건너뛰기
           }
           
@@ -165,8 +152,6 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
               )
             );
           } catch (error) {
-            console.error(`${meshObject.filename} 썸네일 생성 실패:`, error);
-            
             // 썸네일 생성 실패 시 로딩 상태만 해제
             setLibraryMeshes(prevMeshes => 
               prevMeshes.map(mesh => 
@@ -179,7 +164,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         }
         
       } catch (error) {
-        console.error('라이브러리 메쉬 로드 실패:', error);
+        // 라이브러리 메쉬 로드 실패 처리
       }
     };
 
@@ -187,23 +172,17 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   }, []); // 컴포넌트 마운트 시 한 번만 실행
 
   const handleDragStart = (e, object) => {
-    console.log('LibraryPanel handleDragStart 호출됨:', object);
-    
     setIsDragging(true);
     draggedObject.current = object;
     
     // 커스텀 메쉬의 경우 GLB 데이터를 처리
     let dataToTransfer = object;
     if (object.type === 'custom') {
-      console.log('커스텀 메쉬 드래그 처리:', object.name);
-      console.log('GLB 데이터:', typeof object.glbData, object.glbData);
-      
       // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함
       dataToTransfer = {
         ...object,
         type: 'custom' // type을 'custom'으로 유지
       };
-      console.log('커스텀 메쉬 드래그용 변환된 객체:', dataToTransfer);
     }
     
     // 드래그 이미지를 위한 캔버스 생성
@@ -233,32 +212,22 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   };
 
   const handleClick = (object) => {
-    console.log('LibraryPanel handleClick 호출됨:', object);
-    
     // 클릭으로 객체를 중앙에 추가
     if (onObjectDrop) {
       if (object.type === 'custom') {
-        console.log('커스텀 메쉬 클릭 처리:', object.name);
-        console.log('GLB 데이터:', typeof object.glbData, object.glbData);
-        
         try {
           // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함
           const customObject = {
             ...object,
             type: 'custom' // type을 'custom'으로 유지
           };
-          console.log('커스텀 메쉬 변환된 객체:', customObject);
           onObjectDrop(customObject, { x: 0, y: 0, z: 0 });
         } catch (error) {
-          console.error('커스텀 메쉬 처리 실패:', error);
           alert('커스텀 메쉬를 로드할 수 없습니다. 데이터가 손상되었을 수 있습니다.');
         }
       } else {
-        console.log('기본/라이브러리 메쉬 클릭 처리:', object.name);
         onObjectDrop(object, { x: 0, y: 0, z: 0 });
       }
-    } else {
-      console.warn('onObjectDrop 함수가 정의되지 않음');
     }
   };
 
@@ -291,8 +260,6 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
       // 메쉬 목록 새로고침
       const meshes = libraryManager.current.getCustomMeshes();
       loadCustomMeshes(meshes);
-      
-      console.log('커스텀 메쉬 삭제 완료:', meshToDelete.name);
     }
   };
 

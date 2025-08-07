@@ -18,10 +18,18 @@ export class ObjectSelector {
     this.selectionBox = null;
     this.createSelectionBox();
     
-    // Transform controls (기즈�?
+    // Transform controls (기즈모)
     this.transformControls = null;
     this.gizmoMode = 'translate'; // translate, rotate, scale
     this.isDragging = false;
+    
+    // 스냅 설정
+    this.snapEnabled = false;
+    this.gridSize = 1.0;
+    
+    // 다중 선택 임시 그룹
+    this.tempGroup = null;
+    this.tempGroupCenter = new THREE.Vector3();
     
     // 자석 기능 상태
     this.isMagnetEnabled = false;
@@ -36,10 +44,67 @@ export class ObjectSelector {
     // ObjectSelector initialized
   }
   
+  // 임시 그룹 생성 및 중앙 계산
+  createTempGroup() {
+    if (this.selectedObjects.length <= 1) {
+      this.clearTempGroup();
+      return null;
+    }
+
+    // 기존 임시 그룹 제거
+    this.clearTempGroup();
+
+    // 새 임시 그룹 생성
+    this.tempGroup = new THREE.Group();
+    this.tempGroup.name = 'TempSelectionGroup';
+    this.tempGroup.userData.isTempGroup = true;
+
+    // 선택된 오브젝트들의 중앙점 계산
+    this.calculateGroupCenter();
+
+    // 임시 그룹을 중앙점에 위치시킴
+    this.tempGroup.position.copy(this.tempGroupCenter);
+
+    // 씬에 임시 그룹 추가 (TransformControls 연결 전에 반드시 필요)
+    this.scene.add(this.tempGroup);
+
+    return this.tempGroup;
+  }
+
+  // 선택된 오브젝트들의 중앙점 계산
+  calculateGroupCenter() {
+    if (this.selectedObjects.length === 0) {
+      this.tempGroupCenter.set(0, 0, 0);
+      return;
+    }
+
+    const boundingBox = new THREE.Box3();
+    
+    // 모든 선택된 오브젝트의 바운딩 박스를 합침
+    this.selectedObjects.forEach(object => {
+      if (object) {
+        const objectBox = new THREE.Box3().setFromObject(object);
+        boundingBox.union(objectBox);
+      }
+    });
+
+    // 바운딩 박스의 중앙점 계산
+    boundingBox.getCenter(this.tempGroupCenter);
+  }
+
+  // 임시 그룹 제거
+  clearTempGroup() {
+    if (this.tempGroup) {
+      this.scene.remove(this.tempGroup);
+      this.tempGroup = null;
+    }
+  }
+
   // 초기 변???�태 ?�??
   saveInitialTransformStates() {
     this.initialTransformStates.clear();
     
+    // 선택된 오브젝트들의 초기 상태 저장
     for (const object of this.selectedObjects) {
       if (object && object.position && object.rotation && object.scale) { // ?�전??검??
         this.initialTransformStates.set(object, {
@@ -49,33 +114,101 @@ export class ObjectSelector {
         });
       }
     }
+    
+    // 임시 그룹의 초기 상태도 저장 (다중 선택인 경우)
+    if (this.tempGroup && this.selectedObjects.length > 1) {
+      this.initialTransformStates.set(this.tempGroup, {
+        position: this.tempGroup.position.clone(),
+        rotation: this.tempGroup.rotation.clone(),
+        scale: this.tempGroup.scale.clone()
+      });
+    }
   }
   
   // ?�중 ?�택???�브?�트?�에 변???�용
   applyTransformToSelectedObjects() {
-    if (!this.lastSelectedObject || !this.transformControls.object || this.selectedObjects.length <= 1) {
-      // 아웃라인 기능 비활성화로 인해 updateSelectionOutline 호출 제거됨
+    if (!this.tempGroup || !this.transformControls.object || this.selectedObjects.length <= 1) {
       return;
     }
     
-    const primaryObject = this.lastSelectedObject; // 기즈모�? ?�결??기�? ?�브?�트
-    const primaryInitialState = this.initialTransformStates.get(primaryObject);
+    // 임시 그룹의 변환을 기반으로 각 오브젝트의 변환 계산
+    const groupTransform = {
+      position: this.tempGroup.position.clone(),
+      rotation: this.tempGroup.rotation.clone(),
+      scale: this.tempGroup.scale.clone()
+    };
     
-    if (!primaryInitialState) return;
-    
-    // ?�른 ?�택???�브?�트?�에 ?��???변???�용
+    const initialGroupState = this.initialTransformStates.get(this.tempGroup);
+    if (!initialGroupState) return;
+
+    // 각 선택된 오브젝트에 대해 상대적 변환 적용
     for (const object of this.selectedObjects) {
-      if (object && object !== primaryObject) {
+      if (object) {
         const objectInitialState = this.initialTransformStates.get(object);
         if (objectInitialState) {
-          this.applyRelativeTransform(object, primaryObject, primaryInitialState, objectInitialState);
+          this.applyRelativeTransformFromGroup(object, groupTransform, initialGroupState, objectInitialState);
         }
       }
     }
-    
-    // 아웃라인 기능 비활성화로 인해 updateSelectionOutline 호출 제거됨
   }
   
+  // 그룹 기반 상대적 변환 적용
+  applyRelativeTransformFromGroup(targetObject, groupTransform, initialGroupState, targetInitialState) {
+    const mode = this.transformControls.getMode();
+    
+    switch (mode) {
+      case 'translate':
+        // 그룹의 이동량 계산
+        const groupDelta = new THREE.Vector3().subVectors(groupTransform.position, initialGroupState.position);
+        
+        // 타겟 오브젝트에 같은 이동량 적용
+        targetObject.position.copy(targetInitialState.position).add(groupDelta);
+        break;
+        
+      case 'rotate':
+        // 그룹의 회전량 계산
+        const groupRotationDelta = new THREE.Euler(
+          groupTransform.rotation.x - initialGroupState.rotation.x,
+          groupTransform.rotation.y - initialGroupState.rotation.y,
+          groupTransform.rotation.z - initialGroupState.rotation.z
+        );
+        
+        // 그룹 중심을 기준으로 회전 적용
+        const objectToGroupCenter = new THREE.Vector3().subVectors(targetInitialState.position, initialGroupState.position);
+        
+        // 회전 매트릭스 생성
+        const rotationMatrix = new THREE.Matrix4().makeRotationFromEuler(groupRotationDelta);
+        
+        // 오브젝트의 위치를 그룹 중심 기준으로 회전
+        objectToGroupCenter.applyMatrix4(rotationMatrix);
+        targetObject.position.copy(groupTransform.position).add(objectToGroupCenter);
+        
+        // 오브젝트 자체의 회전도 적용
+        targetObject.rotation.copy(targetInitialState.rotation);
+        targetObject.rotation.x += groupRotationDelta.x;
+        targetObject.rotation.y += groupRotationDelta.y;
+        targetObject.rotation.z += groupRotationDelta.z;
+        break;
+        
+      case 'scale':
+        // 그룹의 스케일 비율 계산
+        const scaleRatio = new THREE.Vector3(
+          groupTransform.scale.x / initialGroupState.scale.x,
+          groupTransform.scale.y / initialGroupState.scale.y,
+          groupTransform.scale.z / initialGroupState.scale.z
+        );
+        
+        // 그룹 중심을 기준으로 스케일 적용
+        const objectToGroupCenterScale = new THREE.Vector3().subVectors(targetInitialState.position, initialGroupState.position);
+        objectToGroupCenterScale.multiply(scaleRatio);
+        targetObject.position.copy(groupTransform.position).add(objectToGroupCenterScale);
+        
+        // 오브젝트 자체의 스케일도 적용
+        targetObject.scale.copy(targetInitialState.scale).multiply(scaleRatio);
+        break;
+    }
+  }
+
   // ?��???변???�용 (개선??버전)
   applyRelativeTransform(targetObject, primaryObject, primaryInitialState, targetInitialState) {
     const mode = this.transformControls.getMode();
@@ -128,8 +261,16 @@ export class ObjectSelector {
           // Transform drag started, saved initial states
         } else {
           // ?�래�?종료 - 자석 기능 적용 후 초기 ?�태 ?�리??
-          if (this.transformControls.getMode() === 'translate' && this.lastSelectedObject) {
-            this.applyMagnetToSelectedObjects();
+          if (this.transformControls.getMode() === 'translate') {
+            if (this.selectedObjects.length > 1) {
+              // 다중 선택시 모든 오브젝트에 자석 기능 적용
+              this.applyMagnetToSelectedObjects();
+            } else if (this.lastSelectedObject) {
+              // 단일 선택시 해당 오브젝트에만 적용
+              const currentPosition = this.lastSelectedObject.position.clone();
+              const snappedPosition = this.snapToMeshSurface(this.lastSelectedObject, currentPosition);
+              this.lastSelectedObject.position.copy(snappedPosition);
+            }
           }
           this.initialTransformStates.clear();
           // Transform drag ended, cleared initial states
@@ -203,6 +344,9 @@ export class ObjectSelector {
     this.lastSelectedObject = object; // 마�?�??�택???�브?�트 ?�데?�트
     this.editorStore.getState().setSelectedObject(object);
     
+    // 단일 선택이므로 임시 그룹 제거
+    this.clearTempGroup();
+    
     // 기즈�??�결 (객체가 ?�에 ?�는지 ?�인)
     if (this.transformControls && object.parent) {
       // 객체가 ??그래?�에 ?�해?�는지 ?�인
@@ -221,7 +365,7 @@ export class ObjectSelector {
         this.transformControls.attach(object);
         this.setGizmoMode(this.gizmoMode);
       } else {
-        // Console output removed
+        console.error('선택된 오브젝트가 씬 그래프에 포함되지 않았습니다:', object.name);
       }
     }
     
@@ -252,12 +396,29 @@ export class ObjectSelector {
       }
     }
     
-    // 마�?�??�택???�브?�트�?기즈�??�치�??�정
-    if (this.lastSelectedObject && this.transformControls) {
-      this.editorStore.getState().setSelectedObject(this.lastSelectedObject);
-      this.transformControls.attach(this.lastSelectedObject);
-      this.setGizmoMode(this.gizmoMode);
-      // Console output removed
+  // 다중 선택인 경우 임시 그룹 생성 및 기즈모 연결
+    if (this.selectedObjects.length > 1) {
+      const tempGroup = this.createTempGroup();
+      if (tempGroup && this.transformControls) {
+        // 임시 그룹이 씬에 추가되었는지 확인
+        if (tempGroup.parent === this.scene) {
+          this.editorStore.getState().setSelectedObject(tempGroup);
+          this.transformControls.attach(tempGroup);
+          this.setGizmoMode(this.gizmoMode);
+          // Console output removed
+        } else {
+          console.error('임시 그룹이 씬에 추가되지 않았습니다.');
+        }
+      }
+    } else if (this.selectedObjects.length === 1) {
+      // 단일 선택으로 변경된 경우
+      this.clearTempGroup();
+      const singleObject = this.selectedObjects[0];
+      if (singleObject && this.transformControls) {
+        this.editorStore.getState().setSelectedObject(singleObject);
+        this.transformControls.attach(singleObject);
+        this.setGizmoMode(this.gizmoMode);
+      }
     }
     
     // Console output removed
@@ -284,13 +445,31 @@ export class ObjectSelector {
       }
       
       // Transform controls ?�데?�트
-      if (this.selectedObjects.length > 0 && this.transformControls) {
-        const targetObject = this.lastSelectedObject || this.selectedObjects[0];
-        this.editorStore.getState().setSelectedObject(targetObject);
-        this.transformControls.attach(targetObject);
-        this.setGizmoMode(this.gizmoMode);
-        // Console output removed
+      if (this.selectedObjects.length > 1) {
+        // 여전히 다중 선택인 경우 임시 그룹 재생성
+        const tempGroup = this.createTempGroup();
+        if (tempGroup && this.transformControls) {
+          // 임시 그룹이 씬에 추가되었는지 확인
+          if (tempGroup.parent === this.scene) {
+            this.editorStore.getState().setSelectedObject(tempGroup);
+            this.transformControls.attach(tempGroup);
+            this.setGizmoMode(this.gizmoMode);
+          } else {
+            console.error('임시 그룹이 씬에 추가되지 않았습니다.');
+          }
+        }
+      } else if (this.selectedObjects.length === 1) {
+        // 단일 선택으로 변경된 경우
+        this.clearTempGroup();
+        const singleObject = this.selectedObjects[0];
+        if (singleObject && this.transformControls) {
+          this.editorStore.getState().setSelectedObject(singleObject);
+          this.transformControls.attach(singleObject);
+          this.setGizmoMode(this.gizmoMode);
+        }
       } else {
+        // 선택된 것이 없는 경우
+        this.clearTempGroup();
         this.editorStore.getState().setSelectedObject(null);
         this.lastSelectedObject = null;
         if (this.transformControls) {
@@ -303,12 +482,28 @@ export class ObjectSelector {
       this.lastSelectedObject = object; // ?�로 ?�택???�브?�트�?마�?�??�택?�로 ?�정
       // 아웃라인 기능 비활성화로 인해 addSelectionOutline 호출 제거됨
       
-      // Transform controls�?마�?�??�택???�브?�트???�결
-      if (this.transformControls) {
-        this.editorStore.getState().setSelectedObject(object);
-        this.transformControls.attach(object);
-        this.setGizmoMode(this.gizmoMode);
-        // Console output removed
+      // Transform controls 업데이트
+      if (this.selectedObjects.length > 1) {
+        // 다중 선택인 경우 임시 그룹 생성
+        const tempGroup = this.createTempGroup();
+        if (tempGroup && this.transformControls) {
+          // 임시 그룹이 씬에 추가되었는지 확인
+          if (tempGroup.parent === this.scene) {
+            this.editorStore.getState().setSelectedObject(tempGroup);
+            this.transformControls.attach(tempGroup);
+            this.setGizmoMode(this.gizmoMode);
+          } else {
+            console.error('임시 그룹이 씬에 추가되지 않았습니다.');
+          }
+        }
+      } else {
+        // 단일 선택인 경우
+        this.clearTempGroup();
+        if (this.transformControls) {
+          this.editorStore.getState().setSelectedObject(object);
+          this.transformControls.attach(object);
+          this.setGizmoMode(this.gizmoMode);
+        }
       }
     }
     
@@ -329,6 +524,9 @@ export class ObjectSelector {
         // Console output removed
       }
     }
+    
+    // 임시 그룹 제거
+    this.clearTempGroup();
     
     // 배열 ?�리 먼�? ?�행
     this.cleanupSelectedObjects();
@@ -882,6 +1080,9 @@ export class ObjectSelector {
   dispose() {
     // Ray helpers 정리
     this.clearRayHelpers();
+    
+    // 임시 그룹 제거
+    this.clearTempGroup();
     
     // Transform controls ?�제
     if (this.transformControls) {
