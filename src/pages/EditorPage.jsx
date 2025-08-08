@@ -105,14 +105,39 @@ function EditorPage() {
         console.log('objects 첫 번째 항목의 키들:', objects[0] ? Object.keys(objects[0]) : 'objects 배열이 비어있음')
         
         if (selectedObject) {
-          // selectedObject가 Three.js 객체이므로 직접 복사해보자
-          console.log('selectedObject를 직접 copyObject에 전달')
-          copyObject(selectedObject);
-          setToast({ 
-            message: `"${selectedObject.name}"이(가) 복사되었습니다`, 
-            type: 'success' 
-          });
-          setTimeout(() => setToast(null), 2000);
+          // EditorControls에서 실제 선택된 Three.js 객체 가져오기
+          let threeObject = null;
+          
+          if (editorControlsRef.current) {
+            // 선택된 객체 ID로 Three.js 객체 찾기
+            const objectId = selectedObject.id || selectedObject;
+            threeObject = editorControlsRef.current.findObjectById(objectId);
+            
+            // 찾지 못한 경우 현재 선택된 객체들에서 가져오기
+            if (!threeObject && editorControlsRef.current.selectedObjects?.length > 0) {
+              threeObject = editorControlsRef.current.selectedObjects[0];
+            }
+          }
+          
+          console.log('찾은 Three.js 객체:', threeObject);
+          
+          if (threeObject) {
+            console.log('Three.js 객체를 copyObject에 전달');
+            copyObject(threeObject);
+            setToast({ 
+              message: `"${threeObject.name}"이(가) 복사되었습니다`, 
+              type: 'success' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          } else {
+            console.log('Three.js 객체를 찾을 수 없음, 일반 객체로 복사 시도');
+            copyObject(selectedObject);
+            setToast({ 
+              message: `"${selectedObject.name}"이(가) 복사되었습니다`, 
+              type: 'success' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          }
         } else {
           console.log('selectedObject가 null 또는 undefined')
           setToast({ 

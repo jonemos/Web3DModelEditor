@@ -162,6 +162,15 @@ export const useEditorStore = create((set, get) => {
     return { customMeshes: meshes };
   }),
   
+  // 객체의 transform 정보 업데이트
+  updateObjectTransform: (objectId, transform) => set((state) => ({
+    objects: state.objects.map(obj => 
+      obj.id === objectId 
+        ? { ...obj, ...transform }
+        : obj
+    )
+  })),
+  
   addObject: (object) => set((state) => ({
     objects: [...state.objects, object]
   })),
@@ -204,12 +213,56 @@ export const useEditorStore = create((set, get) => {
     // Three.js 객체인지 확인
     if (object.isObject3D) {
       console.log('Three.js 객체가 감지됨, 필요한 정보 추출 중...');
+      console.log('복사할 객체의 transform:', {
+        position: object.position,
+        rotation: object.rotation,
+        scale: object.scale
+      });
       
-      // Three.js 객체에서 필요한 정보를 추출하여 클립보드용 객체 생성
+      // 먼저 objects 배열을 Three.js 객체의 현재 transform으로 업데이트
+      const state = get();
+      const objectId = object.userData?.id;
+      if (objectId) {
+        const { updateObjectTransform } = get();
+        updateObjectTransform(objectId, {
+          position: {
+            x: object.position.x,
+            y: object.position.y,
+            z: object.position.z
+          },
+          rotation: {
+            x: object.rotation.x,
+            y: object.rotation.y,
+            z: object.rotation.z
+          },
+          scale: {
+            x: object.scale.x,
+            y: object.scale.y,
+            z: object.scale.z
+          }
+        });
+      }
+      
+      // 업데이트된 상태에서 객체 정보 다시 가져오기
+      const updatedState = get();
+      const objectData = updatedState.objects.find(obj => obj.id === objectId);
+      console.log('업데이트된 objects 배열에서 찾은 객체 정보:', objectData);
+      
+      // Three.js 객체와 objects 배열 정보를 결합하여 클립보드용 객체 생성
       const objectCopy = {
         name: `${object.name}_copy`,
-        type: object.type,
+        type: objectData?.type || object.userData?.type || 'basic', // 원본 타입 유지 (glb, mesh 등)
+        geometry: objectData?.geometry || object.userData?.geometry || 'BoxGeometry',
+        params: objectData?.params || object.userData?.params || [1, 1, 1],
         uuid: object.uuid, // 원본 참조용
+        
+        // GLB 객체의 경우 추가 정보 복사
+        ...(objectData?.type === 'glb' && {
+          url: objectData.url,
+          glbData: objectData.glbData,
+          file: objectData.file
+        }),
+        
         position: {
           x: object.position.x,
           y: object.position.y,
@@ -224,6 +277,11 @@ export const useEditorStore = create((set, get) => {
           x: object.scale.x,
           y: object.scale.y,
           z: object.scale.z
+        },
+        visible: object.visible,
+        material: objectData?.material || object.userData?.material || {
+          type: 'MeshStandardMaterial',
+          color: 0xff0000
         },
         // 원본 Three.js 객체 참조 (복사 시 필요)
         originalObject: object
@@ -271,6 +329,16 @@ export const useEditorStore = create((set, get) => {
         x: state.clipboard.position?.x || 0, // 복사한 위치 그대로 사용
         y: state.clipboard.position?.y || 0,
         z: state.clipboard.position?.z || 0
+      },
+      rotation: {
+        x: state.clipboard.rotation?.x || 0, // 복사한 회전 그대로 사용
+        y: state.clipboard.rotation?.y || 0,
+        z: state.clipboard.rotation?.z || 0
+      },
+      scale: {
+        x: state.clipboard.scale?.x || 1, // 복사한 크기 그대로 사용
+        y: state.clipboard.scale?.y || 1,
+        z: state.clipboard.scale?.z || 1
       }
     };
     
