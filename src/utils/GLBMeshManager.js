@@ -59,6 +59,32 @@ export class GLBMeshManager {
   }
 
   /**
+   * 안전한 회전 복사 유틸리티
+   * @param {THREE.Euler} sourceRotation 소스 회전
+   * @param {THREE.Euler} targetRotation 타겟 회전
+   */
+  safeRotationCopy(sourceRotation, targetRotation) {
+    if (!sourceRotation || !targetRotation) return;
+    
+    try {
+      if (sourceRotation.order !== undefined) {
+        targetRotation.copy(sourceRotation);
+      } else {
+        targetRotation.set(
+          sourceRotation.x || 0,
+          sourceRotation.y || 0,
+          sourceRotation.z || 0,
+          'XYZ' // 기본 order
+        );
+      }
+    } catch (error) {
+      console.warn('회전 복사 실패:', error);
+      // 실패 시 기본값으로 설정
+      targetRotation.set(0, 0, 0, 'XYZ');
+    }
+  }
+
+  /**
    * 안전한 객체 복제 메서드
    * clone 메서드가 없거나 실패하는 경우 수동으로 객체를 복제
    * @param {THREE.Object3D} object 복제할 객체
@@ -66,21 +92,33 @@ export class GLBMeshManager {
    */
   createSafeClone(object) {
     try {
+      // 입력 객체 유효성 검사
+      if (!object || typeof object !== 'object') {
+        console.warn('유효하지 않은 객체입니다:', object);
+        return new THREE.Object3D();
+      }
+
       // Group 객체인 경우
-      if (object.type === 'Group') {
+      if (object.type === 'Group' || object.isGroup) {
         const clonedGroup = new THREE.Group();
-        clonedGroup.name = object.name;
+        clonedGroup.name = object.name || '';
         
-        // 자식 객체들을 재귀적으로 복제
-        object.children.forEach(child => {
-          const clonedChild = this.createSafeClone(child);
-          clonedGroup.add(clonedChild);
-        });
+        // 자식 객체들을 재귀적으로 복제 (children 존재 여부 확인)
+        if (Array.isArray(object.children)) {
+          object.children.forEach(child => {
+            try {
+              const clonedChild = this.createSafeClone(child);
+              clonedGroup.add(clonedChild);
+            } catch (childError) {
+              console.warn('자식 객체 복제 실패:', childError);
+            }
+          });
+        }
         
-        // 변환 정보 복사
-        clonedGroup.position.copy(object.position);
-        clonedGroup.rotation.copy(object.rotation);
-        clonedGroup.scale.copy(object.scale);
+        // 변환 정보 복사 (프로퍼티 존재 여부 확인)
+        if (object.position) clonedGroup.position.copy(object.position);
+        if (object.rotation) this.safeRotationCopy(object.rotation, clonedGroup.rotation);
+        if (object.scale) clonedGroup.scale.copy(object.scale);
         
         return clonedGroup;
       }
@@ -91,37 +129,47 @@ export class GLBMeshManager {
         const clonedMaterial = object.material ? this.cloneMaterial(object.material) : null;
         
         const clonedMesh = new THREE.Mesh(clonedGeometry, clonedMaterial);
-        clonedMesh.name = object.name;
+        clonedMesh.name = object.name || '';
         
         // 변환 정보 복사
-        clonedMesh.position.copy(object.position);
-        clonedMesh.rotation.copy(object.rotation);
-        clonedMesh.scale.copy(object.scale);
+        if (object.position) clonedMesh.position.copy(object.position);
+        if (object.rotation) this.safeRotationCopy(object.rotation, clonedMesh.rotation);
+        if (object.scale) clonedMesh.scale.copy(object.scale);
         
         return clonedMesh;
       }
       
       // 기타 Object3D인 경우
       const clonedObject = new THREE.Object3D();
-      clonedObject.name = object.name;
+      clonedObject.name = object.name || '';
       
-      // 자식 객체들을 재귀적으로 복제
-      object.children.forEach(child => {
-        const clonedChild = this.createSafeClone(child);
-        clonedObject.add(clonedChild);
-      });
+      // 자식 객체들을 재귀적으로 복제 (children 존재 여부 확인)
+      if (Array.isArray(object.children)) {
+        object.children.forEach(child => {
+          try {
+            const clonedChild = this.createSafeClone(child);
+            clonedObject.add(clonedChild);
+          } catch (childError) {
+            console.warn('자식 객체 복제 실패:', childError);
+          }
+        });
+      }
       
-      // 변환 정보 복사
-      clonedObject.position.copy(object.position);
-      clonedObject.rotation.copy(object.rotation);
-      clonedObject.scale.copy(object.scale);
+      // 변환 정보 복사 (프로퍼티 존재 여부 확인)
+      if (object.position) clonedObject.position.copy(object.position);
+      if (object.rotation) this.safeRotationCopy(object.rotation, clonedObject.rotation);
+      if (object.scale) clonedObject.scale.copy(object.scale);
       
       return clonedObject;
       
     } catch (error) {
       console.error('수동 복제 실패:', error);
-      // 최후의 수단으로 원본 객체 반환
-      return object;
+      console.error('복제 대상 객체:', object);
+      
+      // 최후의 수단으로 기본 Object3D 반환
+      const fallbackObject = new THREE.Object3D();
+      fallbackObject.name = (object && object.name) || 'fallback_object';
+      return fallbackObject;
     }
   }
 
@@ -341,9 +389,13 @@ export class GLBMeshManager {
   /**
    * 3D 오브젝트를 GLB 형식으로 익스포트
    * @param {THREE.Object3D} object 익스포트할 3D 오브젝트
+   * @param {Object} options 익스포트 옵션
+   * @param {boolean} options.preserveTransform 변환 값 유지 여부 (기본값: false)
    * @returns {Promise<ArrayBuffer>} GLB 데이터
    */
-  async exportObjectToGLB(object) {
+  async exportObjectToGLB(object, options = {}) {
+    const { preserveTransform = false } = options;
+    
     return new Promise((resolve, reject) => {
       // 오브젝트를 안전하게 복제하여 변환 초기화
       let clonedObject;
@@ -360,13 +412,39 @@ export class GLBMeshManager {
         clonedObject = this.createSafeClone(object);
       }
       
-      // 위치, 회전, 크기를 초기화
-      clonedObject.position.set(0, 0, 0);
-      clonedObject.rotation.set(0, 0, 0);
-      clonedObject.scale.set(1, 1, 1);
+      // 복제된 객체 유효성 검사
+      if (!clonedObject || typeof clonedObject !== 'object') {
+        reject(new Error('객체 복제에 실패했습니다.'));
+        return;
+      }
+      
+      // 변환 값 처리 (안전한 방식)
+      if (preserveTransform) {
+        // 변환 값을 유지 (현재 변환 상태를 GLB에 적용)
+        console.log('변환 값 유지 모드: 현재 변환 상태를 GLB에 적용');
+        // 변환 값은 그대로 유지
+      } else {
+        // 기본 모드: 위치, 회전, 크기를 초기화 (안전하게)
+        try {
+          if (clonedObject.position && typeof clonedObject.position.set === 'function') {
+            clonedObject.position.set(0, 0, 0);
+          }
+          if (clonedObject.rotation && typeof clonedObject.rotation.set === 'function') {
+            // Euler 회전 설정 시 order 명시
+            clonedObject.rotation.set(0, 0, 0, 'XYZ');
+          }
+          if (clonedObject.scale && typeof clonedObject.scale.set === 'function') {
+            clonedObject.scale.set(1, 1, 1);
+          }
+        } catch (transformError) {
+          console.warn('변환 값 설정 실패:', transformError);
+        }
+      }
       
       // 머티리얼 복사를 위한 재귀 함수 (안전한 버전)
       const cloneMaterials = (obj) => {
+        if (!obj || typeof obj !== 'object') return;
+        
         if (obj.material) {
           try {
             obj.material = this.cloneMaterial(obj.material);
@@ -375,7 +453,17 @@ export class GLBMeshManager {
             // 머티리얼 복제 실패 시 원본 유지
           }
         }
-        obj.children.forEach(child => cloneMaterials(child));
+        
+        // children 존재 여부 확인 후 재귀 호출
+        if (Array.isArray(obj.children)) {
+          obj.children.forEach(child => {
+            try {
+              cloneMaterials(child);
+            } catch (childError) {
+              console.warn('자식 객체 머티리얼 처리 실패:', childError);
+            }
+          });
+        }
       };
       
       // 머티리얼 복사 적용
@@ -405,12 +493,16 @@ export class GLBMeshManager {
    * 커스텀 메쉬를 라이브러리에 추가
    * @param {THREE.Object3D} object 추가할 3D 오브젝트
    * @param {string} name 메쉬 이름
+   * @param {Object} options 추가 옵션
+   * @param {boolean} options.preserveTransform 변환 값 유지 여부 (기본값: true)
    * @returns {Promise<Object>} 저장된 메쉬 데이터
    */
-  async addCustomMesh(object, name) {
+  async addCustomMesh(object, name, options = {}) {
+    const { preserveTransform = true } = options;
+    
     try {
-      // GLB 데이터 생성
-      const glbData = await this.exportObjectToGLB(object);
+      // GLB 데이터 생성 (변환 값 유지 옵션 적용)
+      const glbData = await this.exportObjectToGLB(object, { preserveTransform });
       
       // 썸네일 생성
       const thumbnail = this.generateThumbnailFromObject(object);
@@ -427,7 +519,13 @@ export class GLBMeshManager {
         thumbnail: thumbnail,
         type: 'custom',
         glbData: glbData,
-        createdAt: timestamp
+        createdAt: timestamp,
+        // 변환 정보도 저장 (참고용)
+        transform: {
+          position: { x: object.position.x, y: object.position.y, z: object.position.z },
+          rotation: { x: object.rotation.x, y: object.rotation.y, z: object.rotation.z },
+          scale: { x: object.scale.x, y: object.scale.y, z: object.scale.z }
+        }
       };
 
       // 로컬 스토리지에 저장

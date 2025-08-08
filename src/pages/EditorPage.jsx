@@ -359,9 +359,16 @@ function EditorPage() {
       const name = prompt('메쉬 이름을 입력하세요:', object.name || '커스텀 메쉬');
       if (!name) return;
 
+      // 변환 값 유지 여부 확인
+      const preserveTransform = confirm(
+        '현재 객체의 크기, 회전, 위치 변경사항을 GLB에 적용하시겠습니까?\n\n' +
+        '- "확인": 현재 변환 상태가 적용된 메쉬로 저장\n' +
+        '- "취소": 원본 상태로 저장 (변환 값 초기화)'
+      );
+
       setToast({ message: '라이브러리에 추가 중...', type: 'info' });
 
-      const meshData = await glbMeshManager.current.addCustomMesh(object, name);
+      const meshData = await glbMeshManager.current.addCustomMesh(object, name, { preserveTransform });
       console.log('EditorPage: 생성된 메쉬 데이터:', meshData);
       
       // 스토어에 추가
@@ -370,7 +377,8 @@ function EditorPage() {
       // 강제로 LibraryPanel 새로고침을 위한 이벤트 발생
       window.dispatchEvent(new CustomEvent('customMeshAdded', { detail: meshData }));
 
-      setToast({ message: `"${name}"이(가) 라이브러리에 추가되었습니다!`, type: 'success' });
+      const transformMessage = preserveTransform ? ' (변환 상태 적용됨)' : ' (원본 상태로 저장됨)';
+      setToast({ message: `"${name}"이(가) 라이브러리에 추가되었습니다!${transformMessage}`, type: 'success' });
       
       // 5초 후 토스트 자동 닫기
       setTimeout(() => setToast(null), 5000);
