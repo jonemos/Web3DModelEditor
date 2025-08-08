@@ -11,12 +11,6 @@ const AssetsPanel = ({ onAssetDrop, onClose }) => {
       description: '플레이어 시작 위치 마커'
     },
     {
-      id: 'directional_light',
-      name: '디렉셔널 라이트',
-      type: 'directional_light',
-      description: '방향성 조명 (태양광)'
-    },
-    {
       id: 'point_light',
       name: '포인트 라이트',
       type: 'point_light',
@@ -29,52 +23,10 @@ const AssetsPanel = ({ onAssetDrop, onClose }) => {
       description: '스포트 조명'
     },
     {
-      id: 'ambient_light',
-      name: '앰비언트 라이트',
-      type: 'ambient_light',
-      description: '환경 조명'
-    },
-    {
-      id: 'fog',
-      name: '포그',
-      type: 'fog',
-      description: '씬 안개 효과'
-    },
-    {
-      id: 'skybox',
-      name: '스카이박스',
-      type: 'skybox',
-      description: '배경 하늘'
-    },
-    {
-      id: 'post_process',
-      name: '포스트 프로세스',
-      type: 'post_process',
-      description: '후처리 효과'
-    },
-    {
-      id: 'camera_helper',
-      name: '카메라 헬퍼',
-      type: 'camera_helper',
-      description: '카메라 가이드라인'
-    },
-    {
-      id: 'grid_helper',
-      name: '그리드 헬퍼',
-      type: 'grid_helper',
-      description: '바닥 그리드'
-    },
-    {
       id: 'axes_helper',
       name: '축 헬퍼',
       type: 'axes_helper',
       description: 'XYZ 축 표시'
-    },
-    {
-      id: 'audio_source',
-      name: '오디오 소스',
-      type: 'audio_source',
-      description: '3D 사운드 소스'
     }
   ];
 

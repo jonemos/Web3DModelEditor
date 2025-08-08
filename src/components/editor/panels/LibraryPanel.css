@@ -83,8 +83,8 @@
 
 .object-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); /* 기존 80px에서 50px로 축소 */
-  gap: 8px; /* 기존 12px에서 축소 */
+  grid-template-columns: repeat(2, 1fr); /* 2열로 고정하여 정사각형 형태 */
+  gap: 8px;
 }
 
 .object-item {
@@ -92,7 +92,6 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 6px;
   background: rgba(25, 25, 25, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
@@ -100,6 +99,7 @@
   transition: all 0.2s ease;
   user-select: none;
   position: relative;
+  aspect-ratio: 1; /* 정사각형 비율 강제 */
 }
 
 .object-item:hover {
@@ -114,8 +114,8 @@
 }
 
 .object-thumbnail {
-  width: 30px; /* 기존 40px에서 축소 */
-  height: 30px; /* 기존 40px에서 축소 */
+  width: 40px; /* 기존 40px에서 축소 */
+  height: 40px; /* 기존 40px에서 축소 */
   display: flex;
   align-items: center;
   justify-content: center;

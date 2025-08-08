@@ -67,8 +67,8 @@
 
 .assets-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); /* 이전 크기로 복원 */
-  gap: 8px; /* 이전 간격으로 복원 */
+  grid-template-columns: repeat(2, 1fr); /* 2열로 고정하여 정사각형 형태 */
+  gap: 10px;
 }
 
 .asset-item {
@@ -84,7 +84,7 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   text-align: center;
-  min-height: 65px; /* 이전 크기로 복원 */
+  aspect-ratio: 1; /* 정사각형 비율 강제 */
   position: relative;
   backdrop-filter: blur(10px);
 }
