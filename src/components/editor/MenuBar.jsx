@@ -41,6 +41,8 @@ const MenuBar = ({ onMenuAction }) => {
         { label: '그리드 토글', action: 'toggle-grid' },
         { label: '통계 표시', action: 'toggle-stats' },
         { type: 'separator' },
+        { label: '인스펙터', action: 'toggle-inspector', shortcut: 'I' },
+        { type: 'separator' },
         { label: '전체화면', action: 'fullscreen', shortcut: 'F11' }
       ]
     },

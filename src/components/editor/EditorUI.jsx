@@ -2,8 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { GLTFExporter } from 'three-stdlib'
 import { useEditorStore } from '../../store/editorStore'
-import SceneHierarchyPanel from './panels/SceneHierarchyPanel'
-import ObjectPropertiesPanel from './panels/ObjectPropertiesPanel'
+import InspectorPanel from './panels/InspectorPanel'
 import LibraryPanel from './panels/LibraryPanel'
 import AssetsPanel from './panels/AssetsPanel'
 import PostProcessingPanel from './panels/PostProcessingPanel'
@@ -12,7 +11,7 @@ import ContextMenu from './ContextMenu'
 import Toast from '../ui/Toast'
 import './EditorUI.css'
 
-function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
+function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showInspector, onToggleInspector }) {
   const {
     selectedObject,
     transformMode,
@@ -253,6 +252,48 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
         name: newName
       }
       setSelectedObject(updatedSelectedObject)
+    }
+  }
+
+  const handleObjectUpdate = (updatedObject) => {
+    // 오브젝트 속성 업데이트
+    console.log('오브젝트 업데이트:', updatedObject)
+    
+    // EditorControls를 통해 3D 뷰의 오브젝트도 업데이트
+    if (editorControls && updatedObject.id) {
+      const threeObject = editorControls.findObjectById(updatedObject.id)
+      if (threeObject) {
+        // 위치, 회전, 스케일 업데이트
+        if (updatedObject.position) {
+          threeObject.position.set(
+            updatedObject.position.x,
+            updatedObject.position.y,
+            updatedObject.position.z
+          )
+        }
+        if (updatedObject.rotation) {
+          threeObject.rotation.set(
+            updatedObject.rotation.x,
+            updatedObject.rotation.y,
+            updatedObject.rotation.z
+          )
+        }
+        if (updatedObject.scale) {
+          threeObject.scale.set(
+            updatedObject.scale.x,
+            updatedObject.scale.y,
+            updatedObject.scale.z
+          )
+        }
+        if (updatedObject.name) {
+          threeObject.name = updatedObject.name
+        }
+      }
+    }
+    
+    // 스토어의 selectedObject 업데이트
+    if (selectedObject?.id === updatedObject.id) {
+      setSelectedObject(updatedObject)
     }
   }
 
@@ -615,10 +656,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
         onAddToLibrary={onAddToLibrary}
       />
 
-      {/* 우측 패널 - 오브젝트 목록 */}
-      <div className="right-panel">
-        {/* 씬 하이라키 패널 */}
-        <SceneHierarchyPanel 
+      {/* 우측 패널 - 인스펙터 */}
+      {showInspector && (
+        <InspectorPanel
+          // SceneHierarchy 관련 props
           objects={objects}
           walls={walls}
           selectedObject={selectedObject}
@@ -641,13 +682,13 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
             });
           }}
           editorControls={editorControls}
+          
+          // ObjectProperties 관련 props
+          onObjectUpdate={handleObjectUpdate}
+          
+          onClose={() => onToggleInspector(false)}
         />
-
-        {/* 오브젝트 속성 패널 */}
-        <ObjectPropertiesPanel 
-          selectedObject={selectedObject}
-        />
-      </div>
+      )}
     </div>
   )
 }

@@ -52,6 +52,7 @@ function EditorPage() {
   const [showDialog, setShowDialog] = useState(null)
   const [dialogInput, setDialogInput] = useState('')
   const [toast, setToast] = useState(null)
+  const [showInspector, setShowInspector] = useState(true) // 인스펙터 패널 상태 추가
   
   // EditorControls 인스턴스를 관리하기 위한 ref
   const editorControlsRef = useRef(null)
@@ -78,6 +79,24 @@ function EditorPage() {
       console.log('기본 HDRI 배경이 적용되었습니다')
     }
   }, [scene, hdriSettings.currentHDRI])
+
+  // 키보드 이벤트 처리
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // I키 - 인스펙터 토글
+      if (e.key === 'i' || e.key === 'I') {
+        if (!e.ctrlKey && !e.altKey && !e.shiftKey) {
+          e.preventDefault()
+          setShowInspector(prev => !prev)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [])
 
   // 지속적인 태양 조명 생성 함수
   const createPersistentSunLight = () => {
@@ -278,6 +297,15 @@ function EditorPage() {
         alert(MESSAGES.TOGGLE_STATS_NOT_READY)
         break
         
+      case 'toggle-inspector':
+        setShowInspector(prev => !prev)
+        setToast({ 
+          message: `인스펙터가 ${!showInspector ? '표시' : '숨김'} 되었습니다`, 
+          type: 'info' 
+        })
+        setTimeout(() => setToast(null), 2000)
+        break
+        
       case 'fullscreen':
         if (document.fullscreenElement) {
           document.exitFullscreen()
@@ -375,6 +403,8 @@ function EditorPage() {
           editorControls={editorControlsRef.current} 
           postProcessingManager={postProcessingRef.current}
           onAddToLibrary={handleAddToLibrary}
+          showInspector={showInspector}
+          onToggleInspector={setShowInspector}
         />
       </div>
 
