@@ -80,6 +80,9 @@ export const useEditorStore = create((set, get) => {
   objects: [],
   walls: [],
   
+  // Clipboard for copy/paste functionality
+  clipboard: null, // 복사된 객체를 저장하는 클립보드
+  
   // Actions
   setSelectedObject: (object) => set({ selectedObject: object }),
   setTransformMode: (mode) => set({ transformMode: mode }),
@@ -189,6 +192,153 @@ export const useEditorStore = create((set, get) => {
       obj.id === id ? { ...obj, ...updates } : obj
     )
   })),
+  
+  // Clipboard actions
+  copyObject: (object) => {
+    console.log('copyObject 함수 호출됨:', object);
+    if (!object) {
+      console.warn('copyObject: 객체가 null 또는 undefined입니다');
+      return;
+    }
+    
+    // Three.js 객체인지 확인
+    if (object.isObject3D) {
+      console.log('Three.js 객체가 감지됨, 필요한 정보 추출 중...');
+      
+      // Three.js 객체에서 필요한 정보를 추출하여 클립보드용 객체 생성
+      const objectCopy = {
+        name: `${object.name}_copy`,
+        type: object.type,
+        uuid: object.uuid, // 원본 참조용
+        position: {
+          x: object.position.x,
+          y: object.position.y,
+          z: object.position.z
+        },
+        rotation: {
+          x: object.rotation.x,
+          y: object.rotation.y,
+          z: object.rotation.z
+        },
+        scale: {
+          x: object.scale.x,
+          y: object.scale.y,
+          z: object.scale.z
+        },
+        // 원본 Three.js 객체 참조 (복사 시 필요)
+        originalObject: object
+      };
+      
+      set({ clipboard: objectCopy });
+      console.log('Three.js 객체가 클립보드에 복사되었습니다:', object.name);
+      console.log('clipboard 설정됨:', objectCopy);
+      return;
+    }
+    
+    // 시스템 객체는 복사할 수 없음
+    if (object.isSystemObject) {
+      console.warn('시스템 객체는 복사할 수 없습니다:', object.name);
+      return;
+    }
+    
+    // 일반 객체의 복사본을 클립보드에 저장
+    const objectCopy = {
+      ...object,
+      id: undefined, // 새로운 ID가 부여되도록 undefined로 설정
+      name: `${object.name}_copy` // 복사본임을 나타내는 접미사 추가
+    };
+    
+    set({ clipboard: objectCopy });
+    console.log('객체가 클립보드에 복사되었습니다:', object.name);
+  },
+  
+  pasteObject: () => {
+    console.log('pasteObject 함수 호출됨');
+    const state = get();
+    console.log('현재 클립보드 상태:', state.clipboard);
+    
+    if (!state.clipboard) {
+      // 클립보드가 비어있을 때는 조용히 null 반환 (경고 메시지 제거)
+      console.log('클립보드가 비어있음');
+      return null;
+    }
+    
+    // 클립보드의 객체를 기반으로 새 객체 생성
+    const newObject = {
+      ...state.clipboard,
+      id: Date.now(), // 새로운 고유 ID 생성
+      position: {
+        x: (state.clipboard.position?.x || 0) + 1, // 약간 오프셋을 주어 겹치지 않도록
+        y: state.clipboard.position?.y || 0,
+        z: (state.clipboard.position?.z || 0) + 1
+      }
+    };
+    
+    console.log('새로 생성될 객체:', newObject);
+    
+    // 새 객체를 씬에 추가
+    const updatedObjects = [...state.objects, newObject];
+    set({ 
+      objects: updatedObjects,
+      selectedObject: newObject.id // 새로 생성된 객체 선택
+    });
+    
+    console.log('객체가 붙여넣기되었습니다:', newObject.name);
+    return newObject;
+  },
+  
+  // 클립보드 상태 확인 헬퍼 함수
+  hasClipboardData: () => {
+    const state = get();
+    console.log('hasClipboardData 호출됨, clipboard:', state.clipboard);
+    const result = state.clipboard !== null;
+    console.log('hasClipboardData 결과:', result);
+    return result;
+  },
+  
+  // 클립보드 비우기 함수
+  clearClipboard: () => {
+    set({ clipboard: null });
+    console.log('클립보드가 비워졌습니다.');
+  },
+  
+  deleteSelectedObject: () => {
+    console.log('deleteSelectedObject 함수 호출됨');
+    const state = get();
+    console.log('현재 선택된 객체 ID:', state.selectedObject);
+    console.log('현재 객체 목록:', state.objects);
+    
+    if (!state.selectedObject) {
+      console.warn('선택된 객체가 없습니다.');
+      return;
+    }
+    
+    // 선택된 객체 찾기
+    const objectToDelete = state.objects.find(obj => obj.id === state.selectedObject);
+    console.log('삭제할 객체:', objectToDelete);
+    
+    if (!objectToDelete) {
+      console.warn('선택된 객체를 찾을 수 없습니다.');
+      return;
+    }
+    
+    // 시스템 객체는 삭제할 수 없음
+    if (objectToDelete.isSystemObject) {
+      console.warn('시스템 객체는 삭제할 수 없습니다:', objectToDelete.name);
+      return;
+    }
+    
+    // 객체 삭제
+    const updatedObjects = state.objects.filter(obj => obj.id !== state.selectedObject);
+    console.log('삭제 후 객체 목록:', updatedObjects);
+    
+    set({ 
+      objects: updatedObjects,
+      selectedObject: null // 선택 해제
+    });
+    
+    console.log('객체가 삭제되었습니다:', objectToDelete.name);
+  },
   
   updateWall: (id, updates) => set((state) => ({
     walls: state.walls.map(wall => 

@@ -17,9 +17,6 @@ const MESSAGES = {
   EXIT_CONFIRM: '에디터를 종료하시겠습니까?',
   UNDO_NOT_READY: '실행 취소 기능은 준비 중입니다.',
   REDO_NOT_READY: '다시 실행 기능은 준비 중입니다.',
-  COPY_NOT_READY: '복사 기능은 준비 중입니다.',
-  PASTE_NOT_READY: '붙여넣기 기능은 준비 중입니다.',
-  DELETE_NOT_READY: '삭제 기능은 준비 중입니다.',
   SELECT_ALL_NOT_READY: '전체 선택 기능은 준비 중입니다.',
   DESELECT_ALL_NOT_READY: '선택 해제 기능은 준비 중입니다.',
   RESET_VIEWPORT_NOT_READY: '뷰포트 리셋 기능은 준비 중입니다.',
@@ -46,7 +43,12 @@ function EditorPage() {
     hdriSettings,
     sunLightRef,
     setSunLightRef,
-    saveHDRISettings
+    saveHDRISettings,
+    objects,
+    copyObject,
+    pasteObject,
+    deleteSelectedObject,
+    hasClipboardData
   } = useEditorStore()
   
   const [showDialog, setShowDialog] = useState(null)
@@ -90,13 +92,107 @@ function EditorPage() {
           setShowInspector(prev => !prev)
         }
       }
+      
+      // Ctrl+C - 복사
+      if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
+        e.preventDefault()
+        console.log('Ctrl+C 키 감지됨, 복사 실행')
+        console.log('현재 selectedObject:', selectedObject)
+        console.log('selectedObject.uuid:', selectedObject?.uuid)
+        console.log('selectedObject.name:', selectedObject?.name)
+        console.log('현재 objects 배열:', objects)
+        console.log('objects 첫 번째 항목:', objects[0])
+        console.log('objects 첫 번째 항목의 키들:', objects[0] ? Object.keys(objects[0]) : 'objects 배열이 비어있음')
+        
+        if (selectedObject) {
+          // selectedObject가 Three.js 객체이므로 직접 복사해보자
+          console.log('selectedObject를 직접 copyObject에 전달')
+          copyObject(selectedObject);
+          setToast({ 
+            message: `"${selectedObject.name}"이(가) 복사되었습니다`, 
+            type: 'success' 
+          });
+          setTimeout(() => setToast(null), 2000);
+        } else {
+          console.log('selectedObject가 null 또는 undefined')
+          setToast({ 
+            message: '복사할 객체를 먼저 선택해주세요', 
+            type: 'warning' 
+          });
+          setTimeout(() => setToast(null), 2000);
+        }
+      }
+      
+      // Ctrl+V - 붙여넣기
+      if (e.ctrlKey && (e.key === 'v' || e.key === 'V')) {
+        e.preventDefault()
+        console.log('Ctrl+V 키 감지됨, 붙여넣기 실행')
+        console.log('hasClipboardData():', hasClipboardData())
+        
+        if (hasClipboardData()) {
+          console.log('pasteObject 함수 호출 전')
+          const pastedObject = pasteObject();
+          console.log('pasteObject 함수 호출 후, 결과:', pastedObject)
+          if (pastedObject) {
+            setToast({ 
+              message: `"${pastedObject.name}"이(가) 붙여넣기되었습니다`, 
+              type: 'success' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          } else {
+            console.log('pastedObject가 null/undefined')
+            setToast({ 
+              message: '붙여넣기에 실패했습니다', 
+              type: 'error' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          }
+        } else {
+          setToast({ 
+            message: '붙여넣을 객체가 클립보드에 없습니다', 
+            type: 'warning' 
+          });
+          setTimeout(() => setToast(null), 2000);
+        }
+      }
+      
+      // Delete 키 - 삭제
+      if (e.key === 'Delete') {
+        e.preventDefault()
+        console.log('Delete 키 감지됨, 삭제 실행')
+        
+        if (selectedObject) {
+          const objectToDelete = objects.find(obj => obj.id === selectedObject);
+          if (objectToDelete) {
+            const objectName = objectToDelete.name;
+            deleteSelectedObject();
+            setToast({ 
+              message: `"${objectName}"이(가) 삭제되었습니다`, 
+              type: 'success' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          } else {
+            setToast({ 
+              message: '삭제할 객체를 찾을 수 없습니다', 
+              type: 'error' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          }
+        } else {
+          setToast({ 
+            message: '삭제할 객체를 먼저 선택해주세요', 
+            type: 'warning' 
+          });
+          setTimeout(() => setToast(null), 2000);
+        }
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [])
+  }, [selectedObject, objects, copyObject, pasteObject, deleteSelectedObject, hasClipboardData, setToast]) // 필요한 의존성 모두 추가
 
   // 지속적인 태양 조명 생성 함수
   const createPersistentSunLight = () => {
@@ -247,15 +343,84 @@ function EditorPage() {
         break
         
       case 'copy':
-        alert(MESSAGES.COPY_NOT_READY)
+        console.log('메뉴에서 복사 액션 실행됨')
+        if (selectedObject) {
+          const objectToCopy = objects.find(obj => obj.id === selectedObject);
+          if (objectToCopy) {
+            copyObject(objectToCopy);
+            setToast({ 
+              message: `"${objectToCopy.name}"이(가) 복사되었습니다`, 
+              type: 'success' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          } else {
+            setToast({ 
+              message: '복사할 객체를 찾을 수 없습니다', 
+              type: 'error' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          }
+        } else {
+          setToast({ 
+            message: '복사할 객체를 먼저 선택해주세요', 
+            type: 'warning' 
+          });
+          setTimeout(() => setToast(null), 2000);
+        }
         break
         
       case 'paste':
-        alert(MESSAGES.PASTE_NOT_READY)
+        console.log('메뉴에서 붙여넣기 액션 실행됨')
+        if (hasClipboardData()) {
+          const pastedObject = pasteObject();
+          if (pastedObject) {
+            setToast({ 
+              message: `"${pastedObject.name}"이(가) 붙여넣기되었습니다`, 
+              type: 'success' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          } else {
+            setToast({ 
+              message: '붙여넣기에 실패했습니다', 
+              type: 'error' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          }
+        } else {
+          setToast({ 
+            message: '붙여넣을 객체가 클립보드에 없습니다', 
+            type: 'warning' 
+          });
+          setTimeout(() => setToast(null), 2000);
+        }
         break
         
       case 'delete':
-        alert(MESSAGES.DELETE_NOT_READY)
+        console.log('메뉴에서 삭제 액션 실행됨')
+        if (selectedObject) {
+          const objectToDelete = objects.find(obj => obj.id === selectedObject);
+          if (objectToDelete) {
+            const objectName = objectToDelete.name;
+            deleteSelectedObject();
+            setToast({ 
+              message: `"${objectName}"이(가) 삭제되었습니다`, 
+              type: 'success' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          } else {
+            setToast({ 
+              message: '삭제할 객체를 찾을 수 없습니다', 
+              type: 'error' 
+            });
+            setTimeout(() => setToast(null), 2000);
+          }
+        } else {
+          setToast({ 
+            message: '삭제할 객체를 먼저 선택해주세요', 
+            type: 'warning' 
+          });
+          setTimeout(() => setToast(null), 2000);
+        }
         break
         
       case 'select-all':
