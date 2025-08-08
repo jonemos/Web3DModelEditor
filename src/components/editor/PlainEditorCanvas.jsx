@@ -884,8 +884,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             // 로드된 오브젝트로 기록
             loadedObjectsRef.current.set(obj.id, model);
             
-            // 자동으로 선택
+            // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
+            editorControlsRef.current.selectObject(model);
             
             // GLB file loading completed
           },
@@ -925,7 +926,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             scene.add(mesh);
             editorControlsRef.current.addSelectableObject(mesh);
             loadedObjectsRef.current.set(obj.id, mesh);
+            
+            // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
+            editorControlsRef.current.selectObject(mesh);
           }
         );
       } else if (obj.type === 'glb' && obj.glbData) {
@@ -1013,8 +1017,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             // 로드된 오브젝트로 기록
             loadedObjectsRef.current.set(obj.id, model);
             
-            // 자동으로 선택
+            // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
+            editorControlsRef.current.selectObject(model);
             
             // URL 해제 (메모리 누수 방지)
             URL.revokeObjectURL(url);
@@ -1044,6 +1049,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         scene.add(mesh);
         editorControlsRef.current.addSelectableObject(mesh);
         loadedObjectsRef.current.set(obj.id, mesh);
+        
+        // 자동으로 선택 (스토어와 3D 뷰 모두)
+        setSelectedObject(obj.id);
+        editorControlsRef.current.selectObject(mesh);
       } else if (obj.type === 'basic' || (obj.geometry && obj.params)) {
         // 기본 도형 처리 (라이브러리 패널에서 추가된 기본 도형들)
         console.log('기본 도형 생성:', obj);
@@ -1098,6 +1107,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         scene.add(mesh);
         editorControlsRef.current.addSelectableObject(mesh);
         loadedObjectsRef.current.set(obj.id, mesh);
+        
+        // 자동으로 선택 (스토어와 3D 뷰 모두)
+        setSelectedObject(obj.id);
+        editorControlsRef.current.selectObject(mesh);
         
         console.log('기본 도형 씬에 추가 완료:', mesh);
       } else if (obj.type === 'ground') {
