@@ -59,6 +59,86 @@ export class GLBMeshManager {
   }
 
   /**
+   * 안전한 객체 복제 메서드
+   * clone 메서드가 없거나 실패하는 경우 수동으로 객체를 복제
+   * @param {THREE.Object3D} object 복제할 객체
+   * @returns {THREE.Object3D} 복제된 객체
+   */
+  createSafeClone(object) {
+    try {
+      // Group 객체인 경우
+      if (object.type === 'Group') {
+        const clonedGroup = new THREE.Group();
+        clonedGroup.name = object.name;
+        
+        // 자식 객체들을 재귀적으로 복제
+        object.children.forEach(child => {
+          const clonedChild = this.createSafeClone(child);
+          clonedGroup.add(clonedChild);
+        });
+        
+        // 변환 정보 복사
+        clonedGroup.position.copy(object.position);
+        clonedGroup.rotation.copy(object.rotation);
+        clonedGroup.scale.copy(object.scale);
+        
+        return clonedGroup;
+      }
+      
+      // Mesh 객체인 경우
+      if (object.isMesh) {
+        const clonedGeometry = object.geometry ? object.geometry.clone() : null;
+        const clonedMaterial = object.material ? this.cloneMaterial(object.material) : null;
+        
+        const clonedMesh = new THREE.Mesh(clonedGeometry, clonedMaterial);
+        clonedMesh.name = object.name;
+        
+        // 변환 정보 복사
+        clonedMesh.position.copy(object.position);
+        clonedMesh.rotation.copy(object.rotation);
+        clonedMesh.scale.copy(object.scale);
+        
+        return clonedMesh;
+      }
+      
+      // 기타 Object3D인 경우
+      const clonedObject = new THREE.Object3D();
+      clonedObject.name = object.name;
+      
+      // 자식 객체들을 재귀적으로 복제
+      object.children.forEach(child => {
+        const clonedChild = this.createSafeClone(child);
+        clonedObject.add(clonedChild);
+      });
+      
+      // 변환 정보 복사
+      clonedObject.position.copy(object.position);
+      clonedObject.rotation.copy(object.rotation);
+      clonedObject.scale.copy(object.scale);
+      
+      return clonedObject;
+      
+    } catch (error) {
+      console.error('수동 복제 실패:', error);
+      // 최후의 수단으로 원본 객체 반환
+      return object;
+    }
+  }
+
+  /**
+   * 머티리얼 복제 메서드
+   * @param {THREE.Material|Array} material 복제할 머티리얼
+   * @returns {THREE.Material|Array} 복제된 머티리얼
+   */
+  cloneMaterial(material) {
+    if (Array.isArray(material)) {
+      return material.map(mat => mat.clone ? mat.clone() : mat);
+    } else {
+      return material.clone ? material.clone() : material;
+    }
+  }
+
+  /**
    * 라이브러리 메쉬 목록 로드
    * @returns {Array} 라이브러리 메쉬 배열
    */
@@ -211,8 +291,18 @@ export class GLBMeshManager {
     // 조명 설정
     this.setupLighting(tempScene);
 
-    // 오브젝트 복제 및 씬에 추가
-    const clonedObject = object.clone();
+    // 오브젝트 안전하게 복제 및 씬에 추가
+    let clonedObject;
+    try {
+      if (typeof object.clone === 'function') {
+        clonedObject = object.clone();
+      } else {
+        clonedObject = this.createSafeClone(object);
+      }
+    } catch (error) {
+      console.warn('썸네일 생성을 위한 객체 복제 실패, 수동 복제 시도:', error);
+      clonedObject = this.createSafeClone(object);
+    }
     tempScene.add(clonedObject);
 
     // 바운딩 박스 계산
@@ -255,21 +345,34 @@ export class GLBMeshManager {
    */
   async exportObjectToGLB(object) {
     return new Promise((resolve, reject) => {
-      // 오브젝트를 복제하여 변환 초기화
-      const clonedObject = object.clone();
+      // 오브젝트를 안전하게 복제하여 변환 초기화
+      let clonedObject;
+      try {
+        // clone 메서드가 있는지 확인하고 사용
+        if (typeof object.clone === 'function') {
+          clonedObject = object.clone();
+        } else {
+          // clone 메서드가 없거나 작동하지 않는 경우 수동으로 복제
+          clonedObject = this.createSafeClone(object);
+        }
+      } catch (error) {
+        console.warn('객체 복제 실패, 수동 복제 시도:', error);
+        clonedObject = this.createSafeClone(object);
+      }
       
       // 위치, 회전, 크기를 초기화
       clonedObject.position.set(0, 0, 0);
       clonedObject.rotation.set(0, 0, 0);
       clonedObject.scale.set(1, 1, 1);
       
-      // 머티리얼 복사를 위한 재귀 함수
+      // 머티리얼 복사를 위한 재귀 함수 (안전한 버전)
       const cloneMaterials = (obj) => {
         if (obj.material) {
-          if (Array.isArray(obj.material)) {
-            obj.material = obj.material.map(mat => mat.clone());
-          } else {
-            obj.material = obj.material.clone();
+          try {
+            obj.material = this.cloneMaterial(obj.material);
+          } catch (error) {
+            console.warn('머티리얼 복제 실패, 원본 유지:', error);
+            // 머티리얼 복제 실패 시 원본 유지
           }
         }
         obj.children.forEach(child => cloneMaterials(child));
