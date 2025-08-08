@@ -25,6 +25,7 @@ const InspectorPanel = memo(function InspectorPanel({
   const [activeTab, setActiveTab] = useState('transform')
   const [propertiesManager, setPropertiesManager] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0) // 강제 리렌더링용
+  const [lastUpdateTime, setLastUpdateTime] = useState(0) // 실시간 업데이트용
 
   // PropertiesManager 초기화
   useEffect(() => {
@@ -62,6 +63,24 @@ const InspectorPanel = memo(function InspectorPanel({
     }
   }, [propertiesManager, selectedObject])
 
+  // 실시간 트랜스폼 업데이트
+  useEffect(() => {
+    if (!selectedObject || !propertiesManager) return
+
+    const updateInterval = setInterval(() => {
+      // 선택된 객체의 트랜스폼이 변경되었는지 확인
+      if (propertiesManager.threeObject) {
+        const currentTime = Date.now()
+        if (currentTime - lastUpdateTime > 100) { // 100ms 간격으로 체크
+          setLastUpdateTime(currentTime)
+          setRefreshKey(prev => prev + 1)
+        }
+      }
+    }, 100)
+
+    return () => clearInterval(updateInterval)
+  }, [selectedObject, propertiesManager, lastUpdateTime])
+
   const objectType = propertiesManager?.getObjectType() || 'unknown'
   
   console.log('objectType 가져오기:', {
@@ -90,9 +109,19 @@ const InspectorPanel = memo(function InspectorPanel({
   const getAvailableTabs = () => {
     if (!selectedObject) return []
     
+    console.log('getAvailableTabs 호출됨:', {
+      selectedObject,
+      objectType,
+      objectName: selectedObject?.name,
+      objectConstructor: selectedObject?.constructor?.name
+    })
+    
     const tabs = [
       { id: 'transform', label: '트랜스폼', icon: '🔄' }
     ]
+
+    // Object 속성 탭 (모든 객체에 대해)
+    tabs.push({ id: 'object', label: '오브젝트', icon: '📦' })
 
     if (objectType === 'mesh') {
       tabs.push({ id: 'material', label: '머티리얼', icon: '🎨' })
@@ -106,6 +135,7 @@ const InspectorPanel = memo(function InspectorPanel({
       tabs.push({ id: 'camera', label: '카메라', icon: '📷' })
     }
 
+    console.log('생성된 탭들:', tabs)
     return tabs
   }
 
@@ -117,6 +147,83 @@ const InspectorPanel = memo(function InspectorPanel({
       setActiveTab(availableTabs[0].id)
     }
   }, [availableTabs, activeTab])
+
+  // Object 탭 렌더링
+  const renderObjectTab = () => {
+    if (!objectInfo) {
+      return <div style={{color: 'red', padding: '20px'}}>objectInfo가 없습니다</div>
+    }
+
+    return (
+      <div className="object-properties">
+        <div className="property-group">
+          <label>Name</label>
+          <input
+            type="text"
+            value={objectInfo.name}
+            onChange={(e) => {
+              if (propertiesManager?.threeObject) {
+                propertiesManager.threeObject.name = e.target.value
+                propertiesManager.notifyPropertyChange('object', 'name', e.target.value)
+              }
+            }}
+          />
+        </div>
+
+        <div className="property-group">
+          <label>Type</label>
+          <span className="readonly-value">{objectInfo.type}</span>
+        </div>
+
+        <div className="property-group">
+          <label>ID</label>
+          <span className="readonly-value">{objectInfo.id}</span>
+        </div>
+
+        <div className="property-group">
+          <label>Visible</label>
+          <input
+            type="checkbox"
+            checked={propertiesManager?.threeObject?.visible !== false}
+            onChange={(e) => {
+              if (propertiesManager?.threeObject) {
+                propertiesManager.threeObject.visible = e.target.checked
+                propertiesManager.notifyPropertyChange('object', 'visible', e.target.checked)
+              }
+            }}
+          />
+        </div>
+
+        <div className="property-group">
+          <label>Cast Shadow</label>
+          <input
+            type="checkbox"
+            checked={propertiesManager?.threeObject?.castShadow || false}
+            onChange={(e) => {
+              if (propertiesManager?.threeObject) {
+                propertiesManager.threeObject.castShadow = e.target.checked
+                propertiesManager.notifyPropertyChange('object', 'castShadow', e.target.checked)
+              }
+            }}
+          />
+        </div>
+
+        <div className="property-group">
+          <label>Receive Shadow</label>
+          <input
+            type="checkbox"
+            checked={propertiesManager?.threeObject?.receiveShadow || false}
+            onChange={(e) => {
+              if (propertiesManager?.threeObject) {
+                propertiesManager.threeObject.receiveShadow = e.target.checked
+                propertiesManager.notifyPropertyChange('object', 'receiveShadow', e.target.checked)
+              }
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
 
   // Transform 탭 렌더링
   const renderTransformTab = () => {
@@ -133,11 +240,11 @@ const InspectorPanel = memo(function InspectorPanel({
     return (
       <div className="transform-properties">
         {/* Position */}
-        <div className="property-group">
-          <label>Position</label>
-          <div className="vector-input">
-            <div className="axis-input">
-              <label>X</label>
+        <div className="transform-row">
+          <div className="transform-label">Position</div>
+          <div className="transform-inputs">
+            <div className="transform-input-group">
+              <span className="input-label">X</span>
               <input
                 type="number"
                 step="0.1"
@@ -145,8 +252,8 @@ const InspectorPanel = memo(function InspectorPanel({
                 onChange={(e) => propertiesManager?.setTransformProperty('position', 'x', e.target.value)}
               />
             </div>
-            <div className="axis-input">
-              <label>Y</label>
+            <div className="transform-input-group">
+              <span className="input-label">Y</span>
               <input
                 type="number"
                 step="0.1"
@@ -154,8 +261,8 @@ const InspectorPanel = memo(function InspectorPanel({
                 onChange={(e) => propertiesManager?.setTransformProperty('position', 'y', e.target.value)}
               />
             </div>
-            <div className="axis-input">
-              <label>Z</label>
+            <div className="transform-input-group">
+              <span className="input-label">Z</span>
               <input
                 type="number"
                 step="0.1"
@@ -167,11 +274,11 @@ const InspectorPanel = memo(function InspectorPanel({
         </div>
 
         {/* Rotation */}
-        <div className="property-group">
-          <label>Rotation</label>
-          <div className="vector-input">
-            <div className="axis-input">
-              <label>X</label>
+        <div className="transform-row">
+          <div className="transform-label">Rotation</div>
+          <div className="transform-inputs">
+            <div className="transform-input-group">
+              <span className="input-label">X</span>
               <input
                 type="number"
                 step="1"
@@ -179,8 +286,8 @@ const InspectorPanel = memo(function InspectorPanel({
                 onChange={(e) => propertiesManager?.setTransformProperty('rotation', 'x', e.target.value)}
               />
             </div>
-            <div className="axis-input">
-              <label>Y</label>
+            <div className="transform-input-group">
+              <span className="input-label">Y</span>
               <input
                 type="number"
                 step="1"
@@ -188,8 +295,8 @@ const InspectorPanel = memo(function InspectorPanel({
                 onChange={(e) => propertiesManager?.setTransformProperty('rotation', 'y', e.target.value)}
               />
             </div>
-            <div className="axis-input">
-              <label>Z</label>
+            <div className="transform-input-group">
+              <span className="input-label">Z</span>
               <input
                 type="number"
                 step="1"
@@ -201,11 +308,11 @@ const InspectorPanel = memo(function InspectorPanel({
         </div>
 
         {/* Scale */}
-        <div className="property-group">
-          <label>Scale</label>
-          <div className="vector-input">
-            <div className="axis-input">
-              <label>X</label>
+        <div className="transform-row">
+          <div className="transform-label">Scale</div>
+          <div className="transform-inputs">
+            <div className="transform-input-group">
+              <span className="input-label">X</span>
               <input
                 type="number"
                 step="0.1"
@@ -214,8 +321,8 @@ const InspectorPanel = memo(function InspectorPanel({
                 onChange={(e) => propertiesManager?.setTransformProperty('scale', 'x', e.target.value)}
               />
             </div>
-            <div className="axis-input">
-              <label>Y</label>
+            <div className="transform-input-group">
+              <span className="input-label">Y</span>
               <input
                 type="number"
                 step="0.1"
@@ -224,8 +331,8 @@ const InspectorPanel = memo(function InspectorPanel({
                 onChange={(e) => propertiesManager?.setTransformProperty('scale', 'y', e.target.value)}
               />
             </div>
-            <div className="axis-input">
-              <label>Z</label>
+            <div className="transform-input-group">
+              <span className="input-label">Z</span>
               <input
                 type="number"
                 step="0.1"
@@ -521,6 +628,8 @@ const InspectorPanel = memo(function InspectorPanel({
         const transformResult = renderTransformTab()
         console.log('renderTransformTab 결과:', transformResult)
         return transformResult
+      case 'object':
+        return renderObjectTab()
       case 'material':
         return renderMaterialTab()
       case 'light':

@@ -507,3 +507,136 @@
   line-height: 1.4;
   opacity: 0.7;
 }
+
+/* 컴팩트한 트랜스폼 UI */
+.property-group.compact {
+  margin-bottom: 12px;
+}
+
+.group-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #e1e1e1;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.vector-input-compact {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.axis-input-compact {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.axis-label {
+  font-size: 10px;
+  color: #888;
+  margin-bottom: 2px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.axis-input-compact input {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 11px;
+  text-align: center;
+}
+
+.axis-input-compact input:focus {
+  outline: none;
+  border-color: #007ACC;
+  box-shadow: 0 0 0 1px #007ACC;
+}
+
+.axis-input-compact input:hover {
+  border-color: #666;
+}
+
+/* Unity 스타일 트랜스폼 UI */
+.transform-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  gap: 6px;
+}
+
+.transform-label {
+  min-width: 50px;
+  max-width: 50px;
+  font-size: 11px;
+  font-weight: 500;
+  color: #cccccc;
+  text-align: left;
+  flex-shrink: 0;
+}
+
+.transform-inputs {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.transform-input-group {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+}
+
+.input-label {
+  font-size: 9px;
+  color: #888;
+  font-weight: 500;
+  min-width: 6px;
+  max-width: 6px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.transform-input-group input {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 2px 3px;
+  border: 1px solid #555;
+  border-radius: 2px;
+  background: #2a2a2a;
+  color: #fff;
+  font-size: 10px;
+  text-align: right;
+  box-sizing: border-box;
+}
+
+.transform-input-group input:focus {
+  outline: none;
+  border-color: #007ACC;
+  box-shadow: 0 0 0 1px #007ACC;
+}
+
+.transform-input-group input:hover {
+  border-color: #666;
+  background: #333;
+}
+
+/* 트랜스폼 컨테이너 제약 */
+.transform-properties {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 8px;
+  box-sizing: border-box;
+}
