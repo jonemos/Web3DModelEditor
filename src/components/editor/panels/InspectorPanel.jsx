@@ -47,16 +47,8 @@ const InspectorPanel = memo(function InspectorPanel({
 
   // 선택된 객체 변경 시 PropertiesManager 업데이트
   useEffect(() => {
-    console.log('InspectorPanel useEffect 트리거됨:', {
-      hasPropertiesManager: !!propertiesManager,
-      selectedObject,
-      selectedObjectType: selectedObject?.constructor?.name
-    })
-    
     if (propertiesManager && selectedObject) {
-      console.log('PropertiesManager.setSelectedObject 호출 전')
       propertiesManager.setSelectedObject(selectedObject)
-      console.log('PropertiesManager.setSelectedObject 호출 후')
       
       // 강제 리렌더링 트리거
       setRefreshKey(prev => prev + 1)
@@ -79,42 +71,14 @@ const InspectorPanel = memo(function InspectorPanel({
     }, 100)
 
     return () => clearInterval(updateInterval)
-  }, [selectedObject, propertiesManager, lastUpdateTime])
+  }, [selectedObject, propertiesManager]) // lastUpdateTime 의존성 제거
 
   const objectType = propertiesManager?.getObjectType() || 'unknown'
-  
-  console.log('objectType 가져오기:', {
-    hasPropertiesManager: !!propertiesManager,
-    objectType,
-    refreshKey
-  })
-  
   const objectInfo = propertiesManager?.getObjectInfo()
-  
-  console.log('objectInfo 가져오기:', {
-    hasPropertiesManager: !!propertiesManager,
-    objectInfo,
-    refreshKey
-  })
-  
-  console.log('InspectorPanel 상태 체크:', {
-    hasPropertiesManager: !!propertiesManager,
-    hasSelectedObject: !!selectedObject,
-    objectType,
-    objectInfo,
-    refreshKey
-  })
 
   // 탭 목록 정의
   const getAvailableTabs = () => {
     if (!selectedObject) return []
-    
-    console.log('getAvailableTabs 호출됨:', {
-      selectedObject,
-      objectType,
-      objectName: selectedObject?.name,
-      objectConstructor: selectedObject?.constructor?.name
-    })
     
     const tabs = [
       { id: 'transform', label: '트랜스폼', icon: '🔄' }
@@ -135,7 +99,6 @@ const InspectorPanel = memo(function InspectorPanel({
       tabs.push({ id: 'camera', label: '카메라', icon: '📷' })
     }
 
-    console.log('생성된 탭들:', tabs)
     return tabs
   }
 
@@ -227,13 +190,7 @@ const InspectorPanel = memo(function InspectorPanel({
 
   // Transform 탭 렌더링
   const renderTransformTab = () => {
-    console.log('renderTransformTab 호출됨:', {
-      objectInfo: !!objectInfo,
-      objectInfoData: objectInfo
-    })
-    
     if (!objectInfo) {
-      console.log('objectInfo가 null이어서 null 반환')
       return <div style={{color: 'red', padding: '20px'}}>objectInfo가 없습니다</div>
     }
 
@@ -605,14 +562,6 @@ const InspectorPanel = memo(function InspectorPanel({
   }
 
   const renderTabContent = () => {
-    console.log('renderTabContent 디버깅:', {
-      selectedObject: !!selectedObject,
-      activeTab,
-      objectType,
-      objectInfo: !!objectInfo,
-      objectInfoDetails: objectInfo
-    })
-    
     if (!selectedObject) {
       return (
         <div className="no-selection">
@@ -625,9 +574,7 @@ const InspectorPanel = memo(function InspectorPanel({
 
     switch (activeTab) {
       case 'transform':
-        const transformResult = renderTransformTab()
-        console.log('renderTransformTab 결과:', transformResult)
-        return transformResult
+        return renderTransformTab()
       case 'object':
         return renderObjectTab()
       case 'material':

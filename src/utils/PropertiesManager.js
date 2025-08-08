@@ -32,83 +32,54 @@ export class PropertiesManager {
    * 선택된 객체 설정
    */
   setSelectedObject(object) {
-    console.log('PropertiesManager: setSelectedObject 시작', { object })
-    
     this.selectedObject = object
     this.threeObject = null
     
     if (!object) {
-      console.log('PropertiesManager: object가 없음')
       return
     }
 
     // 객체가 이미 Three.js 객체인지 확인
     if (object.isObject3D || object.isMesh || object.isLight || object.isCamera) {
-      console.log('PropertiesManager: Three.js 객체로 직접 설정')
       this.threeObject = object
     } 
     // EditorControls를 통해 실제 Three.js 객체 찾기
     else if (this.editorControls) {
-      console.log('PropertiesManager: EditorControls를 통해 객체 찾기 시도')
       const objectId = object.id || object
-      console.log('PropertiesManager: objectId:', objectId)
       
       this.threeObject = this.editorControls.findObjectById(objectId)
-      console.log('PropertiesManager: findObjectById 결과:', this.threeObject)
       
       // 찾지 못한 경우 에디터컨트롤의 현재 선택된 객체 사용
       if (!this.threeObject && this.editorControls.selectedObjects && this.editorControls.selectedObjects.length > 0) {
-        console.log('PropertiesManager: selectedObjects에서 가져오기')
         this.threeObject = this.editorControls.selectedObjects[0]
-        console.log('PropertiesManager: selectedObjects[0]:', this.threeObject)
       }
     }
-    
-    console.log('PropertiesManager: 최종 threeObject:', this.threeObject)
-    console.log('PropertiesManager: 최종 objectType:', this.getObjectType())
   }
 
   /**
    * 객체 타입 확인
    */
   getObjectType() {
-    console.log('PropertiesManager: getObjectType 호출됨', {
-      hasThreeObject: !!this.threeObject,
-      threeObject: this.threeObject,
-      isLight: this.threeObject?.isLight,
-      isCamera: this.threeObject?.isCamera,
-      isHelper: this.threeObject?.isHelper,
-      isMesh: this.threeObject?.isMesh,
-      isGroup: this.threeObject?.isGroup
-    })
-    
     if (!this.threeObject) {
-      console.log('PropertiesManager: threeObject가 없어서 unknown 반환')
       return 'unknown'
     }
     
     if (this.threeObject.isLight) {
-      console.log('PropertiesManager: light 타입으로 인식')
       return 'light'
     }
     if (this.threeObject.isCamera) {
-      console.log('PropertiesManager: camera 타입으로 인식')
       return 'camera'
     }
     if (this.threeObject.isHelper) {
-      console.log('PropertiesManager: helper 타입으로 인식')
       return 'helper'
     }
     if (this.threeObject.isMesh) {
-      console.log('PropertiesManager: mesh 타입으로 인식')
       return 'mesh'
     }
     if (this.threeObject.isGroup) {
-      console.log('PropertiesManager: group 타입으로 인식')
       return 'group'
     }
     
-    console.log('PropertiesManager: 기본값으로 mesh 반환')
     return 'mesh'
   }
 
@@ -338,13 +309,7 @@ export class PropertiesManager {
    * 객체 정보 가져오기
    */
   getObjectInfo() {
-    console.log('PropertiesManager: getObjectInfo 호출됨', {
-      hasThreeObject: !!this.threeObject,
-      threeObject: this.threeObject
-    })
-    
     if (!this.threeObject) {
-      console.log('PropertiesManager: threeObject가 없어서 null 반환')
       return null
     }
 
@@ -369,7 +334,6 @@ export class PropertiesManager {
       }
     }
     
-    console.log('PropertiesManager: 생성된 objectInfo:', info)
     return info
   }
 
