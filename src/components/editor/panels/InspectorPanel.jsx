@@ -1,6 +1,6 @@
-import { useState, memo } from 'react'
+import { useState, useEffect, memo } from 'react'
 import SceneHierarchyPanel from './SceneHierarchyPanel'
-import ObjectPropertiesPanel from './ObjectPropertiesPanel'
+import { PropertiesManager } from '../../../utils/PropertiesManager'
 import './InspectorPanel.css'
 
 const InspectorPanel = memo(function InspectorPanel({
@@ -22,38 +22,490 @@ const InspectorPanel = memo(function InspectorPanel({
   
   onClose
 }) {
-  // 탭 제거하고 세로 구조로 변경
+  const [activeTab, setActiveTab] = useState('transform')
+  const [propertiesManager, setPropertiesManager] = useState(null)
+  const [refreshKey, setRefreshKey] = useState(0) // 강제 리렌더링용
 
-  // 선택된 객체 타입 확인
-  const getSelectedObjectType = () => {
-    if (!selectedObject) return null
+  // PropertiesManager 초기화
+  useEffect(() => {
+    const manager = new PropertiesManager(editorControls)
     
-    // 3D 뷰에서 선택된 객체 가져오기
-    const threeObject = editorControls?.findObjectById(selectedObject.id || selectedObject)
+    // 속성 변경 콜백 등록
+    manager.onPropertyChange((changeData) => {
+      if (onObjectUpdate) {
+        onObjectUpdate(changeData)
+      }
+    })
     
-    if (threeObject) {
-      // Three.js 객체 타입별 분류
-      if (threeObject.isLight) return 'light'
-      if (threeObject.isCamera) return 'camera'
-      if (threeObject.isHelper) return 'helper'
-      if (threeObject.isMesh) return 'mesh'
-      if (threeObject.isGroup) return 'group'
+    setPropertiesManager(manager)
+    
+    return () => {
+      manager.dispose()
+    }
+  }, [editorControls, onObjectUpdate])
+
+  // 선택된 객체 변경 시 PropertiesManager 업데이트
+  useEffect(() => {
+    console.log('InspectorPanel useEffect 트리거됨:', {
+      hasPropertiesManager: !!propertiesManager,
+      selectedObject,
+      selectedObjectType: selectedObject?.constructor?.name
+    })
+    
+    if (propertiesManager && selectedObject) {
+      console.log('PropertiesManager.setSelectedObject 호출 전')
+      propertiesManager.setSelectedObject(selectedObject)
+      console.log('PropertiesManager.setSelectedObject 호출 후')
+      
+      // 강제 리렌더링 트리거
+      setRefreshKey(prev => prev + 1)
+    }
+  }, [propertiesManager, selectedObject])
+
+  const objectType = propertiesManager?.getObjectType() || 'unknown'
+  
+  console.log('objectType 가져오기:', {
+    hasPropertiesManager: !!propertiesManager,
+    objectType,
+    refreshKey
+  })
+  
+  const objectInfo = propertiesManager?.getObjectInfo()
+  
+  console.log('objectInfo 가져오기:', {
+    hasPropertiesManager: !!propertiesManager,
+    objectInfo,
+    refreshKey
+  })
+  
+  console.log('InspectorPanel 상태 체크:', {
+    hasPropertiesManager: !!propertiesManager,
+    hasSelectedObject: !!selectedObject,
+    objectType,
+    objectInfo,
+    refreshKey
+  })
+
+  // 탭 목록 정의
+  const getAvailableTabs = () => {
+    if (!selectedObject) return []
+    
+    const tabs = [
+      { id: 'transform', label: '트랜스폼', icon: '🔄' }
+    ]
+
+    if (objectType === 'mesh') {
+      tabs.push({ id: 'material', label: '머티리얼', icon: '🎨' })
     }
     
-    // 스토어 객체 타입별 분류
-    if (selectedObject.type === 'glb') return 'mesh'
-    if (selectedObject.type === 'basic') return 'mesh'
-    if (selectedObject.type === 'cube') return 'mesh'
-    if (selectedObject.type === 'ground') return 'mesh'
-    if (selectedObject.type === 'light') return 'light'
-    if (selectedObject.type === 'camera') return 'camera'
+    if (objectType === 'light') {
+      tabs.push({ id: 'light', label: '라이트', icon: '💡' })
+    }
     
-    return 'mesh' // 기본값
+    if (objectType === 'camera') {
+      tabs.push({ id: 'camera', label: '카메라', icon: '📷' })
+    }
+
+    return tabs
   }
 
-  const selectedObjectType = getSelectedObjectType()
+  const availableTabs = getAvailableTabs()
 
-  const renderPropertiesContent = () => {
+  // 현재 탭이 사용할 수 없는 경우 첫 번째 탭으로 변경
+  useEffect(() => {
+    if (availableTabs.length > 0 && !availableTabs.some(tab => tab.id === activeTab)) {
+      setActiveTab(availableTabs[0].id)
+    }
+  }, [availableTabs, activeTab])
+
+  // Transform 탭 렌더링
+  const renderTransformTab = () => {
+    console.log('renderTransformTab 호출됨:', {
+      objectInfo: !!objectInfo,
+      objectInfoData: objectInfo
+    })
+    
+    if (!objectInfo) {
+      console.log('objectInfo가 null이어서 null 반환')
+      return <div style={{color: 'red', padding: '20px'}}>objectInfo가 없습니다</div>
+    }
+
+    return (
+      <div className="transform-properties">
+        {/* Position */}
+        <div className="property-group">
+          <label>Position</label>
+          <div className="vector-input">
+            <div className="axis-input">
+              <label>X</label>
+              <input
+                type="number"
+                step="0.1"
+                value={objectInfo.position.x}
+                onChange={(e) => propertiesManager?.setTransformProperty('position', 'x', e.target.value)}
+              />
+            </div>
+            <div className="axis-input">
+              <label>Y</label>
+              <input
+                type="number"
+                step="0.1"
+                value={objectInfo.position.y}
+                onChange={(e) => propertiesManager?.setTransformProperty('position', 'y', e.target.value)}
+              />
+            </div>
+            <div className="axis-input">
+              <label>Z</label>
+              <input
+                type="number"
+                step="0.1"
+                value={objectInfo.position.z}
+                onChange={(e) => propertiesManager?.setTransformProperty('position', 'z', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Rotation */}
+        <div className="property-group">
+          <label>Rotation</label>
+          <div className="vector-input">
+            <div className="axis-input">
+              <label>X</label>
+              <input
+                type="number"
+                step="1"
+                value={objectInfo.rotation.x}
+                onChange={(e) => propertiesManager?.setTransformProperty('rotation', 'x', e.target.value)}
+              />
+            </div>
+            <div className="axis-input">
+              <label>Y</label>
+              <input
+                type="number"
+                step="1"
+                value={objectInfo.rotation.y}
+                onChange={(e) => propertiesManager?.setTransformProperty('rotation', 'y', e.target.value)}
+              />
+            </div>
+            <div className="axis-input">
+              <label>Z</label>
+              <input
+                type="number"
+                step="1"
+                value={objectInfo.rotation.z}
+                onChange={(e) => propertiesManager?.setTransformProperty('rotation', 'z', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Scale */}
+        <div className="property-group">
+          <label>Scale</label>
+          <div className="vector-input">
+            <div className="axis-input">
+              <label>X</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={objectInfo.scale.x}
+                onChange={(e) => propertiesManager?.setTransformProperty('scale', 'x', e.target.value)}
+              />
+            </div>
+            <div className="axis-input">
+              <label>Y</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={objectInfo.scale.y}
+                onChange={(e) => propertiesManager?.setTransformProperty('scale', 'y', e.target.value)}
+              />
+            </div>
+            <div className="axis-input">
+              <label>Z</label>
+              <input
+                type="number"
+                step="0.1"
+                min="0.1"
+                value={objectInfo.scale.z}
+                onChange={(e) => propertiesManager?.setTransformProperty('scale', 'z', e.target.value)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Material 탭 렌더링
+  const renderMaterialTab = () => {
+    if (objectType !== 'mesh') return <div className="not-available">메시 객체가 아닙니다</div>
+
+    return (
+      <div className="material-properties">
+        <div className="property-group">
+          <label>Color</label>
+          <input
+            type="color"
+            value={propertiesManager?.getMaterialProperty('color') || '#ffffff'}
+            onChange={(e) => propertiesManager?.setMaterialProperty('color', e.target.value)}
+          />
+        </div>
+
+        <div className="property-group">
+          <label>Metalness</label>
+          <div className="range-input">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={propertiesManager?.getMaterialProperty('metalness') || 0}
+              onChange={(e) => propertiesManager?.setMaterialProperty('metalness', e.target.value)}
+            />
+            <span>{(propertiesManager?.getMaterialProperty('metalness') || 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="property-group">
+          <label>Roughness</label>
+          <div className="range-input">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={propertiesManager?.getMaterialProperty('roughness') || 0.8}
+              onChange={(e) => propertiesManager?.setMaterialProperty('roughness', e.target.value)}
+            />
+            <span>{(propertiesManager?.getMaterialProperty('roughness') || 0.8).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="property-group">
+          <label>Emissive</label>
+          <input
+            type="color"
+            value={propertiesManager?.getMaterialProperty('emissive') || '#000000'}
+            onChange={(e) => propertiesManager?.setMaterialProperty('emissive', e.target.value)}
+          />
+        </div>
+
+        <div className="property-group">
+          <label>Emissive Intensity</label>
+          <div className="range-input">
+            <input
+              type="range"
+              min="0"
+              max="2"
+              step="0.01"
+              value={propertiesManager?.getMaterialProperty('emissiveIntensity') || 0}
+              onChange={(e) => propertiesManager?.setMaterialProperty('emissiveIntensity', e.target.value)}
+            />
+            <span>{(propertiesManager?.getMaterialProperty('emissiveIntensity') || 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div className="property-group">
+          <label>Opacity</label>
+          <div className="range-input">
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={propertiesManager?.getMaterialProperty('opacity') || 1}
+              onChange={(e) => propertiesManager?.setMaterialProperty('opacity', e.target.value)}
+            />
+            <span>{(propertiesManager?.getMaterialProperty('opacity') || 1).toFixed(2)}</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Light 탭 렌더링
+  const renderLightTab = () => {
+    if (objectType !== 'light') return <div className="not-available">라이트 객체가 아닙니다</div>
+
+    const lightType = propertiesManager?.getLightProperty('type')
+
+    return (
+      <div className="light-properties">
+        <div className="property-group">
+          <label>Type</label>
+          <span className="readonly-value">{lightType}</span>
+        </div>
+
+        <div className="property-group">
+          <label>Color</label>
+          <input
+            type="color"
+            value={propertiesManager?.getLightProperty('color') || '#ffffff'}
+            onChange={(e) => propertiesManager?.setLightProperty('color', e.target.value)}
+          />
+        </div>
+
+        <div className="property-group">
+          <label>Intensity</label>
+          <div className="range-input">
+            <input
+              type="range"
+              min="0"
+              max="5"
+              step="0.1"
+              value={propertiesManager?.getLightProperty('intensity') || 1}
+              onChange={(e) => propertiesManager?.setLightProperty('intensity', e.target.value)}
+            />
+            <span>{(propertiesManager?.getLightProperty('intensity') || 1).toFixed(1)}</span>
+          </div>
+        </div>
+
+        {/* SpotLight specific properties */}
+        {lightType === 'SpotLight' && (
+          <>
+            <div className="property-group">
+              <label>Distance</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                value={propertiesManager?.getLightProperty('distance') || 0}
+                onChange={(e) => propertiesManager?.setLightProperty('distance', e.target.value)}
+              />
+            </div>
+
+            <div className="property-group">
+              <label>Angle</label>
+              <div className="range-input">
+                <input
+                  type="range"
+                  min="0"
+                  max="1.57"
+                  step="0.01"
+                  value={propertiesManager?.getLightProperty('angle') || 0}
+                  onChange={(e) => propertiesManager?.setLightProperty('angle', e.target.value)}
+                />
+                <span>{(propertiesManager?.getLightProperty('angle') || 0).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="property-group">
+              <label>Penumbra</label>
+              <div className="range-input">
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={propertiesManager?.getLightProperty('penumbra') || 0}
+                  onChange={(e) => propertiesManager?.setLightProperty('penumbra', e.target.value)}
+                />
+                <span>{(propertiesManager?.getLightProperty('penumbra') || 0).toFixed(2)}</span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* PointLight and SpotLight distance/decay */}
+        {(lightType === 'PointLight' || lightType === 'SpotLight') && (
+          <>
+            {lightType === 'PointLight' && (
+              <div className="property-group">
+                <label>Distance</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={propertiesManager?.getLightProperty('distance') || 0}
+                  onChange={(e) => propertiesManager?.setLightProperty('distance', e.target.value)}
+                />
+              </div>
+            )}
+
+            <div className="property-group">
+              <label>Decay</label>
+              <div className="range-input">
+                <input
+                  type="range"
+                  min="0"
+                  max="3"
+                  step="0.1"
+                  value={propertiesManager?.getLightProperty('decay') || 1}
+                  onChange={(e) => propertiesManager?.setLightProperty('decay', e.target.value)}
+                />
+                <span>{(propertiesManager?.getLightProperty('decay') || 1).toFixed(1)}</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  // Camera 탭 렌더링
+  const renderCameraTab = () => {
+    if (objectType !== 'camera') return <div className="not-available">카메라 객체가 아닙니다</div>
+
+    return (
+      <div className="camera-properties">
+        <div className="property-group">
+          <label>Type</label>
+          <span className="readonly-value">{propertiesManager?.getCameraProperty('type')}</span>
+        </div>
+
+        <div className="property-group">
+          <label>FOV</label>
+          <div className="range-input">
+            <input
+              type="range"
+              min="10"
+              max="120"
+              step="1"
+              value={propertiesManager?.getCameraProperty('fov') || 75}
+              onChange={(e) => propertiesManager?.setCameraProperty('fov', e.target.value)}
+            />
+            <span>{propertiesManager?.getCameraProperty('fov') || 75}°</span>
+          </div>
+        </div>
+
+        <div className="property-group">
+          <label>Near</label>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={propertiesManager?.getCameraProperty('near') || 0.1}
+            onChange={(e) => propertiesManager?.setCameraProperty('near', e.target.value)}
+          />
+        </div>
+
+        <div className="property-group">
+          <label>Far</label>
+          <input
+            type="number"
+            min="1"
+            step="1"
+            value={propertiesManager?.getCameraProperty('far') || 1000}
+            onChange={(e) => propertiesManager?.setCameraProperty('far', e.target.value)}
+          />
+        </div>
+      </div>
+    )
+  }
+
+  const renderTabContent = () => {
+    console.log('renderTabContent 디버깅:', {
+      selectedObject: !!selectedObject,
+      activeTab,
+      objectType,
+      objectInfo: !!objectInfo,
+      objectInfoDetails: objectInfo
+    })
+    
     if (!selectedObject) {
       return (
         <div className="no-selection">
@@ -64,100 +516,19 @@ const InspectorPanel = memo(function InspectorPanel({
       )
     }
 
-    switch (selectedObjectType) {
-      case 'mesh':
-        return (
-          <ObjectPropertiesPanel
-            selectedObject={selectedObject}
-            onObjectUpdate={onObjectUpdate}
-          />
-        )
-      
+    switch (activeTab) {
+      case 'transform':
+        const transformResult = renderTransformTab()
+        console.log('renderTransformTab 결과:', transformResult)
+        return transformResult
+      case 'material':
+        return renderMaterialTab()
       case 'light':
-        return (
-          <div className="properties-section">
-            <h4>라이트 속성</h4>
-            <div className="property-group">
-              <label>타입</label>
-              <span>{selectedObject.lightType || 'DirectionalLight'}</span>
-            </div>
-            <div className="property-group">
-              <label>색상</label>
-              <input 
-                type="color" 
-                defaultValue="#ffffff"
-                onChange={(e) => {
-                  // 라이트 색상 변경 로직
-                }}
-              />
-            </div>
-            <div className="property-group">
-              <label>강도</label>
-              <input 
-                type="range" 
-                min="0" 
-                max="2" 
-                step="0.1"
-                defaultValue="1"
-                onChange={(e) => {
-                  // 라이트 강도 변경 로직
-                }}
-              />
-            </div>
-          </div>
-        )
-      
+        return renderLightTab()
       case 'camera':
-        return (
-          <div className="properties-section">
-            <h4>카메라 속성</h4>
-            <div className="property-group">
-              <label>타입</label>
-              <span>PerspectiveCamera</span>
-            </div>
-            <div className="property-group">
-              <label>FOV</label>
-              <input 
-                type="range" 
-                min="10" 
-                max="120" 
-                defaultValue="75"
-                onChange={(e) => {
-                  // 카메라 FOV 변경 로직
-                }}
-              />
-            </div>
-          </div>
-        )
-      
-      case 'helper':
-        return (
-          <div className="properties-section">
-            <h4>헬퍼 속성</h4>
-            <div className="property-group">
-              <label>타입</label>
-              <span>{selectedObject.helperType || 'Helper'}</span>
-            </div>
-            <div className="property-group">
-              <label>가시성</label>
-              <input 
-                type="checkbox" 
-                defaultChecked={true}
-                onChange={(e) => {
-                  // 헬퍼 가시성 변경 로직
-                }}
-              />
-            </div>
-          </div>
-        )
-      
+        return renderCameraTab()
       default:
-        return (
-          <ObjectPropertiesPanel
-            selectedObject={selectedObject}
-            onObjectUpdate={onObjectUpdate}
-          />
-        )
+        return renderTransformTab()
     }
   }
 
@@ -195,9 +566,32 @@ const InspectorPanel = memo(function InspectorPanel({
         <div className="properties-section-wrapper">
           <div className="section-header">
             <h4>속성</h4>
+            {selectedObject && objectInfo && (
+              <div className="object-info">
+                <span className="object-name">{objectInfo.name}</span>
+                <span className="object-type">({objectType})</span>
+              </div>
+            )}
           </div>
+          
+          {/* 탭 네비게이션 */}
+          {selectedObject && availableTabs.length > 0 && (
+            <div className="properties-tabs">
+              {availableTabs.map(tab => (
+                <button
+                  key={tab.id}
+                  className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <span className="tab-icon">{tab.icon}</span>
+                  <span className="tab-label">{tab.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="properties-container">
-            {renderPropertiesContent()}
+            {renderTabContent()}
           </div>
         </div>
       </div>

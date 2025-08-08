@@ -28,9 +28,9 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
       if (threeObject) {
         editorControls.selectObject(threeObject)
       }
-    } else {
-      onObjectSelect(obj)
     }
+    // 항상 상위 컴포넌트에 선택 상태 전달
+    onObjectSelect(obj)
   }
 
   const handleNameDoubleClick = (obj) => {
