@@ -87,7 +87,7 @@
   gap: 8px;
 }
 
-.object-item {
+.library-item {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -102,18 +102,18 @@
   aspect-ratio: 1; /* 정사각형 비율 강제 */
 }
 
-.object-item:hover {
+.library-item:hover {
   background: rgba(255, 165, 0, 0.1);
   border-color: rgba(255, 165, 0, 0.4);
   transform: translateY(-1px);
   box-shadow: 0 2px 8px rgba(255, 165, 0, 0.2);
 }
 
-.object-item:active {
+.library-item:active {
   transform: translateY(0);
 }
 
-.object-thumbnail {
+.library-thumbnail {
   width: 40px; /* 기존 40px에서 축소 */
   height: 40px; /* 기존 40px에서 축소 */
   display: flex;
@@ -129,11 +129,11 @@
 }
 
 /* 라이브러리 메쉬 전용 썸네일 hover 효과 */
-.library-mesh .object-thumbnail {
+.library-mesh .library-thumbnail {
   position: relative;
 }
 
-.library-mesh:hover .object-thumbnail {
+.library-mesh:hover .library-thumbnail {
   transform: scale(1.8);
   z-index: 1000;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.8));
@@ -145,17 +145,17 @@
 }
 
 /* 커스텀 메쉬 전용 썸네일 hover 효과 */
-.custom-mesh .object-thumbnail {
+.custom-mesh .library-thumbnail {
   position: relative;
 }
 
-.custom-mesh:hover .object-thumbnail {
+.custom-mesh:hover .library-thumbnail {
   transform: scale(1.8);
   z-index: 1000;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.8));
 }
 
-.custom-mesh:hover .object-thumbnail img {
+.custom-mesh:hover .library-thumbnail img {
   border: 2px solid rgba(76, 175, 80, 0.8);
   border-radius: 6px;
 }
@@ -191,69 +191,69 @@
   100% { transform: rotate(360deg); }
 }
 
-.object-item:hover .object-thumbnail {
+.library-item:hover .library-thumbnail {
   color: #64b5f6;
 }
 
 /* 사용자 정의 객체 스타일 */
-.object-item.custom-object {
+.library-item.custom-object {
   border: 1px solid rgba(255, 193, 7, 0.3);
   background: rgba(255, 193, 7, 0.05);
   position: relative;
 }
 
-.object-item.custom-object:hover {
+.library-item.custom-object:hover {
   background: rgba(255, 193, 7, 0.15);
   border-color: rgba(255, 193, 7, 0.6);
 }
 
-.object-item.custom-object .object-thumbnail {
+.library-item.custom-object .library-thumbnail {
   color: #ffc107;
 }
 
-.object-item.custom-object:hover .object-thumbnail {
+.library-item.custom-object:hover .library-thumbnail {
   color: #ffeb3b;
 }
 
 /* 라이브러리 메쉬 스타일 */
-.object-item.library-mesh {
+.library-item.library-mesh {
   border: 1px solid rgba(0, 255, 127, 0.3);
   background: rgba(0, 255, 127, 0.05);
   position: relative;
   overflow: visible; /* 확대된 썸네일이 보이도록 */
 }
 
-.object-item.library-mesh:hover {
+.library-item.library-mesh:hover {
   background: rgba(0, 255, 127, 0.15);
   border-color: rgba(0, 255, 127, 0.6);
 }
 
-.object-item.library-mesh .object-thumbnail {
+.library-item.library-mesh .library-thumbnail {
   color: #00ff7f;
 }
 
-.object-item.library-mesh:hover .object-thumbnail {
+.library-item.library-mesh:hover .library-thumbnail {
   color: #7fffd4;
 }
 
 /* 커스텀 메쉬 스타일 */
-.object-item.custom-mesh {
+.library-item.custom-mesh {
   border: 1px solid rgba(76, 175, 80, 0.3);
   background: rgba(76, 175, 80, 0.05);
   position: relative;
   overflow: visible; /* 확대된 썸네일이 보이도록 */
 }
 
-.object-item.custom-mesh:hover {
+.library-item.custom-mesh:hover {
   background: rgba(76, 175, 80, 0.15);
   border-color: rgba(76, 175, 80, 0.6);
 }
 
-.object-item.custom-mesh .object-thumbnail {
+.library-item.custom-mesh .library-thumbnail {
   color: #4caf50;
 }
 
-.object-item.custom-mesh:hover .object-thumbnail {
+.library-item.custom-mesh:hover .library-thumbnail {
   color: #81c784;
 }
 
@@ -277,14 +277,14 @@
   z-index: 1001; /* 호버된 썸네일(z-index: 1000)보다 높게 설정 */
 }
 
-.object-item.custom-object:hover .delete-btn {
+.library-item.custom-object:hover .delete-btn {
   display: flex;
   z-index: 1002; /* 호버 시 더 높은 z-index */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); /* 그림자 추가로 더 명확하게 */
 }
 
 /* 커스텀 메쉬 삭제 버튼도 표시 */
-.object-item.custom-mesh:hover .delete-btn {
+.library-item.custom-mesh:hover .delete-btn {
   display: flex;
   z-index: 1002; /* 호버 시 더 높은 z-index */
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); /* 그림자 추가로 더 명확하게 */
@@ -302,7 +302,7 @@
 }
 
 /* 드래그 중 스타일 */
-.object-item.dragging {
+.library-item.dragging {
   opacity: 0.6;
   transform: rotate(5deg);
 }
@@ -338,11 +338,11 @@
     gap: 6px;
   }
   
-  .object-item {
+  .library-item {
     padding: 6px 3px;
   }
   
-  .object-thumbnail {
+  .library-thumbnail {
     width: 25px;
     height: 25px;
   }

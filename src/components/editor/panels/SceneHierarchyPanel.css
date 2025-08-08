@@ -5,10 +5,6 @@
 .scene-hierarchy-panel .object-item.selected,
 .object-item.selected {
   background-color: #ff8c00 !important;
-  border: 2px solid #ff6600 !important;
-  border-left: 3px solid #ff6600 !important;
-  box-shadow: 0 0 8px rgba(255, 140, 0, 0.8) !important;
-  transform: scale(1.02) !important;
 }
 
 /* 객체 아이템 가로 정렬 스타일 - 최고 우선순위 */
@@ -19,16 +15,19 @@
   flex-direction: row !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: 8px !important;
-  padding: 4px 8px !important;
-  margin: 2px 0 !important;
+  gap: 6px !important;
+  padding: 3px 6px !important;
+  margin: 1px 0 !important;
   border-radius: 3px !important;
   background: #252525 !important;
   border-left: 2px solid transparent !important;
   transition: all 0.2s ease !important;
-  min-height: 28px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  height: 20px !important;
   width: 100% !important;
   box-sizing: border-box !important;
+  font-size: 11px !important;
 }
 
 .scene-hierarchy-panel .objects-list .object-item:hover,
