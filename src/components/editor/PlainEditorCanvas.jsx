@@ -817,31 +817,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             // Model size and center calculated
             
-            // 모델이 너무 크거나 작으면 스케일 조정
-            const maxSize = Math.max(size.x, size.y, size.z);
-            let targetScale = 1;
-            
-            if (maxSize > 10) {
-              // 너무 크면 스케일 다운
-              targetScale = 5 / maxSize;
-              // Model is too large, scaling down
-            } else if (maxSize < 0.1) {
-              // 너무 작으면 스케일 업
-              targetScale = 1 / maxSize;
-              // Model is too small, scaling up
-            }
-            
             // 모델을 원점 중심으로 이동 (선택사항)
             model.position.sub(center);
             
             // 모델 위치 설정 (에디터에서 설정된 위치)
             model.position.set(obj.position.x, obj.position.y, obj.position.z);
             model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
-            model.scale.set(
-              obj.scale.x * targetScale, 
-              obj.scale.y * targetScale, 
-              obj.scale.z * targetScale
-            );
+            model.scale.set(obj.scale.x, obj.scale.y, obj.scale.z); // 자동 스케일 조정 제거
             
             // 메타데이터 설정
             model.name = obj.name;
@@ -949,27 +931,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
             
-            // 모델이 너무 크거나 작으면 스케일 조정
-            const maxSize = Math.max(size.x, size.y, size.z);
-            let targetScale = 1;
-            
-            if (maxSize > 10) {
-              targetScale = 5 / maxSize;
-            } else if (maxSize < 0.1) {
-              targetScale = 1 / maxSize;
-            }
-            
             // 모델을 원점 중심으로 이동
             model.position.sub(center);
             
             // 모델 위치 설정
             model.position.set(obj.position.x, obj.position.y, obj.position.z);
             model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
-            model.scale.set(
-              obj.scale.x * targetScale, 
-              obj.scale.y * targetScale, 
-              obj.scale.z * targetScale
-            );
+            model.scale.set(obj.scale.x, obj.scale.y, obj.scale.z); // 자동 스케일 조정 제거
             
             // 메타데이터 설정
             model.name = obj.name;
