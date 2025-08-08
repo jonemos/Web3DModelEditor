@@ -98,82 +98,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
 
-    // Add floor with texture
-    const defaultFloorSize = 20; // 기본 바닥 크기
-    const floorGeometry = new THREE.PlaneGeometry(defaultFloorSize, defaultFloorSize);
-    
-    // 텍스처 로더 생성
-    const textureLoader = new THREE.TextureLoader();
-    
-    // 체크보드 패턴 텍스처 생성 (기본)
-    const textureCanvas = document.createElement('canvas');
-    textureCanvas.width = 512;
-    textureCanvas.height = 512;
-    const context = textureCanvas.getContext('2d');
-    
-    const tileSize = 64;
-    const tilesPerRow = textureCanvas.width / tileSize;
-    
-    for (let x = 0; x < tilesPerRow; x++) {
-      for (let y = 0; y < tilesPerRow; y++) {
-        const isEven = (x + y) % 2 === 0;
-        context.fillStyle = isEven ? '#f0f0f0' : '#e0e0e0';
-        context.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-      }
-    }
-    
-    const floorTexture = new THREE.CanvasTexture(textureCanvas);
-    floorTexture.wrapS = THREE.RepeatWrapping;
-    floorTexture.wrapT = THREE.RepeatWrapping;
-    floorTexture.repeat.set(defaultFloorSize / 4, defaultFloorSize / 4); // 텍스처 반복
-    
-    const floorMaterial = new THREE.MeshStandardMaterial({ 
-      map: floorTexture,
-      roughness: 0.8,
-      metalness: 0.1
-    });
-    
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    floor.name = 'Ground';
-    floor.userData = { 
-      id: 'ground_floor',
-      type: 'ground'
-    };
-    scene.add(floor);
-    
-    // 선택 가능한 오브젝트로 등록
-    editorControls.addSelectableObject(floor);
-    
-    // 로드된 오브젝트로 기록 (중복 생성 방지)
-    loadedObjectsRef.current.set('ground_floor', floor);
-    
-    // 바닥을 에디터 스토어에 등록 (중복 확인)
-    const { addObject, objects } = useEditorStore.getState();
-    const existingGround = objects.find(obj => obj.id === 'ground_floor');
-    
-    if (!existingGround) {
-      addObject({
-        id: 'ground_floor',
-        name: 'Ground',
-        type: 'ground',
-        geometry: 'PlaneGeometry',
-        params: [defaultFloorSize, defaultFloorSize],
-        position: { x: 0, y: 0, z: 0 },
-        rotation: { x: -Math.PI / 2, y: 0, z: 0 },
-        scale: { x: 1, y: 1, z: 1 },
-        visible: true,
-        material: {
-          type: 'MeshStandardMaterial',
-          color: 0xffffff,
-          roughness: 0.8,
-          metalness: 0.1,
-          hasTexture: true
-        }
-      });
-    }
-
     // Test cube
     const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
     const cubeMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
@@ -1059,10 +983,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         editorControlsRef.current.selectObject(mesh);
         
         console.log('기본 도형 씬에 추가 완료:', mesh);
-      } else if (obj.type === 'ground') {
-        // 바닥 객체 처리 (시스템 객체, 이미 생성되어 있으므로 스킵)
-        console.log('바닥 객체는 이미 생성되어 있습니다:', obj.name);
-        // 바닥은 초기화 시 이미 생성되므로 여기서는 처리하지 않음
       }
     });
     

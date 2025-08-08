@@ -268,9 +268,9 @@ export const useEditorStore = create((set, get) => {
       ...state.clipboard,
       id: Date.now(), // 새로운 고유 ID 생성
       position: {
-        x: (state.clipboard.position?.x || 0) + 1, // 약간 오프셋을 주어 겹치지 않도록
+        x: state.clipboard.position?.x || 0, // 복사한 위치 그대로 사용
         y: state.clipboard.position?.y || 0,
-        z: (state.clipboard.position?.z || 0) + 1
+        z: state.clipboard.position?.z || 0
       }
     };
     
