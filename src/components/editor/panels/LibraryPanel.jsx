@@ -180,8 +180,6 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   const handleClick = (object) => {
     // 클릭으로 객체를 중앙에 추가
     if (onObjectDrop) {
-      console.log('Library panel click:', object); // 디버깅용 로그
-      
       if (object.type === 'custom') {
         try {
           // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함

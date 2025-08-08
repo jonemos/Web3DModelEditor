@@ -25,8 +25,6 @@ export class TransformManager {
     
     // 초기 설정 적용
     this.applyInitialSettings();
-    
-    console.log('TransformManager initialized with separated input system');
   }
 
   /**
@@ -197,7 +195,6 @@ export class TransformManager {
     const selectedCount = this.objectSelector.selectedObjects?.length || 0;
     this.objectSelector.deselectAllObjects();
     
-    console.log(`Deselected ${selectedCount} objects`);
     return true;
   }
 
@@ -212,7 +209,6 @@ export class TransformManager {
     const selectableObjects = this.objectSelector.getSelectableObjects();
     if (selectableObjects && selectableObjects.length > 0) {
       this.objectSelector.selectMultipleObjects(selectableObjects);
-      console.log(`Selected all ${selectableObjects.length} objects`);
       return true;
     }
 
@@ -238,7 +234,6 @@ export class TransformManager {
       this.removeObjectFromScene(object);
     });
 
-    console.log(`Deleted ${deleteCount} objects`);
     return true;
   }
 
@@ -265,7 +260,6 @@ export class TransformManager {
       this.selectObjects(clonedObjects);
     }
 
-    console.log(`Duplicated ${clonedObjects.length} objects`);
     return clonedObjects;
   }
 
@@ -282,7 +276,6 @@ export class TransformManager {
 
     if (group) {
       this.selectObjects([group]);
-      console.log(`Grouped ${selectedObjects.length} objects`);
       return group;
     }
 
@@ -305,7 +298,6 @@ export class TransformManager {
     const children = this.ungroupObject(selectedObject);
     if (children.length > 0) {
       this.selectObjects(children);
-      console.log(`Ungrouped ${children.length} objects`);
       return children;
     }
 
@@ -863,8 +855,6 @@ export class TransformManager {
     this.objectSelector = null;
     this.editorStore = null;
     this.keyboardController = null;
-
-    console.log('TransformManager disposed');
   }
 }
 

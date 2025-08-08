@@ -117,8 +117,6 @@ export class PostProcessingManager {
     };
     
     this.initializeComposer();
-    
-    console.log('PostProcessingManager initialized');
   }
 
   /**
@@ -430,7 +428,6 @@ export class PostProcessingManager {
     if (this.effectSettings[effectName]) {
       this.effectSettings[effectName].enabled = enabled;
       this.updateComposer();
-      console.log(`Effect '${effectName}' ${enabled ? 'enabled' : 'disabled'}`);
     }
   }
 
@@ -445,8 +442,6 @@ export class PostProcessingManager {
       if (this.effectSettings[effectName].enabled) {
         this.updateComposer();
       }
-      
-      console.log(`Updated settings for '${effectName}'`);
     }
   }
 

@@ -20,15 +20,6 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
 
   // 다중 선택된 객체들을 가져오기
   const selectedObjects = editorControls?.selectedObjects || []
-  
-  // 다중 선택 디버깅
-  console.log('SceneHierarchyPanel - 선택 상태:', {
-    selectedObject,
-    selectedObjects,
-    selectedObjectsCount: selectedObjects.length,
-    isArray: Array.isArray(selectedObject),
-    type: typeof selectedObject
-  })
 
   const handleNameClick = (obj) => {
     // EditorControls를 통해 실제 Three.js 오브젝트 선택
@@ -103,17 +94,6 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
     
     const isSelected = isSingleSelected || isMultiSelected
     const isEditing = editingId === obj.id
-    
-    // 디버깅용 로그 - 선택된 경우만
-    if (isSelected) {
-      console.log('선택된 오브젝트:', {
-        objId: obj.id,
-        objName: obj.name,
-        isSingleSelected,
-        isMultiSelected,
-        selectedObjectsCount: selectedObjects.length
-      })
-    }
     
     return (
       <div 

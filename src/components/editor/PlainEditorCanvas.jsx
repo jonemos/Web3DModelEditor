@@ -254,7 +254,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         const data = event.dataTransfer.getData('text/plain');
         if (data) {
           const objectData = JSON.parse(data);
-          console.log('드롭된 객체 데이터:', objectData);
           
           // 기본 에셋인 경우 별도 처리
           if (objectData.type === 'start_position' || objectData.type === 'directional_light' || 
@@ -263,8 +262,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
               objectData.type === 'fog' || objectData.type === 'skybox' || 
               objectData.type === 'post_process' || objectData.type === 'camera_helper' ||
               objectData.type === 'grid_helper' || objectData.type === 'axes_helper') {
-            
-            console.log('기본 에셋 드롭 처리:', objectData.type, objectData.name);
             
             // 마우스 위치를 3D 좌표로 변환
             const rect = canvas.getBoundingClientRect();
@@ -421,7 +418,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
               // 새로 추가된 객체 선택
               setSelectedObject(uniqueId);
               
-              console.log('기본 에셋 추가 완료:', uniqueId);
             }
             
             return; // 기본 geometry 처리 로직을 건너뛰기
@@ -429,7 +425,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
           
           // 커스텀 메쉬나 라이브러리 메쉬인 경우 별도 처리
           if (objectData.type === 'custom' || objectData.type === 'library') {
-            console.log('커스텀/라이브러리 메쉬 드롭 처리:', objectData.type, objectData.name);
             
             // 마우스 위치를 3D 좌표로 변환
             const rect = canvas.getBoundingClientRect();
@@ -451,8 +446,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             if (objectData.type === 'custom') {
               // 커스텀 메쉬: GLB 데이터를 Blob URL로 변환
-              console.log('커스텀 메쉬 GLB 데이터:', typeof objectData.glbData, objectData.glbData);
-              
               try {
                 const glbMeshManager = getGLBMeshManager();
                 modelUrl = glbMeshManager.createBlobURL(objectData.glbData);
@@ -517,8 +510,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                 if (objectData.type === 'custom') {
                   URL.revokeObjectURL(modelUrl);
                 }
-                
-                console.log('커스텀/라이브러리 메쉬 로드 완료:', uniqueId);
               },
               undefined,
               (error) => {
@@ -579,8 +570,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             case 'CustomGeometry':
               // 사용자 정의 객체 복제
               if (objectData.glbData) {
-                console.log('커스텀 지오메트리 GLB 데이터 처리:', typeof objectData.glbData, objectData.glbData);
-                
                 try {
                   const glbMeshManager = getGLBMeshManager();
                   const url = glbMeshManager.createBlobURL(objectData.glbData);
@@ -821,10 +810,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
           (gltf) => {
             const model = gltf.scene;
             
-            // GLB loaded successfully
-            console.log(`GLB 파일 로딩 성공: ${obj.name}`, model);
-            console.log(`GLB 파일 경로: ${glbSource}`);
-            
             // 바운딩 박스 계산하여 모델 크기 확인
             const box = new THREE.Box3().setFromObject(model);
             const size = box.getSize(new THREE.Vector3());
@@ -890,10 +875,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             // GLB file loading completed
           },
-          (progress) => {
-            // GLB loading progress
-            console.log(`GLB 로딩 진행 중: ${obj.name}`, progress);
-          },
+          undefined,
           (error) => {
             // GLB file loading error
             console.error(`GLB 파일 로딩 실패: ${obj.name}`, error);
@@ -901,7 +883,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             console.error('객체 정보:', obj);
             
             // GLB 로딩 실패 시 기본 도형으로 대체
-            console.warn(`GLB 로딩 실패로 인해 기본 박스로 대체: ${obj.name}`);
             
             // 기본 박스 생성
             const geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -934,7 +915,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         );
       } else if (obj.type === 'glb' && obj.glbData) {
         // GLB 데이터가 있는 경우 (사용자 정의 객체)
-        console.log('GLB 데이터 로딩 시작:', obj.name, typeof obj.glbData, obj.glbData);
         
         // GLB 데이터를 올바른 형태로 변환
         let binaryData;
@@ -952,8 +932,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
           console.error('지원되지 않는 GLB 데이터 형식:', typeof obj.glbData, obj.glbData);
           return;
         }
-        
-        console.log('변환된 GLB 데이터:', binaryData.byteLength, 'bytes');
         
         // Blob에서 URL 생성
         const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
