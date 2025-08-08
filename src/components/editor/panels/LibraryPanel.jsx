@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { generateThumbnail } from '../../../utils/thumbnailGenerator';
 import { useEditorStore } from '../../../store/editorStore';
-import { MeshLibraryManager } from '../../../utils/meshLibraryManager';
+import { getGLBMeshManager } from '../../../utils/GLBMeshManager';
 import './LibraryPanel.css';
 
 const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
@@ -10,7 +9,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   const [libraryMeshes, setLibraryMeshes] = useState([]); // 라이브러리 메쉬 상태 추가
   const draggedObject = useRef(null);
   const { customMeshes, loadCustomMeshes } = useEditorStore();
-  const libraryManager = useRef(new MeshLibraryManager());
+  const glbMeshManager = useRef(getGLBMeshManager());
 
   // 3D 객체 라이브러리 데이터
   const objectLibrary = [
@@ -60,14 +59,14 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
   // 컴포넌트 마운트 시 커스텀 메쉬 로드
   useEffect(() => {
-    const meshes = libraryManager.current.getCustomMeshes();
+    const meshes = glbMeshManager.current.getCustomMeshes();
     loadCustomMeshes(meshes);
   }, [loadCustomMeshes]);
 
   // 커스텀 메쉬 추가 이벤트 리스너
   useEffect(() => {
     const handleCustomMeshAdded = (event) => {
-      const meshes = libraryManager.current.getCustomMeshes();
+      const meshes = glbMeshManager.current.getCustomMeshes();
       loadCustomMeshes(meshes);
     };
 
@@ -97,41 +96,8 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   useEffect(() => {
     const loadLibraryMeshes = async () => {
       try {
-        // library/mesh 폴더의 GLB 파일 목록
-        const meshFiles = [
-          { filename: '111.glb', name: '메쉬 111' },
-          { filename: '222.glb', name: '메쉬 222' }
-        ];
-
-        const meshObjects = [];
-        
-        // 각 파일에 대해 존재 여부 확인 및 썸네일 생성
-        for (const file of meshFiles) {
-          const glbUrl = `/library/mesh/${file.filename}`;
-          
-          // 파일 존재 여부 확인
-          try {
-            const response = await fetch(glbUrl, { method: 'HEAD' });
-            if (!response.ok) {
-              continue; // 파일이 없으면 건너뛰기
-            }
-          } catch (error) {
-            continue; // 파일 확인 실패 시 건너뛰기
-          }
-          
-          const meshObject = {
-            id: `library_${file.filename.replace('.glb', '')}`,
-            name: file.name,
-            type: 'library',
-            geometry: 'LibraryMesh',
-            glbUrl: glbUrl,
-            filename: file.filename,
-            thumbnail: null,
-            isLoadingThumbnail: true
-          };
-          
-          meshObjects.push(meshObject);
-        }
+        // GLBMeshManager를 사용하여 라이브러리 메쉬 로드
+        const meshObjects = await glbMeshManager.current.loadLibraryMeshes();
         
         // 먼저 기본 객체들을 설정
         setLibraryMeshes(meshObjects);
@@ -141,7 +107,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
           const meshObject = meshObjects[i];
           
           try {
-            const thumbnailUrl = await generateThumbnail(meshObject.glbUrl);
+            const thumbnailUrl = await glbMeshManager.current.generateThumbnailFromURL(meshObject.glbUrl);
             
             // 썸네일이 생성되면 해당 객체만 업데이트
             setLibraryMeshes(prevMeshes => 
@@ -164,7 +130,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         }
         
       } catch (error) {
-        // 라이브러리 메쉬 로드 실패 처리
+        console.error('라이브러리 메쉬 로드 실패:', error);
       }
     };
 
@@ -260,11 +226,11 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     event.stopPropagation(); // 부모 클릭 이벤트 방지
     
     if (window.confirm(`"${meshToDelete.name}"을(를) 라이브러리에서 삭제하시겠습니까?`)) {
-      // 로컬 스토리지에서 삭제
-      libraryManager.current.deleteCustomMesh(meshToDelete.id);
+      // GLBMeshManager를 사용하여 커스텀 메쉬 삭제
+      glbMeshManager.current.deleteCustomMesh(meshToDelete.id);
       
       // 메쉬 목록 새로고침
-      const meshes = libraryManager.current.getCustomMeshes();
+      const meshes = glbMeshManager.current.getCustomMeshes();
       loadCustomMeshes(meshes);
     }
   };

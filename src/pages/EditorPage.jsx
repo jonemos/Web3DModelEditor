@@ -5,7 +5,7 @@ import EditorUI from '../components/editor/EditorUI'
 import MenuBar from '../components/editor/MenuBar'
 import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
-import { MeshLibraryManager } from '../utils/meshLibraryManager'
+import { getGLBMeshManager } from '../utils/GLBMeshManager'
 import Toast from '../components/ui/Toast'
 import './EditorPage.css'
 
@@ -40,7 +40,7 @@ function EditorPage() {
   // EditorControls 인스턴스를 관리하기 위한 ref
   const editorControlsRef = useRef(null)
   const postProcessingRef = useRef(null)
-  const meshLibraryManager = useRef(new MeshLibraryManager())
+  const glbMeshManager = useRef(getGLBMeshManager())
 
   // EditorControls 인스턴스를 설정하는 함수
   const setEditorControls = (controls) => {
@@ -241,7 +241,7 @@ function EditorPage() {
 
       setToast({ message: '라이브러리에 추가 중...', type: 'info' });
 
-      const meshData = await meshLibraryManager.current.addMeshToLibrary(object, name);
+      const meshData = await glbMeshManager.current.addCustomMesh(object, name);
       console.log('EditorPage: 생성된 메쉬 데이터:', meshData);
       
       // 스토어에 추가

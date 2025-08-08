@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useEditorStore } from '../../store/editorStore';
 import { EditorControls } from './EditorControls.js';
 import { PostProcessingManager } from './PostProcessingManager.js';
+import { getGLBMeshManager } from '../../utils/GLBMeshManager';
 
 function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onContextMenu }) {
   const mountRef = useRef(null);
@@ -455,22 +456,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
               // 커스텀 메쉬: GLB 데이터를 Blob URL로 변환
               console.log('커스텀 메쉬 GLB 데이터:', typeof objectData.glbData, objectData.glbData);
               
-              let binaryData;
-              if (objectData.glbData instanceof ArrayBuffer) {
-                binaryData = objectData.glbData;
-              } else if (objectData.glbData instanceof Uint8Array) {
-                binaryData = objectData.glbData.buffer;
-              } else if (Array.isArray(objectData.glbData)) {
-                binaryData = new Uint8Array(objectData.glbData).buffer;
-              } else if (typeof objectData.glbData === 'object' && objectData.glbData.type === 'Buffer') {
-                binaryData = new Uint8Array(objectData.glbData.data || objectData.glbData).buffer;
-              } else {
-                console.error('지원되지 않는 GLB 데이터 형식:', typeof objectData.glbData, objectData.glbData);
+              try {
+                const glbMeshManager = getGLBMeshManager();
+                modelUrl = glbMeshManager.createBlobURL(objectData.glbData);
+              } catch (error) {
+                console.error('GLB 데이터 변환 실패:', error);
                 return;
               }
-              
-              const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
-              modelUrl = URL.createObjectURL(blob);
             } else if (objectData.type === 'library') {
               // 라이브러리 메쉬: glbUrl 사용
               modelUrl = objectData.glbUrl;
@@ -592,30 +584,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
               if (objectData.glbData) {
                 console.log('커스텀 지오메트리 GLB 데이터 처리:', typeof objectData.glbData, objectData.glbData);
                 
-                // GLB 데이터를 올바른 형태로 변환
-                let binaryData;
-                if (objectData.glbData instanceof ArrayBuffer) {
-                  binaryData = objectData.glbData;
-                } else if (objectData.glbData instanceof Uint8Array) {
-                  binaryData = objectData.glbData.buffer;
-                } else if (Array.isArray(objectData.glbData)) {
-                  // 배열 형태로 저장된 경우
-                  binaryData = new Uint8Array(objectData.glbData).buffer;
-                } else if (typeof objectData.glbData === 'object' && objectData.glbData.type === 'Buffer') {
-                  // Node.js Buffer 객체
-                  binaryData = new Uint8Array(objectData.glbData.data || objectData.glbData).buffer;
-                } else {
-                  console.error('지원되지 않는 GLB 데이터 형식:', typeof objectData.glbData, objectData.glbData);
-                  return;
-                }
-                
-                // GLB 데이터에서 Blob 생성
-                const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
-                const url = URL.createObjectURL(blob);
-                
-                // GLB 파일 로드
-                const loader = new GLTFLoader();
-                loader.load(url, (gltf) => {
+                try {
+                  const glbMeshManager = getGLBMeshManager();
+                  const url = glbMeshManager.createBlobURL(objectData.glbData);
+                  
+                  // GLB 파일 로드
+                  const loader = new GLTFLoader();
+                  loader.load(url, (gltf) => {
                   const model = gltf.scene;
                   model.position.copy(intersection);
                   
@@ -668,6 +643,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                   URL.revokeObjectURL(url);
                 });
                 return; // 여기서 함수 종료
+                } catch (error) {
+                  console.error('GLB 데이터 변환 실패:', error);
+                  return;
+                }
               } else if (objectData.originalObject && objectData.originalObject.geometry) {
                 geometry = objectData.originalObject.geometry.clone();
               } else {
