@@ -26,23 +26,6 @@
   backdrop-filter: blur(15px);
 }
 
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.auto-save-indicator {
-  font-size: 12px;
-  opacity: 0.7;
-  cursor: help;
-  transition: opacity 0.3s ease;
-}
-
-.auto-save-indicator:hover {
-  opacity: 1;
-}
-
 .hdri-header h3 {
   margin: 0;
   font-family: 'Segoe UI', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
@@ -335,57 +318,4 @@
     opacity: 1;
     transform: translateX(-50%) translateY(0);
   }
-}
-
-/* 태양 조명 설정 스타일 */
-.setting-section {
-  margin-top: 16px;
-  padding: 8px 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.setting-section h4 {
-  margin: 0 0 8px 0;
-  font-size: 11px;
-  color: #ffa500;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 0 8px;
-}
-
-.setting-checkbox {
-  width: 16px;
-  height: 16px;
-  accent-color: #ffa500;
-  cursor: pointer;
-}
-
-.color-preview {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
-  padding: 4px 8px;
-  font-size: 10px;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.9);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
-  font-weight: 500;
-  letter-spacing: 0.3px;
-  min-width: 32px;
-}
-
-/* 체크박스 커스텀 스타일 */
-.setting-checkbox:checked {
-  background-color: #ffa500;
-  border-color: #ffa500;
-}
-
-.setting-checkbox:hover {
-  filter: brightness(1.1);
-}
-
-.setting-checkbox:focus {
-  outline: 2px solid rgba(255, 165, 0, 0.3);
-  outline-offset: 2px;
 }

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import PlainEditorCanvas from '../components/editor/PlainEditorCanvas'
 import EditorUI from '../components/editor/EditorUI'
 import MenuBar from '../components/editor/MenuBar'
@@ -7,6 +7,7 @@ import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
 import { getGLBMeshManager } from '../utils/GLBMeshManager'
 import Toast from '../components/ui/Toast'
+import * as THREE from 'three'
 import './EditorPage.css'
 
 // 메시지 상수
@@ -32,7 +33,22 @@ const MESSAGES = {
 
 function EditorPage() {
   const navigate = useNavigate()
-  const { clearMap, saveMap, loadMap, addObject, setSelectedObject, addCustomMesh, selectedObject, toggleGridVisible } = useEditorStore()
+  const { 
+    clearMap, 
+    saveMap, 
+    loadMap, 
+    addObject, 
+    setSelectedObject, 
+    addCustomMesh, 
+    selectedObject, 
+    toggleGridVisible,
+    scene,
+    hdriSettings,
+    sunLightRef,
+    setSunLightRef,
+    saveHDRISettings
+  } = useEditorStore()
+  
   const [showDialog, setShowDialog] = useState(null)
   const [dialogInput, setDialogInput] = useState('')
   const [toast, setToast] = useState(null)
@@ -41,6 +57,72 @@ function EditorPage() {
   const editorControlsRef = useRef(null)
   const postProcessingRef = useRef(null)
   const glbMeshManager = useRef(getGLBMeshManager())
+
+  // HDRI 설정 지속 관리
+  useEffect(() => {
+    if (scene && hdriSettings.sunLightEnabled && !sunLightRef) {
+      // 태양 조명이 활성화되어 있지만 씬에 없으면 생성
+      createPersistentSunLight()
+    } else if (scene && !hdriSettings.sunLightEnabled && sunLightRef) {
+      // 태양 조명이 비활성화되어 있으면 제거
+      removePersistentSunLight()
+    }
+  }, [scene, hdriSettings.sunLightEnabled, sunLightRef])
+
+  // 지속적인 태양 조명 생성 함수
+  const createPersistentSunLight = () => {
+    if (!scene) return
+
+    const sunLight = new THREE.DirectionalLight(hdriSettings.sunColor, hdriSettings.sunIntensity)
+    
+    // 저장된 위치 적용
+    const azimuthRad = hdriSettings.sunAzimuth * Math.PI / 180
+    const elevationRad = hdriSettings.sunElevation * Math.PI / 180
+    const distance = 100
+    const x = Math.sin(azimuthRad) * Math.cos(elevationRad) * distance
+    const y = Math.sin(elevationRad) * distance
+    const z = Math.cos(azimuthRad) * Math.cos(elevationRad) * distance
+
+    sunLight.position.set(x, y, z)
+    sunLight.lookAt(0, 0, 0)
+    
+    // 그림자 설정
+    sunLight.castShadow = true
+    sunLight.shadow.mapSize.width = 2048
+    sunLight.shadow.mapSize.height = 2048
+    sunLight.shadow.camera.near = 0.5
+    sunLight.shadow.camera.far = 500
+    sunLight.shadow.camera.left = -50
+    sunLight.shadow.camera.right = 50
+    sunLight.shadow.camera.top = 50
+    sunLight.shadow.camera.bottom = -50
+
+    sunLight.name = 'sunLight'
+    setSunLightRef(sunLight)
+    scene.add(sunLight)
+
+    console.log('지속적인 태양 조명이 생성되었습니다')
+  }
+
+  // 지속적인 태양 조명 제거 함수
+  const removePersistentSunLight = () => {
+    if (!scene || !sunLightRef) return
+
+    scene.remove(sunLightRef)
+    if (sunLightRef.dispose) {
+      sunLightRef.dispose()
+    }
+    setSunLightRef(null)
+
+    console.log('지속적인 태양 조명이 제거되었습니다')
+  }
+
+  // HDRI 설정 자동 저장
+  useEffect(() => {
+    if (scene) {
+      setTimeout(() => saveHDRISettings(), 100)
+    }
+  }, [hdriSettings, scene, saveHDRISettings])
 
   // EditorControls 인스턴스를 설정하는 함수
   const setEditorControls = (controls) => {

@@ -2,6 +2,23 @@ import { create } from 'zustand'
 
 console.log('🔥 에디터 스토어 파일 로드됨');
 
+// localStorage에서 HDRI 설정 로드하는 헬퍼 함수
+const loadInitialHDRISettings = () => {
+  try {
+    const savedSettings = localStorage.getItem('hdriSettings')
+    if (savedSettings) {
+      const settings = JSON.parse(savedSettings)
+      console.log('초기 HDRI 설정 로드됨:', settings)
+      return settings
+    }
+  } catch (error) {
+    console.error('초기 HDRI 설정 로드 실패:', error)
+  }
+  return null
+}
+
+const initialHDRISettings = loadInitialHDRISettings()
+
 export const useEditorStore = create((set, get) => {
   console.log('🔥 에디터 스토어 생성 시작');
   
@@ -15,10 +32,6 @@ export const useEditorStore = create((set, get) => {
   selectedObject: null,
   transformMode: 'translate',
   
-  // Floor settings
-  floorWidth: 20,
-  floorDepth: 20,
-  
   // Viewport settings
   isWireframe: false,
   isGridSnap: false,
@@ -29,6 +42,23 @@ export const useEditorStore = create((set, get) => {
   gizmoSpace: 'world', // 'world' or 'local'
   isMagnetEnabled: false, // 자석 기능 활성화
   showMagnetRays: false, // 자석 레이 표시
+
+  // HDRI settings - 패널이 닫혀도 유지되는 설정 (localStorage에서 초기값 로드)
+  hdriSettings: {
+    currentHDRI: null,
+    hdriIntensity: 1,
+    hdriRotation: 0,
+    sunLightEnabled: false,
+    sunIntensity: 1,
+    timeOfDay: 12,
+    sunAzimuth: 0,
+    sunElevation: 45,
+    sunColor: '#ffffff',
+    ...initialHDRISettings // localStorage에서 로드된 설정으로 덮어쓰기
+  },
+  
+  // HDRI 조명 ref - 씬에서 지속적으로 관리
+  sunLightRef: null,
 
   // Assets
   savedObjects: new Map(),
@@ -50,21 +80,6 @@ export const useEditorStore = create((set, get) => {
   // Actions
   setSelectedObject: (object) => set({ selectedObject: object }),
   setTransformMode: (mode) => set({ transformMode: mode }),
-  setFloorSize: (width, depth) => set((state) => {
-    // 바닥 크기 변경 시 바닥 객체도 업데이트
-    const updatedObjects = state.objects.map(obj => 
-      obj.id === 'ground_floor' ? { 
-        ...obj, 
-        params: [width, depth]
-      } : obj
-    );
-    
-    return { 
-      floorWidth: width, 
-      floorDepth: depth,
-      objects: updatedObjects
-    };
-  }),
   
   // Viewport actions
   toggleWireframe: () => set((state) => ({ isWireframe: !state.isWireframe })),
@@ -79,6 +94,43 @@ export const useEditorStore = create((set, get) => {
   toggleMagnet: () => set((state) => ({ isMagnetEnabled: !state.isMagnetEnabled })),
   toggleMagnetRays: () => set((state) => ({ showMagnetRays: !state.showMagnetRays })),
   
+  // HDRI actions
+  updateHDRISettings: (updates) => set((state) => ({
+    hdriSettings: { ...state.hdriSettings, ...updates }
+  })),
+  
+  setSunLightRef: (ref) => set({ sunLightRef: ref }),
+  
+  // HDRI 설정 초기화 (localStorage에서 로드)
+  initializeHDRISettings: () => {
+    try {
+      const savedSettings = localStorage.getItem('hdriSettings')
+      if (savedSettings) {
+        const settings = JSON.parse(savedSettings)
+        console.log('스토어에서 HDRI 설정 초기화:', settings)
+        set((state) => ({
+          hdriSettings: { ...state.hdriSettings, ...settings }
+        }))
+        return true
+      }
+    } catch (error) {
+      console.error('HDRI 설정 초기화 실패:', error)
+    }
+    return false
+  },
+  
+  // HDRI 설정 저장 (localStorage에)
+  saveHDRISettings: () => {
+    const { hdriSettings } = get()
+    try {
+      localStorage.setItem('hdriSettings', JSON.stringify(hdriSettings))
+      console.log('스토어에서 HDRI 설정 저장:', hdriSettings)
+    } catch (error) {
+      console.error('HDRI 설정 저장 실패:', error)
+    }
+  },
+  
+  // Asset actions
   addAsset: (name, url) => set((state) => {
     const newMap = new Map(state.savedObjects)
     newMap.set(name, url)
@@ -199,10 +251,6 @@ export const useEditorStore = create((set, get) => {
   saveMap: (name) => {
     const state = get()
     const mapData = {
-      floor: {
-        width: state.floorWidth,
-        depth: state.floorDepth
-      },
       walls: state.walls,
       objects: state.objects
     }
@@ -215,16 +263,9 @@ export const useEditorStore = create((set, get) => {
       const mapData = JSON.parse(mapDataString)
       
       set((state) => {
-        // 기존 시스템 객체들은 유지하고 맵 데이터의 객체들을 추가
-        const systemObjects = state.objects.filter(obj => obj.isSystemObject);
-        const loadedObjects = mapData.objects || [];
-        const nonSystemLoadedObjects = loadedObjects.filter(obj => !obj.isSystemObject);
-        
         return {
-          floorWidth: mapData.floor.width,
-          floorDepth: mapData.floor.depth,
           walls: mapData.walls || [],
-          objects: [...systemObjects, ...nonSystemLoadedObjects]
+          objects: mapData.objects || []
         };
       });
       

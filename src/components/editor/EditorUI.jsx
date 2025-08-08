@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { GLTFExporter } from 'three-stdlib'
 import { useEditorStore } from '../../store/editorStore'
-import FloorSizePanel from './panels/FloorSizePanel'
 import SceneHierarchyPanel from './panels/SceneHierarchyPanel'
 import ObjectPropertiesPanel from './panels/ObjectPropertiesPanel'
 import LibraryPanel from './panels/LibraryPanel'
@@ -17,13 +16,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
   const {
     selectedObject,
     transformMode,
-    floorWidth,
-    floorDepth,
     objects,
     walls,
     savedObjects,
     setTransformMode,
-    setFloorSize,
     addWall,
     addObject,
     removeObject,
@@ -183,10 +179,6 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
     if (window.confirm('모든 오브젝트를 삭제하시겠습니까?')) {
       clearMap()
     }
-  }
-
-  const handleFloorSizeChange = (width, depth) => {
-    setFloorSize(width, depth)
   }
 
   const handleObjectVisibilityToggle = (obj) => {
@@ -625,13 +617,6 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary }) {
 
       {/* 우측 패널 - 오브젝트 목록 */}
       <div className="right-panel">
-        {/* 바닥 크기 패널 */}
-        <FloorSizePanel 
-          floorWidth={floorWidth}
-          floorDepth={floorDepth}
-          onFloorSizeChange={handleFloorSizeChange}
-        />
-
         {/* 씬 하이라키 패널 */}
         <SceneHierarchyPanel 
           objects={objects}

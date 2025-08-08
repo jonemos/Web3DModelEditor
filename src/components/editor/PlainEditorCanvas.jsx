@@ -14,8 +14,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
   
   const { 
-    floorWidth, 
-    floorDepth,
     objects,
     walls,
     setScene,
@@ -101,7 +99,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     scene.add(directionalLight);
 
     // Add floor with texture
-    const floorGeometry = new THREE.PlaneGeometry(floorWidth, floorDepth);
+    const defaultFloorSize = 20; // 기본 바닥 크기
+    const floorGeometry = new THREE.PlaneGeometry(defaultFloorSize, defaultFloorSize);
     
     // 텍스처 로더 생성
     const textureLoader = new THREE.TextureLoader();
@@ -126,7 +125,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     const floorTexture = new THREE.CanvasTexture(textureCanvas);
     floorTexture.wrapS = THREE.RepeatWrapping;
     floorTexture.wrapT = THREE.RepeatWrapping;
-    floorTexture.repeat.set(floorWidth / 4, floorDepth / 4); // 텍스처 반복
+    floorTexture.repeat.set(defaultFloorSize / 4, defaultFloorSize / 4); // 텍스처 반복
     
     const floorMaterial = new THREE.MeshStandardMaterial({ 
       map: floorTexture,
@@ -140,8 +139,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     floor.name = 'Ground';
     floor.userData = { 
       id: 'ground_floor',
-      type: 'ground',
-      isSystemObject: true // 시스템 객체임을 표시
+      type: 'ground'
     };
     scene.add(floor);
     
@@ -161,12 +159,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         name: 'Ground',
         type: 'ground',
         geometry: 'PlaneGeometry',
-        params: [floorWidth, floorDepth],
+        params: [defaultFloorSize, defaultFloorSize],
         position: { x: 0, y: 0, z: 0 },
         rotation: { x: -Math.PI / 2, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
         visible: true,
-        isSystemObject: true,
         material: {
           type: 'MeshStandardMaterial',
           color: 0xffffff,
@@ -801,60 +798,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       renderer.dispose();
     };
   }, [setScene]); // floorWidth, floorDepth 제거하여 씬 재초기화 방지
-
-  // 바닥 크기 변경을 위한 별도 useEffect
-  useEffect(() => {
-    if (!sceneRef.current) return;
-    
-    const scene = sceneRef.current;
-    const existingFloor = scene.getObjectByName('Ground');
-    
-    if (existingFloor) {
-      // 기존 바닥 업데이트
-      const newGeometry = new THREE.PlaneGeometry(floorWidth, floorDepth);
-      
-      // 텍스처 업데이트
-      const textureCanvas = document.createElement('canvas');
-      textureCanvas.width = 512;
-      textureCanvas.height = 512;
-      const context = textureCanvas.getContext('2d');
-      
-      const tileSize = 64;
-      const tilesPerRow = textureCanvas.width / tileSize;
-      
-      for (let x = 0; x < tilesPerRow; x++) {
-        for (let y = 0; y < tilesPerRow; y++) {
-          const isEven = (x + y) % 2 === 0;
-          context.fillStyle = isEven ? '#f0f0f0' : '#e0e0e0';
-          context.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
-        }
-      }
-      
-      const floorTexture = new THREE.CanvasTexture(textureCanvas);
-      floorTexture.wrapS = THREE.RepeatWrapping;
-      floorTexture.wrapT = THREE.RepeatWrapping;
-      floorTexture.repeat.set(floorWidth / 4, floorDepth / 4);
-      
-      // 기존 지오메트리와 텍스처 정리
-      existingFloor.geometry.dispose();
-      if (existingFloor.material.map) {
-        existingFloor.material.map.dispose();
-      }
-      
-      // 새 지오메트리와 텍스처 적용
-      existingFloor.geometry = newGeometry;
-      existingFloor.material.map = floorTexture;
-      existingFloor.material.needsUpdate = true;
-      
-      console.log(`바닥 크기 업데이트: ${floorWidth}x${floorDepth}`);
-    }
-    
-    // 그리드 크기도 업데이트 (EditorControls에 있는 그리드)
-    if (editorControlsRef.current && editorControlsRef.current.setGridSize) {
-      const gridSize = Math.max(floorWidth, floorDepth);
-      editorControlsRef.current.setGridSize(gridSize, Math.min(gridSize, 20));
-    }
-  }, [floorWidth, floorDepth]); // 바닥 크기만 변경될 때 실행
 
   // GLB 파일 로드를 위한 별도 useEffect
   useEffect(() => {
