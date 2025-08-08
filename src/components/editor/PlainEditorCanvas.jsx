@@ -25,7 +25,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
 
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x333333); // Dark gray background
+    scene.background = new THREE.Color(0x2a2a2a); // 기본 배경 (회색)
 
     // Camera setup
     const camera = new THREE.PerspectiveCamera(

@@ -45,10 +45,13 @@ export const useEditorStore = create((set, get) => {
 
   // HDRI settings - 패널이 닫혀도 유지되는 설정 (localStorage에서 초기값 로드)
   hdriSettings: {
-    currentHDRI: null,
+    currentHDRI: {
+      name: '기본 배경',
+      type: 'none'
+    },
     hdriIntensity: 1,
     hdriRotation: 0,
-    sunLightEnabled: false,
+    sunLightEnabled: true,
     sunIntensity: 1,
     timeOfDay: 12,
     sunAzimuth: 0,

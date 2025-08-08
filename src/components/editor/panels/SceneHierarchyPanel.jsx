@@ -103,7 +103,6 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
     
     const isSelected = isSingleSelected || isMultiSelected
     const isEditing = editingId === obj.id
-    const isSystemObject = obj.id === 'ground_floor'
     
     // 디버깅용 로그 - 선택된 경우만
     if (isSelected) {
@@ -236,11 +235,10 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
           {obj.frozen ? '🔒' : '🔓'}
         </button>
         
-        {!isSystemObject && (
-          <button
-            className="delete-btn"
-            onClick={() => onObjectRemove(obj)}
-            title="삭제"
+        <button
+          className="delete-btn"
+          onClick={() => onObjectRemove(obj)}
+          title="삭제"
             style={{
               background: 'none',
               border: 'none',
@@ -261,7 +259,6 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
           >
             ×
           </button>
-        )}
       </div>
     )
   }

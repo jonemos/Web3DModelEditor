@@ -69,6 +69,16 @@ function EditorPage() {
     }
   }, [scene, hdriSettings.sunLightEnabled, sunLightRef])
 
+  // 초기 HDRI 환경 설정
+  useEffect(() => {
+    if (scene && hdriSettings.currentHDRI && hdriSettings.currentHDRI.type === 'none') {
+      // 기본 배경 적용
+      scene.background = new THREE.Color(0x2a2a2a) // 회색 배경
+      scene.environment = null
+      console.log('기본 HDRI 배경이 적용되었습니다')
+    }
+  }, [scene, hdriSettings.currentHDRI])
+
   // 지속적인 태양 조명 생성 함수
   const createPersistentSunLight = () => {
     if (!scene) return
