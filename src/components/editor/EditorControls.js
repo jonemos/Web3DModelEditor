@@ -134,7 +134,25 @@ export class EditorControls {
       focusOnSelected: () => {
         const selectedObject = this.editorStore.getState().selectedObject;
         if (selectedObject) {
-          this.cameraController.focusOnObject(selectedObject);
+          // selectedObject가 Three.js 객체인 경우
+          if (selectedObject.isObject3D) {
+            this.cameraController.focusOnObject(selectedObject);
+          } else {
+            // selectedObject가 ID인 경우, 씬에서 실제 객체 찾기
+            let threeObject = null;
+            if (typeof selectedObject === 'string' || typeof selectedObject === 'number') {
+              // ID로 씬에서 객체 찾기
+              this.scene.traverse((child) => {
+                if (child.userData.id === selectedObject) {
+                  threeObject = child;
+                }
+              });
+            }
+            
+            if (threeObject) {
+              this.cameraController.focusOnObject(threeObject);
+            }
+          }
         }
       },
       toggleProjection: () => {

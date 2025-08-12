@@ -284,9 +284,10 @@ export class CameraController {
   focusOnObject(object) {
     if (!object) return;
     
-    // Console output removed
+    // 월드 매트릭스 업데이트
+    object.updateWorldMatrix(true, true);
     
-    // ?�브?�트??바운??박스 계산
+    // 오브젝트의 바운딩 박스 계산
     const box = new THREE.Box3().setFromObject(object);
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
