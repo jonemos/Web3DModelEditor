@@ -391,7 +391,11 @@ async function setupCommandFactories(commandManager) {
     createSetGridVisibilityCommand,
     createSetGridSizeCommand,
     createSetGridDivisionsCommand,
-    createToggleGridCommand
+    createToggleGridCommand,
+    createResetCameraCommand,
+    createToggleCameraProjectionCommand,
+    createSetCameraStateCommand,
+    createSetCameraTargetCommand
   } = await import('./CommandSystem.js')
 
   // 선택 관련 명령어들
@@ -481,5 +485,34 @@ async function setupCommandFactories(commandManager) {
     }
   })
 
-  console.log('✅ Command factories registered with Transform and Grid operations')
+  // 카메라 관련 명령어들
+  commandManager.registerCommand('resetCamera', () => {
+    const cameraPlugin = serviceRegistry.get('cameraPlugin')
+    if (cameraPlugin) {
+      return createResetCameraCommand(cameraPlugin)
+    }
+  })
+
+  commandManager.registerCommand('toggleCameraProjection', () => {
+    const cameraPlugin = serviceRegistry.get('cameraPlugin')
+    if (cameraPlugin) {
+      return createToggleCameraProjectionCommand(cameraPlugin)
+    }
+  })
+
+  commandManager.registerCommand('setCameraState', (params) => {
+    const cameraPlugin = serviceRegistry.get('cameraPlugin')
+    if (cameraPlugin) {
+      return createSetCameraStateCommand(cameraPlugin, params.state)
+    }
+  })
+
+  commandManager.registerCommand('setCameraTarget', (params) => {
+    const cameraPlugin = serviceRegistry.get('cameraPlugin')
+    if (cameraPlugin) {
+      return createSetCameraTargetCommand(cameraPlugin, params.target)
+    }
+  })
+
+  console.log('✅ Command factories registered with Transform, Grid, and Camera operations')
 }

@@ -1,0 +1,508 @@
+/* LibraryPanel Modern 스타일 - FileIO 시스템과 통합된 라이브러리 패널 */
+
+.modern-library-panel {
+  background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+  border: 1px solid #404040;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  transition: all 0.3s ease;
+}
+
+.modern-library-panel:hover {
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+}
+
+/* 헤더 스타일 */
+.modern-library-panel .panel-header {
+  background: linear-gradient(90deg, #2d2d2d, #333333);
+  padding: 16px;
+  border-bottom: 1px solid #404040;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modern-library-panel .panel-header h3 {
+  margin: 0;
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-button {
+  background: rgba(0, 136, 255, 0.2);
+  border: 1px solid #0088ff;
+  border-radius: 6px;
+  color: #0088ff;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+}
+
+.refresh-button:hover {
+  background: rgba(0, 136, 255, 0.3);
+  transform: translateY(-1px);
+}
+
+.refresh-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.architecture-indicator {
+  display: flex;
+  align-items: center;
+}
+
+.modern-badge {
+  background: linear-gradient(45deg, #00ff88, #00ccff);
+  color: #000;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  animation: modernPulse 2s infinite;
+}
+
+@keyframes modernPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* 탭 스타일 */
+.panel-tabs {
+  display: flex;
+  background: #1a1a1a;
+  border-bottom: 1px solid #404040;
+}
+
+.tab-button {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #888;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+}
+
+.tab-button:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-button.active {
+  color: #00ff88;
+  border-bottom-color: #00ff88;
+  background: rgba(0, 255, 136, 0.1);
+}
+
+/* 로딩 상태 */
+.loading-status {
+  background: rgba(255, 165, 0, 0.1);
+  border-bottom: 1px solid rgba(255, 165, 0, 0.3);
+  padding: 12px 16px;
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: #ffaa00;
+  font-weight: 600;
+}
+
+.operation-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.operation-name {
+  font-size: 11px;
+  color: #ccc;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.progress-bar {
+  width: 60px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #ffaa00, #ff6600);
+  transition: width 0.3s ease;
+}
+
+/* 메쉬 그리드 */
+.mesh-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  padding: 16px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* 스크롤바 스타일 */
+.mesh-grid::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mesh-grid::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.mesh-grid::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #00ff88, #00ccff);
+  border-radius: 3px;
+}
+
+.mesh-grid::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #00ccff, #0088ff);
+}
+
+/* 메쉬 카드 */
+.modern-mesh-card {
+  background: linear-gradient(135deg, #2a2a2a 0%, #333333 100%);
+  border: 1px solid #404040;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.modern-mesh-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 255, 136, 0.2);
+  border-color: #00ff88;
+}
+
+.modern-mesh-card:active {
+  transform: translateY(0);
+}
+
+/* 썸네일 영역 */
+.mesh-thumbnail {
+  position: relative;
+  width: 100%;
+  height: 80px;
+  background: #1a1a1a;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mesh-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.modern-mesh-card:hover .mesh-thumbnail img {
+  transform: scale(1.05);
+}
+
+.thumbnail-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #666;
+  font-size: 24px;
+}
+
+.thumbnail-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #888;
+  font-size: 10px;
+}
+
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  color: #00ff88;
+  font-size: 10px;
+}
+
+/* 로딩 스피너 */
+.loading-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-top: 2px solid #00ff88;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-spinner.large {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* 메쉬 정보 */
+.mesh-info {
+  flex: 1;
+}
+
+.mesh-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mesh-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #888;
+}
+
+.mesh-type {
+  background: rgba(0, 136, 255, 0.2);
+  color: #0088ff;
+  padding: 1px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.mesh-size {
+  color: #666;
+}
+
+/* 액션 버튼 */
+.mesh-actions {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.modern-mesh-card:hover .mesh-actions {
+  opacity: 1;
+}
+
+.delete-button {
+  background: rgba(255, 107, 107, 0.8);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 10px;
+  transition: background 0.2s ease;
+}
+
+.delete-button:hover {
+  background: rgba(255, 107, 107, 1);
+}
+
+/* 아키텍처 배지 */
+.architecture-badge {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  font-size: 8px;
+  opacity: 0.7;
+}
+
+.architecture-badge.modern {
+  color: #00ff88;
+}
+
+/* 빈 메시지 */
+.empty-message {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px 20px;
+  color: #666;
+  text-align: center;
+}
+
+.empty-message span {
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+
+.empty-message small {
+  font-size: 11px;
+  color: #555;
+}
+
+.empty-message button {
+  background: rgba(0, 136, 255, 0.2);
+  border: 1px solid #0088ff;
+  border-radius: 6px;
+  color: #0088ff;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.empty-message button:hover {
+  background: rgba(0, 136, 255, 0.3);
+}
+
+.loading-message {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 40px 20px;
+  color: #888;
+}
+
+/* 패널 푸터 */
+.panel-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #404040;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.panel-footer small {
+  color: #666;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* 드래그 상태 */
+.modern-mesh-card[draggable="true"]:hover {
+  cursor: grab;
+}
+
+.modern-mesh-card[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.8;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .mesh-grid {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 8px;
+    padding: 12px;
+  }
+  
+  .modern-mesh-card {
+    padding: 6px;
+  }
+  
+  .mesh-thumbnail {
+    height: 60px;
+    margin-bottom: 6px;
+  }
+  
+  .mesh-name {
+    font-size: 11px;
+  }
+  
+  .mesh-details {
+    font-size: 9px;
+  }
+}
+
+/* 다크 테마 강화 */
+@media (prefers-color-scheme: dark) {
+  .modern-library-panel {
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+    border-color: #333;
+  }
+  
+  .modern-mesh-card {
+    background: linear-gradient(135deg, #1a1a1a 0%, #222222 100%);
+    border-color: #333;
+  }
+  
+  .mesh-thumbnail {
+    background: #0a0a0a;
+  }
+}
+
+/* 접근성 개선 */
+.modern-mesh-card:focus,
+.tab-button:focus,
+.refresh-button:focus {
+  outline: 2px solid #00ff88;
+  outline-offset: 2px;
+}
+
+/* 고성능 애니메이션 */
+.modern-mesh-card,
+.mesh-thumbnail img,
+.loading-spinner {
+  will-change: transform;
+}
+
+/* GPU 가속 */
+.modern-mesh-card {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}

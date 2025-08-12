@@ -6,6 +6,8 @@ import { EditorControls } from './EditorControls.js';
 import { PostProcessingManager } from './PostProcessingManager.js';
 import TransformManagerModern from './TransformManager.Modern.js';
 import GridManagerModern from './GridManager.Modern.js';
+import { CameraPlugin } from '../../plugins/CameraPlugin.js';
+import FileIOPlugin from '../../core/plugins/FileIOPlugin.js';
 import { getGLBMeshManager } from '../../utils/GLBMeshManager';
 
 // 새 아키텍처 통합
@@ -18,6 +20,8 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
   const postProcessingRef = useRef(null);
   const transformManagerRef = useRef(null);
   const gridManagerRef = useRef(null);
+  const cameraPluginRef = useRef(null);
+  const fileIOPluginRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map());
   
@@ -186,8 +190,94 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
         });
         
       gridManagerRef.current = gridManager;
+    }
+
+    // CameraPlugin 초기화 (새 아키텍처 활성화시)
+    let cameraPlugin = null;
+    if (isNewArchitectureReady && services.serviceRegistry) {
+      cameraPlugin = new CameraPlugin();
+      
+      // 새 아키텍처에 연결 (플러그인 컨텍스트 생성)
+      const pluginContext = {
+        getService: (name) => {
+          if (name === 'sceneService') {
+            return {
+              getScene: () => scene,
+              getCamera: () => camera,
+              getRenderer: () => renderer,
+              setCamera: (newCamera) => {
+                // 카메라 교체 로직
+                camera = newCamera;
+              }
+            };
+          }
+          return services.serviceRegistry?.get(name);
+        },
+        on: (event, handler) => eventBus.on(event, handler),
+        emit: (event, data) => eventBus.emit(event, data)
+      };
+
+      cameraPlugin.init(pluginContext)
+        .then(() => {
+          // 서비스 레지스트리에 등록
+          services.serviceRegistry.registerInstance('cameraPlugin', cameraPlugin);
+          
+          // EditorControls와 연결
+          if (editorControls) {
+            editorControls.connectCameraPlugin(cameraPlugin);
+          }
+          
+          console.log('✅ CameraPlugin registered with new architecture');
+        })
+        .catch(error => {
+          console.error('❌ Failed to initialize CameraPlugin:', error);
+        });
         
-      gridManagerRef.current = gridManager;
+      cameraPluginRef.current = cameraPlugin;
+    }
+
+    // FileIOPlugin 초기화 (새 아키텍처 활성화시)
+    let fileIOPlugin = null;
+    if (isNewArchitectureReady && services.serviceRegistry) {
+      fileIOPlugin = new FileIOPlugin();
+      
+      // 새 아키텍처에 연결 (플러그인 컨텍스트 생성)
+      const fileIOContext = {
+        getService: (name) => {
+          if (name === 'sceneService') {
+            return {
+              getScene: () => scene,
+              getCamera: () => camera,
+              getRenderer: () => renderer,
+              addObject: (object) => {
+                scene.add(object);
+                // 새 아키텍처에 객체 추가 알림
+                if (services.objectManagement) {
+                  services.objectManagement.addObject(object);
+                }
+                // 기존 시스템에도 알림 (호환성)
+                loadedObjectsRef.current.set(object.uuid, object);
+              }
+            };
+          }
+          return services.serviceRegistry?.get(name) || app.serviceRegistry?.get(name);
+        },
+        on: (event, handler) => eventBus.on(event, handler),
+        emit: (event, data) => eventBus.emit(event, data)
+      };
+
+      fileIOPlugin.init(fileIOContext)
+        .then(() => {
+          // 서비스 레지스트리에 등록
+          services.serviceRegistry.registerInstance('fileIOPlugin', fileIOPlugin);
+          
+          console.log('✅ FileIOPlugin registered with new architecture');
+        })
+        .catch(error => {
+          console.error('❌ Failed to initialize FileIOPlugin:', error);
+        });
+        
+      fileIOPluginRef.current = fileIOPlugin;
     }
 
     // PostProcessing 초기화
@@ -216,12 +306,20 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
 
     // 윈도우 리사이즈 핸들러
     const handleResize = () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      
+      camera.aspect = width / height;
       camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setSize(width, height);
       
       if (postProcessing) {
         postProcessing.handleResize();
+      }
+      
+      // 새 아키텍처에 리사이즈 이벤트 전달
+      if (isNewArchitectureReady) {
+        eventBus.emit(EventTypes.VIEWPORT_RESIZED, { width, height });
       }
     };
     window.addEventListener('resize', handleResize);
@@ -252,9 +350,56 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
         gridManager.destroy();
       }
       
+      // CameraPlugin 정리
+      if (cameraPlugin) {
+        cameraPlugin.destroy();
+      }
+      
+      // FileIOPlugin 정리
+      if (fileIOPlugin) {
+        fileIOPlugin.destroy();
+      }
+      
       renderer.dispose();
     };
   }, [isNewArchitectureReady, services]);
+
+  // 파일 드롭 이벤트 처리
+  useEffect(() => {
+    if (!isNewArchitectureReady || !sceneRef.current) return;
+
+    const handleDrop = (event) => {
+      event.preventDefault();
+      const files = Array.from(event.dataTransfer.files);
+      const glbFiles = files.filter(file => file.name.toLowerCase().endsWith('.glb'));
+      
+      if (glbFiles.length > 0) {
+        // FileIOPlugin을 통한 파일 로드
+        eventBus.emit(EventTypes.FILE_DROP, {
+          files: glbFiles,
+          targetScene: sceneRef.current,
+          position: { x: 0, y: 0, z: 0 }
+        });
+        
+        console.log('📁 Modern Canvas: GLB files dropped:', glbFiles.map(f => f.name));
+      }
+    };
+
+    const handleDragOver = (event) => {
+      event.preventDefault();
+    };
+
+    const element = mountRef.current;
+    if (element) {
+      element.addEventListener('drop', handleDrop);
+      element.addEventListener('dragover', handleDragOver);
+      
+      return () => {
+        element.removeEventListener('drop', handleDrop);
+        element.removeEventListener('dragover', handleDragOver);
+      };
+    }
+  }, [isNewArchitectureReady]);
 
   // 새 아키텍처 이벤트 리스너 설정
   useEffect(() => {
@@ -272,12 +417,34 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
       // 필요하다면 추가 처리
     };
 
+    // 파일 I/O 이벤트 리스너
+    const handleFileLoadComplete = (event) => {
+      const { model, fileName } = event.detail;
+      console.log('📁 Modern Canvas: File loaded successfully:', fileName);
+      
+      // 로드된 객체를 추적
+      if (model) {
+        loadedObjectsRef.current.set(model.uuid, model);
+      }
+    };
+
+    const handleFileLoadError = (event) => {
+      const { fileName, error } = event.detail;
+      console.error('❌ Modern Canvas: File load failed:', fileName, error);
+      
+      // TODO: 에러 토스트 표시
+    };
+
     eventBus.on(EventTypes.OBJECT_SELECTED, handleObjectSelected);
     eventBus.on(EventTypes.OBJECT_ADDED, handleObjectAdded);
+    eventBus.on(EventTypes.FILE_LOAD_COMPLETE, handleFileLoadComplete);
+    eventBus.on(EventTypes.FILE_LOAD_ERROR, handleFileLoadError);
 
     return () => {
       eventBus.off(EventTypes.OBJECT_SELECTED, handleObjectSelected);
       eventBus.off(EventTypes.OBJECT_ADDED, handleObjectAdded);
+      eventBus.off(EventTypes.FILE_LOAD_COMPLETE, handleFileLoadComplete);
+      eventBus.off(EventTypes.FILE_LOAD_ERROR, handleFileLoadError);
     };
   }, [isNewArchitectureReady, setSelectedObject]);
 

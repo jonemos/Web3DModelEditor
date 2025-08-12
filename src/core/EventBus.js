@@ -380,6 +380,17 @@ export const EventTypes = {
   CAMERA_CHANGED: 'camera.changed',
   CAMERA_FOCUSED: 'camera.focused',
   CAMERA_RESET: 'camera.reset',
+  CAMERA_RESET_REQUESTED: 'camera.reset.requested',
+  CAMERA_PROJECTION_TOGGLE_REQUESTED: 'camera.projection.toggle.requested',
+  CAMERA_PROJECTION_CHANGED: 'camera.projection.changed',
+  CAMERA_TARGET_CHANGED: 'camera.target.changed',
+  CAMERA_TARGET_UPDATED: 'camera.target.updated',
+  CAMERA_POSITION_CHANGED: 'camera.position.changed',
+  CAMERA_POSITION_UPDATED: 'camera.position.updated',
+  CAMERA_STATE_CHANGED: 'camera.state.changed',
+  CAMERA_STATE_RESTORED: 'camera.state.restored',
+  CAMERA_CONTROLS_CHANGED: 'camera.controls.changed',
+  CAMERA_RESIZED: 'camera.resized',
 
   // 마우스 관련
   MOUSE_DOWN: 'mouse.down',
@@ -394,6 +405,7 @@ export const EventTypes = {
   // 에디터 관련
   EDITOR_MODE_CHANGED: 'editor.mode.changed',
   VIEWPORT_CHANGED: 'editor.viewport.changed',
+  VIEWPORT_RESIZED: 'editor.viewport.resized',
   GRID_TOGGLED: 'editor.grid.toggled',
 
   // 키보드 관련
@@ -412,7 +424,46 @@ export const EventTypes = {
   PANEL_OPENED: 'ui.panel.opened',
   PANEL_CLOSED: 'ui.panel.closed',
   DIALOG_OPENED: 'ui.dialog.opened',
-  DIALOG_CLOSED: 'ui.dialog.closed'
+  DIALOG_CLOSED: 'ui.dialog.closed',
+  MENU_REGISTERED: 'ui.menu.registered',
+  MENU_UNREGISTERED: 'ui.menu.unregistered',
+
+  // 파일 I/O 관련
+  FILE_LOAD_START: 'file.load.start',
+  FILE_LOAD_PROGRESS: 'file.load.progress',
+  FILE_LOAD_COMPLETE: 'file.load.complete',
+  FILE_LOAD_ERROR: 'file.load.error',
+  FILE_LOAD_UNDONE: 'file.load.undone',
+  FILE_SAVE_START: 'file.save.start',
+  FILE_SAVE_PROGRESS: 'file.save.progress',
+  FILE_SAVE_COMPLETE: 'file.save.complete',
+  FILE_SAVE_ERROR: 'file.save.error',
+  FILE_DROP: 'file.drop',
+  FILE_THUMBNAIL_GENERATED: 'file.thumbnail.generated',
+  FILE_THUMBNAIL_ERROR: 'file.thumbnail.error',
+  FILE_STATUS_REQUEST: 'file.status.request',
+  FILE_STATUS_RESPONSE: 'file.status.response',
+
+  // 라이브러리 관련
+  LIBRARY_REQUEST_MESHES: 'library.request.meshes',
+  LIBRARY_MESHES_LOADED: 'library.meshes.loaded',
+  LIBRARY_MESHES_LOAD_ERROR: 'library.meshes.load.error',
+  LIBRARY_MESH_LOADED: 'library.mesh.loaded',
+  LIBRARY_MESH_LOAD_ERROR: 'library.mesh.load.error',
+  LIBRARY_MESH_UNLOADED: 'library.mesh.unloaded',
+  LIBRARY_REFRESH_START: 'library.refresh.start',
+  LIBRARY_REFRESH_COMPLETE: 'library.refresh.complete',
+  LIBRARY_REFRESH_ERROR: 'library.refresh.error',
+
+  // 커스텀 메쉬 관련
+  CUSTOM_MESH_SAVED: 'custom.mesh.saved',
+  CUSTOM_MESH_SAVE_ERROR: 'custom.mesh.save.error',
+  CUSTOM_MESH_LOADED: 'custom.mesh.loaded',
+  CUSTOM_MESH_LOAD_ERROR: 'custom.mesh.load.error',
+  CUSTOM_MESH_UNLOADED: 'custom.mesh.unloaded',
+  CUSTOM_MESH_DELETED: 'custom.mesh.deleted',
+  CUSTOM_MESH_DELETE_ERROR: 'custom.mesh.delete.error',
+  CUSTOM_MESH_RESTORED: 'custom.mesh.restored'
 }
 
 // 글로벌 이벤트 버스

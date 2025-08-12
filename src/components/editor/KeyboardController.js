@@ -458,6 +458,29 @@ export class KeyboardController {
   }
 
   /**
+   * 카메라 액션 등록 (CameraPlugin용)
+   */
+  registerCameraActions(actions) {
+    if (actions.reset) {
+      this.actions.viewport.get('Numpad0').action = actions.reset;
+    }
+    
+    if (actions.toggleProjection) {
+      this.actions.viewport.get('Numpad5').action = actions.toggleProjection;
+    }
+    
+    if (actions.focusSelected) {
+      this.actions.viewport.get('KeyF').action = actions.focusSelected;
+    }
+    
+    // 새로운 카메라 관련 키 매핑 추가
+    this.registerCustomKey('Home', 'Reset Camera', '카메라를 초기 위치로 리셋', actions.reset, 'viewport');
+    this.registerCustomKey('KeyP', 'Toggle Projection', '투영 모드 전환 (Perspective/Orthographic)', actions.toggleProjection, 'viewport');
+    
+    console.log('✅ Camera actions registered to KeyboardController');
+  }
+
+  /**
    * 시스템 액션 등록
    */
   registerSystemActions(actions) {

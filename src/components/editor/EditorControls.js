@@ -515,4 +515,41 @@ export class EditorControls {
     this.scene.add(this.gridHelper);
     console.log(`Grid size updated: ${size}x${size}, divisions: ${divisions}`);
   }
+
+  /**
+   * CameraPlugin 연결 (새 아키텍처용)
+   */
+  connectCameraPlugin(cameraPlugin) {
+    this.cameraPlugin = cameraPlugin;
+    
+    // KeyboardController에 CameraPlugin 액션 등록
+    this.keyboardController.registerCameraActions({
+      reset: () => {
+        if (this.cameraPlugin) {
+          this.cameraPlugin.resetCamera();
+        }
+      },
+      toggleProjection: () => {
+        if (this.cameraPlugin) {
+          this.cameraPlugin.toggleProjection();
+        }
+      },
+      focusSelected: () => {
+        const selectedObject = this.editorStore.getState().selectedObject;
+        if (selectedObject && this.cameraPlugin) {
+          // 선택된 객체로 카메라 포커스 (새 아키텍처 방식)
+          // 객체의 바운딩 박스를 계산하여 적절한 타겟 설정
+          if (selectedObject.isObject3D) {
+            const box = new THREE.Box3().setFromObject(selectedObject);
+            const center = box.getCenter(new THREE.Vector3());
+            
+            // 카메라 타겟을 객체 중심으로 설정
+            this.cameraPlugin.setCameraTarget(center);
+          }
+        }
+      }
+    });
+    
+    console.log('✅ CameraPlugin connected to EditorControls');
+  }
 }

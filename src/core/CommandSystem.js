@@ -666,5 +666,155 @@ export const createToggleGridCommand = (gridManager) => {
   )
 }
 
+// === 카메라 명령 팩토리들 ===
+
+/**
+ * 카메라 리셋 명령 생성
+ */
+export const createResetCameraCommand = (cameraPlugin) => {
+  const currentState = cameraPlugin.getCurrentState();
+  const initialState = { ...cameraPlugin.initialState };
+  
+  return new Command(
+    'resetCamera',
+    () => {
+      // 카메라를 초기 상태로 리셋
+      cameraPlugin.applyCameraState(initialState);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_RESET, { 
+          state: initialState,
+          previousState: currentState
+        });
+      });
+    },
+    () => {
+      // 이전 상태로 복원
+      cameraPlugin.applyCameraState(currentState);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_STATE_RESTORED, { 
+          state: currentState,
+          resetState: initialState
+        });
+      });
+    },
+    { cameraPlugin, currentState, initialState }
+  )
+}
+
+/**
+ * 카메라 투영 모드 전환 명령 생성
+ */
+export const createToggleCameraProjectionCommand = (cameraPlugin) => {
+  const currentMode = cameraPlugin.projectionMode;
+  const targetMode = currentMode === 'perspective' ? 'orthographic' : 'perspective';
+  
+  return new Command(
+    'toggleCameraProjection',
+    () => {
+      // 투영 모드 전환
+      cameraPlugin.setProjectionMode(targetMode);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_PROJECTION_CHANGED, { 
+          mode: targetMode,
+          previousMode: currentMode,
+          camera: cameraPlugin.camera
+        });
+      });
+    },
+    () => {
+      // 이전 모드로 복원
+      cameraPlugin.setProjectionMode(currentMode);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_PROJECTION_CHANGED, { 
+          mode: currentMode,
+          previousMode: targetMode,
+          camera: cameraPlugin.camera
+        });
+      });
+    },
+    { cameraPlugin, currentMode, targetMode }
+  )
+}
+
+/**
+ * 카메라 상태 설정 명령 생성
+ */
+export const createSetCameraStateCommand = (cameraPlugin, targetState) => {
+  const currentState = cameraPlugin.getCurrentState();
+  
+  return new Command(
+    'setCameraState',
+    () => {
+      // 카메라 상태 적용
+      cameraPlugin.applyCameraState(targetState);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_STATE_CHANGED, { 
+          state: targetState,
+          previousState: currentState
+        });
+      });
+    },
+    () => {
+      // 이전 상태로 복원
+      cameraPlugin.applyCameraState(currentState);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_STATE_CHANGED, { 
+          state: currentState,
+          targetState: targetState
+        });
+      });
+    },
+    { cameraPlugin, currentState, targetState }
+  )
+}
+
+/**
+ * 카메라 타겟 설정 명령 생성
+ */
+export const createSetCameraTargetCommand = (cameraPlugin, newTarget) => {
+  const currentTarget = cameraPlugin.cameraTarget.clone();
+  
+  return new Command(
+    'setCameraTarget',
+    () => {
+      // 카메라 타겟 설정
+      cameraPlugin.setCameraTarget(newTarget);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_TARGET_UPDATED, { 
+          target: newTarget,
+          previousTarget: currentTarget
+        });
+      });
+    },
+    () => {
+      // 이전 타겟으로 복원
+      cameraPlugin.setCameraTarget(currentTarget);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.CAMERA_TARGET_UPDATED, { 
+          target: currentTarget,
+          newTarget: newTarget
+        });
+      });
+    },
+    { cameraPlugin, currentTarget, newTarget }
+  )
+}
+
 // 글로벌 명령어 매니저
 export const commandManager = new CommandManager()
