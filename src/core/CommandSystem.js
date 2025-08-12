@@ -7,6 +7,7 @@
  * - 매크로 기능
  * - 네트워크 동기화
  */
+import * as THREE from 'three';
 
 export class Command {
   constructor(name, execute, undo = null, data = {}) {
@@ -376,6 +377,147 @@ export const createAddObjectCommand = (scene, object, parent = null) => {
       });
     },
     { object, parent }
+  )
+}
+
+/**
+ * 객체 회전 명령 생성
+ */
+export const createRotateObjectCommand = (object, axis, degrees) => {
+  const previousRotation = { ...object.rotation };
+  const radians = THREE.MathUtils.degToRad(degrees);
+  
+  return new Command(
+    'rotateObject',
+    () => {
+      // 회전 적용
+      switch (axis.toLowerCase()) {
+        case 'x':
+          object.rotation.x += radians;
+          break;
+        case 'y':
+          object.rotation.y += radians;
+          break;
+        case 'z':
+          object.rotation.z += radians;
+          break;
+      }
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_ROTATED, { object, axis, degrees });
+      });
+    },
+    () => {
+      // 이전 회전 복원
+      object.rotation.copy(previousRotation);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_ROTATED, { 
+          object, 
+          axis, 
+          degrees: -degrees 
+        });
+      });
+    },
+    { object, axis, degrees, previousRotation }
+  )
+}
+
+/**
+ * 객체 회전 초기화 명령 생성
+ */
+export const createResetObjectRotationCommand = (object) => {
+  const previousRotation = { ...object.rotation };
+  
+  return new Command(
+    'resetObjectRotation',
+    () => {
+      // 회전 초기화
+      object.rotation.set(0, 0, 0);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_ROTATION_RESET, { object });
+      });
+    },
+    () => {
+      // 이전 회전 복원
+      object.rotation.copy(previousRotation);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_ROTATED, { object });
+      });
+    },
+    { object, previousRotation }
+  )
+}
+
+/**
+ * 객체 이동 명령 생성
+ */
+export const createMoveObjectCommand = (object, delta) => {
+  const previousPosition = { ...object.position };
+  
+  return new Command(
+    'moveObject',
+    () => {
+      // 이동 적용
+      object.position.add(delta);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_MOVED, { object, delta });
+      });
+    },
+    () => {
+      // 이전 위치 복원
+      object.position.copy(previousPosition);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_MOVED, { 
+          object, 
+          delta: delta.clone().negate() 
+        });
+      });
+    },
+    { object, delta, previousPosition }
+  )
+}
+
+/**
+ * 객체 스케일 명령 생성
+ */
+export const createScaleObjectCommand = (object, scaleFactor) => {
+  const previousScale = { ...object.scale };
+  
+  return new Command(
+    'scaleObject',
+    () => {
+      // 스케일 적용
+      object.scale.multiplyScalar(scaleFactor);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_SCALED, { object, scaleFactor });
+      });
+    },
+    () => {
+      // 이전 스케일 복원
+      object.scale.copy(previousScale);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_SCALED, { 
+          object, 
+          scaleFactor: 1 / scaleFactor 
+        });
+      });
+    },
+    { object, scaleFactor, previousScale }
   )
 }
 

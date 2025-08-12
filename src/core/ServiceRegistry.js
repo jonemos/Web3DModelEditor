@@ -383,7 +383,11 @@ async function setupCommandFactories(commandManager) {
     createDeselectAllCommand,
     createSetTransformModeCommand,
     createDeleteObjectCommand,
-    createAddObjectCommand
+    createAddObjectCommand,
+    createRotateObjectCommand,
+    createResetObjectRotationCommand,
+    createMoveObjectCommand,
+    createScaleObjectCommand
   } = await import('./CommandSystem.js')
 
   // 선택 관련 명령어들
@@ -409,6 +413,25 @@ async function setupCommandFactories(commandManager) {
     }
   })
 
+  // 회전 관련 명령어들
+  commandManager.registerCommand('rotateObject', (params) => {
+    return createRotateObjectCommand(params.object, params.axis, params.degrees)
+  })
+
+  commandManager.registerCommand('resetObjectRotation', (params) => {
+    return createResetObjectRotationCommand(params.object)
+  })
+
+  // 이동 관련 명령어들
+  commandManager.registerCommand('moveObject', (params) => {
+    return createMoveObjectCommand(params.object, params.delta)
+  })
+
+  // 스케일 관련 명령어들
+  commandManager.registerCommand('scaleObject', (params) => {
+    return createScaleObjectCommand(params.object, params.scaleFactor)
+  })
+
   // 객체 관리 명령어들
   commandManager.registerCommand('deleteObject', (params) => {
     const sceneService = serviceRegistry.get('sceneService')
@@ -425,5 +448,5 @@ async function setupCommandFactories(commandManager) {
     }
   })
 
-  console.log('✅ Command factories registered')
+  console.log('✅ Command factories registered with Transform operations')
 }

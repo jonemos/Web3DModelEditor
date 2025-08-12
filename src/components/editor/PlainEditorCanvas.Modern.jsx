@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useEditorStore } from '../../store/editorStore';
 import { EditorControls } from './EditorControls.js';
 import { PostProcessingManager } from './PostProcessingManager.js';
+import TransformManagerModern from './TransformManager.Modern.js';
 import { getGLBMeshManager } from '../../utils/GLBMeshManager';
 
 // 새 아키텍처 통합
@@ -14,6 +15,7 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
   const mountRef = useRef(null);
   const editorControlsRef = useRef(null);
   const postProcessingRef = useRef(null);
+  const transformManagerRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map());
   
@@ -127,6 +129,34 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
       onEditorControlsReady(editorControls);
     }
 
+    // TransformManager.Modern 초기화 (새 아키텍처 활성화시)
+    let transformManager = null;
+    if (isNewArchitectureReady && services.serviceRegistry) {
+      transformManager = new TransformManagerModern({
+        mode: 'translate',
+        space: 'world',
+        snapEnabled: false,
+        gridSize: 1.0
+      });
+      
+      // 새 아키텍처에 연결
+      transformManager.connectToNewArchitecture(services.serviceRegistry)
+        .then((connected) => {
+          if (connected) {
+            transformManager.initialize();
+            
+            // 서비스 레지스트리에 등록
+            services.serviceRegistry.registerSingleton('transformManager', transformManager);
+            console.log('✅ TransformManager.Modern registered with new architecture');
+          }
+        })
+        .catch(error => {
+          console.error('❌ Failed to initialize TransformManager.Modern:', error);
+        });
+        
+      transformManagerRef.current = transformManager;
+    }
+
     // PostProcessing 초기화
     const postProcessing = new PostProcessingManager(scene, camera, renderer);
     postProcessingRef.current = postProcessing;
@@ -177,6 +207,11 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
       
       if (postProcessing) {
         postProcessing.dispose();
+      }
+      
+      // TransformManager 정리
+      if (transformManager) {
+        transformManager.destroy();
       }
       
       renderer.dispose();

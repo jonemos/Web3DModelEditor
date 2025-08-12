@@ -238,6 +238,96 @@ function MigrationTestPageNew() {
     }
   }
 
+  const testRotateCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      // 가상의 객체 생성 및 회전 테스트
+      const mockObject = {
+        rotation: { x: 0, y: 0, z: 0, copy: function(other) { Object.assign(this, other) } },
+        name: 'Test Rotation Object'
+      }
+      
+      await commandManager.execute('rotateObject', { 
+        object: mockObject, 
+        axis: 'y', 
+        degrees: 45 
+      })
+      addLog(`✅ Rotate Object 명령 실행 완료 - Y축 45도 회전`)
+    } catch (error) {
+      addLog(`❌ Rotate Object 명령 실행 실패: ${error.message}`)
+    }
+  }
+
+  const testMoveCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      // 가상의 객체 생성 및 이동 테스트
+      const mockObject = {
+        position: { x: 0, y: 0, z: 0, add: function(delta) { this.x += delta.x; this.y += delta.y; this.z += delta.z }, copy: function(other) { Object.assign(this, other) } },
+        name: 'Test Move Object'
+      }
+      
+      const delta = { x: 2, y: 1, z: 0, clone: function() { return {...this} }, negate: function() { return {x: -this.x, y: -this.y, z: -this.z} } }
+      
+      await commandManager.execute('moveObject', { 
+        object: mockObject, 
+        delta 
+      })
+      addLog(`✅ Move Object 명령 실행 완료 - (2, 1, 0) 이동`)
+    } catch (error) {
+      addLog(`❌ Move Object 명령 실행 실패: ${error.message}`)
+    }
+  }
+
+  const testScaleCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      // 가상의 객체 생성 및 스케일 테스트
+      const mockObject = {
+        scale: { x: 1, y: 1, z: 1, multiplyScalar: function(s) { this.x *= s; this.y *= s; this.z *= s }, copy: function(other) { Object.assign(this, other) } },
+        name: 'Test Scale Object'
+      }
+      
+      await commandManager.execute('scaleObject', { 
+        object: mockObject, 
+        scaleFactor: 1.5 
+      })
+      addLog(`✅ Scale Object 명령 실행 완료 - 1.5배 확대`)
+    } catch (error) {
+      addLog(`❌ Scale Object 명령 실행 실패: ${error.message}`)
+    }
+  }
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1>🔬 Migration Test Lab v2</h1>
@@ -384,6 +474,24 @@ function MigrationTestPageNew() {
             style={{ marginRight: '10px', padding: '8px 12px', background: '#CDDC39', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
             ↷ Test Redo
+          </button>
+          <button 
+            onClick={testRotateCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#E91E63', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            🔄 Test Rotate Object
+          </button>
+          <button 
+            onClick={testMoveCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#00BCD4', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            ↔️ Test Move Object
+          </button>
+          <button 
+            onClick={testScaleCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#4CAF50', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            📏 Test Scale Object
           </button>
         </div>
       )}

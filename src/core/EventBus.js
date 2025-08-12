@@ -324,19 +324,32 @@ export const EventTypes = {
   OBJECT_SELECTED: 'object.selected',
   OBJECT_DESELECTED: 'object.deselected',
   OBJECT_TRANSFORMED: 'object.transformed',
+  OBJECT_ROTATED: 'object.rotated',
+  OBJECT_ROTATION_RESET: 'object.rotation.reset',
+  OBJECT_MOVED: 'object.moved',
+  OBJECT_SCALED: 'object.scaled',
 
   // 변형 관련
   TRANSFORM_MODE_CHANGED: 'transform.mode.changed',
+  TRANSFORM_SPACE_CHANGED: 'transform.space.changed',
   TRANSFORM_CHANGED: 'transform.changed',
   TRANSFORM_DRAGGING_CHANGED: 'transform.dragging.changed',
+  TRANSFORM_MANAGER_READY: 'transform.manager.ready',
+  TRANSFORM_STATE_CHANGED: 'transform.state.changed',
+
+  // 그리드 관련
+  GRID_VISIBILITY_CHANGED: 'grid.visibility.changed',
+  GRID_SNAP_CHANGED: 'grid.snap.changed',
+  GRID_SIZE_CHANGED: 'grid.size.changed',
+
+  // 자석 관련
+  MAGNET_CHANGED: 'magnet.changed',
+  MAGNET_RAYS_CHANGED: 'magnet.rays.changed',
 
   // 카메라 관련
   CAMERA_CHANGED: 'camera.changed',
   CAMERA_FOCUSED: 'camera.focused',
   CAMERA_RESET: 'camera.reset',
-
-  // 그리드 관련
-  GRID_VISIBILITY_CHANGED: 'grid.visibility.changed',
 
   // 마우스 관련
   MOUSE_DOWN: 'mouse.down',
@@ -352,6 +365,9 @@ export const EventTypes = {
   EDITOR_MODE_CHANGED: 'editor.mode.changed',
   VIEWPORT_CHANGED: 'editor.viewport.changed',
   GRID_TOGGLED: 'editor.grid.toggled',
+
+  // 키보드 관련
+  KEYBOARD_INPUT: 'keyboard.input',
 
   // 명령어 관련
   COMMAND_EXECUTED: 'command.executed',
