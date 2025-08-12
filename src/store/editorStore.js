@@ -19,7 +19,8 @@ const loadInitialHDRISettings = () => {
 
 const initialHDRISettings = loadInitialHDRISettings()
 
-export const useEditorStore = create((set, get) => {
+// 스토어 인스턴스를 직접 생성하여 getState() 메서드에 접근 가능하도록 함
+const createEditorStore = () => create((set, get) => {
   console.log('🔥 에디터 스토어 생성 시작');
   
   return {
@@ -505,3 +506,12 @@ export const useEditorStore = create((set, get) => {
   setScene: (scene, camera, renderer) => set({ scene, camera, renderer })
   };
 });
+
+// 스토어 인스턴스 생성
+const editorStoreInstance = createEditorStore()
+
+// hook 함수로 export (기존 코드 호환성 유지)
+export const useEditorStore = editorStoreInstance
+
+// 스토어 인스턴스도 export (새 아키텍처에서 getState() 접근용)
+export { editorStoreInstance }

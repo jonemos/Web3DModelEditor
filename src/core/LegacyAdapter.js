@@ -10,10 +10,12 @@ import { eventBus, EventTypes } from '../core/EventBus.js'
 import { commandManager } from '../core/CommandSystem.js'
 import { configManager } from '../core/ConfigManager.js'
 import { registerStoreMigrationService } from './StoreMigrationService.js'
+import { editorStoreInstance } from '../store/editorStore.js'
 
 export class LegacyAdapter {
   constructor(editorStore) {
     this.editorStore = editorStore
+    this.editorStoreInstance = editorStoreInstance // getState() 접근 가능한 인스턴스
     this.isNewArchitectureEnabled = false
     this.services = new Map()
     this.storeMigrationService = null
@@ -46,7 +48,7 @@ export class LegacyAdapter {
         commandManager, 
         configManager
       )
-      await this.storeMigrationService.init(this.editorStore)
+      await this.storeMigrationService.init(this.editorStoreInstance)
 
       // 양방향 동기화 설정
       this.setupBidirectionalSync()

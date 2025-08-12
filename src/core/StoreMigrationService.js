@@ -61,13 +61,27 @@ export class StoreMigrationService extends BaseService {
   syncFromOriginalStore() {
     if (!this.originalStore) return
 
-    const state = this.originalStore.getState()
-    this.migratedState = {
-      selectedObject: state.selectedObject,
-      transformMode: state.transformMode,
-      isGridVisible: state.isGridVisible,
-      objects: [...(state.objects || [])],
-      walls: [...(state.walls || [])]
+    try {
+      const state = this.originalStore.getState()
+      this.migratedState = {
+        selectedObject: state.selectedObject,
+        transformMode: state.transformMode,
+        isGridVisible: state.isGridVisible,
+        objects: [...(state.objects || [])],
+        walls: [...(state.walls || [])]
+      }
+      
+      console.log('✅ Store state synced:', this.migratedState)
+    } catch (error) {
+      console.error('❌ Failed to sync from original store:', error)
+      // 기본값으로 초기화
+      this.migratedState = {
+        selectedObject: null,
+        transformMode: 'translate',
+        isGridVisible: true,
+        objects: [],
+        walls: []
+      }
     }
   }
 
