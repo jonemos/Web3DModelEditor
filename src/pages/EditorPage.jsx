@@ -4,7 +4,7 @@ import PlainEditorCanvas from '../components/editor/PlainEditorCanvas'
 import EditorUI from '../components/editor/EditorUI'
 import MenuBar from '../components/editor/MenuBar'
 import ViewportControls from '../components/editor/ViewportControls'
-import { useEditorStore } from '../store/editorStore'
+import { useEditorStore, editorStoreInstance } from '../store/editorStore' // editorStoreInstance 추가
 import { getGLBMeshManager } from '../utils/GLBMeshManager'
 import { createLegacyAdapter } from '../core/LegacyAdapter'
 import Toast from '../components/ui/Toast'
@@ -71,8 +71,8 @@ function EditorPage() {
   useEffect(() => {
     // Legacy Adapter 생성
     if (!legacyAdapterRef.current) {
-      const store = useEditorStore.getState()
-      legacyAdapterRef.current = createLegacyAdapter(store)
+      // editorStoreInstance를 사용하여 getState() 메서드에 접근 가능한 인스턴스 전달
+      legacyAdapterRef.current = createLegacyAdapter(editorStoreInstance)
       console.log('🔧 Legacy Adapter created')
     }
 
@@ -532,7 +532,7 @@ function EditorPage() {
       case 'toggle-grid':
         console.log('Grid toggle menu action triggered');
         toggleGridVisible();
-        const currentState = useEditorStore.getState();
+        const currentState = editorStoreInstance.getState(); // editorStoreInstance 사용
         const isVisible = currentState.isGridVisible;
         
         // EditorControls에 변경사항 반영

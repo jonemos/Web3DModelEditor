@@ -26,7 +26,9 @@ function HomePage() {
       deferredPrompt.prompt()
       const choiceResult = await deferredPrompt.userChoice
       if (choiceResult.outcome === 'accepted') {
-        // User accepted the install prompt
+        console.log('User accepted the install prompt')
+      } else {
+        console.log('User dismissed the install prompt')
       }
       setDeferredPrompt(null)
     }
@@ -52,14 +54,21 @@ function HomePage() {
             className="menu-btn editor-btn"
             onClick={() => navigate('/editor')}
           >
-            에디터
+            에디터 모드
           </button>
           <button 
             className="menu-btn"
-            onClick={() => navigate('/migration-test')}
+            onClick={() => navigate('/test-migration')}
             style={{ background: '#ff6b35' }}
           >
             🧪 마이그레이션 테스트
+          </button>
+          <button 
+            className="menu-btn"
+            onClick={() => navigate('/test-migration-new')}
+            style={{ background: '#9c27b0' }}
+          >
+            🚀 모던 시스템 테스트
           </button>
         </div>
       </div>

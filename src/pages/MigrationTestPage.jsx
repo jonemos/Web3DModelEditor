@@ -6,10 +6,14 @@ import { useState, useEffect } from 'react'
 import { createLegacyAdapter } from '../core/LegacyAdapter'
 import { useEditorStore } from '../store/editorStore'
 
+// 새로운 모던 컴포넌트들
+import PlainEditorCanvasModern from '../components/editor/PlainEditorCanvas.Modern.jsx'
+
 function MigrationTestPage() {
   const [adapter, setAdapter] = useState(null)
   const [status, setStatus] = useState(null)
   const [logs, setLogs] = useState([])
+  const [useModernCanvas, setUseModernCanvas] = useState(false)
   
   const editorStore = useEditorStore()
 
@@ -92,6 +96,12 @@ function MigrationTestPage() {
     } catch (error) {
       addLog(`❌ Migration failed: ${error.message}`)
     }
+  }
+
+  // 새 캔버스 컴포넌트 토글
+  const handleToggleModernCanvas = () => {
+    setUseModernCanvas(!useModernCanvas)
+    addLog(useModernCanvas ? '🔄 Legacy Canvas로 전환' : '🚀 Modern Canvas로 전환')
   }
 
   return (
