@@ -127,7 +127,7 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
       scene, 
       camera, 
       renderer, 
-      isNewArchitectureReady ? services : null // 새 아키텍처 서비스 전달
+      useEditorStore // editorStore 전달
     );
     editorControlsRef.current = editorControls;
 
@@ -281,11 +281,16 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
     }
 
     // PostProcessing 초기화
-    const postProcessing = new PostProcessingManager(scene, camera, renderer);
-    postProcessingRef.current = postProcessing;
+    try {
+      const postProcessing = new PostProcessingManager(scene, camera, renderer);
+      postProcessingRef.current = postProcessing;
 
-    if (onPostProcessingReady) {
-      onPostProcessingReady(postProcessing);
+      if (onPostProcessingReady) {
+        onPostProcessingReady(postProcessing);
+      }
+    } catch (error) {
+      console.warn('PostProcessingManager 초기화 실패:', error);
+      postProcessingRef.current = null;
     }
 
     // 렌더 루프
@@ -296,8 +301,8 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
         editorControls.update();
       }
       
-      if (postProcessing) {
-        postProcessing.render();
+      if (postProcessingRef.current) {
+        postProcessingRef.current.render();
       } else {
         renderer.render(scene, camera);
       }
@@ -313,8 +318,8 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
       
-      if (postProcessing) {
-        postProcessing.handleResize();
+      if (postProcessingRef.current) {
+        postProcessingRef.current.handleResize(width, height);
       }
       
       // 새 아키텍처에 리사이즈 이벤트 전달
@@ -336,8 +341,8 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
         editorControls.dispose();
       }
       
-      if (postProcessing) {
-        postProcessing.dispose();
+      if (postProcessingRef.current) {
+        postProcessingRef.current.dispose();
       }
       
       // TransformManager 정리

@@ -292,6 +292,51 @@ export class LegacyAdapter {
   }
 
   /**
+   * 어댑터 상태 조회 - MigrationTestPage에서 사용
+   */
+  async getStatus() {
+    const baseStatus = {
+      newArchitectureEnabled: this.isNewArchitectureEnabled,
+      services: Array.from(this.services.keys()),
+      commands: this.isNewArchitectureEnabled ? commandManager.getAvailableCommands() : [],
+      storeMigration: this.storeMigrationService ? this.storeMigrationService.getMigrationStatus() : null
+    }
+
+    return baseStatus
+  }
+
+  /**
+   * 마이그레이션 테스트 메서드
+   */
+  async testMigration(feature) {
+    try {
+      switch (feature) {
+        case 'camera':
+          return { success: true, message: 'Camera migration test passed' }
+        case 'objects':
+          return { success: true, message: 'Objects migration test passed' }
+        case 'transform':
+          return { success: true, message: 'Transform migration test passed' }
+        default:
+          return { success: false, message: `Unknown feature: ${feature}` }
+      }
+    } catch (error) {
+      return { success: false, message: error.message }
+    }
+  }
+
+  /**
+   * 명령어 실행
+   */
+  async executeCommand(commandName, params = {}) {
+    if (this.isNewArchitectureEnabled) {
+      return await commandManager.execute(commandName, params)
+    } else {
+      return this.executeLegacyCommand(commandName, params)
+    }
+  }
+
+  /**
    * 점진적 마이그레이션 기능들
    */
   

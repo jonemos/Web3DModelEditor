@@ -351,6 +351,8 @@ export const EventTypes = {
   OBJECT_ROTATION_RESET: 'object.rotation.reset',
   OBJECT_MOVED: 'object.moved',
   OBJECT_SCALED: 'object.scaled',
+  OBJECT_UPDATED: 'object.updated',
+  OBJECT_RENAMED: 'object.renamed',
 
   // 변형 관련
   TRANSFORM_MODE_CHANGED: 'transform.mode.changed',
@@ -448,6 +450,22 @@ export const EventTypes = {
   LIBRARY_REQUEST_MESHES: 'library.request.meshes',
   LIBRARY_MESHES_LOADED: 'library.meshes.loaded',
   LIBRARY_MESHES_LOAD_ERROR: 'library.meshes.load.error',
+
+  // 에셋 관련
+  ASSET_REGISTERED: 'asset.registered',
+  ASSET_UNREGISTERED: 'asset.unregistered',
+  ASSET_PLACED: 'asset.placed',
+
+  // 포스트 프로세싱 관련
+  POST_PROCESSING_TOGGLED: 'postprocessing.toggled',
+  POST_PROCESSING_EFFECT_ENABLED: 'postprocessing.effect.enabled',
+  POST_PROCESSING_EFFECT_DISABLED: 'postprocessing.effect.disabled',
+  POST_PROCESSING_EFFECT_UPDATED: 'postprocessing.effect.updated',
+  POST_PROCESSING_PRESET_APPLIED: 'postprocessing.preset.applied',
+
+  // 환경 관련
+  ENVIRONMENT_MAP_CHANGED: 'environment.map.changed',
+  ENVIRONMENT_SETTINGS_UPDATED: 'environment.settings.updated',
   LIBRARY_MESH_LOADED: 'library.mesh.loaded',
   LIBRARY_MESH_LOAD_ERROR: 'library.mesh.load.error',
   LIBRARY_MESH_UNLOADED: 'library.mesh.unloaded',

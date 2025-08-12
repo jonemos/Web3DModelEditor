@@ -552,4 +552,14 @@ export class EditorControls {
     
     console.log('✅ CameraPlugin connected to EditorControls');
   }
+
+  /**
+   * 매 프레임마다 호출되는 업데이트 메서드
+   */
+  update() {
+    // 현재는 특별한 업데이트 로직이 필요하지 않음
+    // TransformControls와 다른 컴포넌트들은 자동으로 업데이트됨
+    
+    // 필요시 여기에 매 프레임 업데이트 로직 추가
+  }
 }

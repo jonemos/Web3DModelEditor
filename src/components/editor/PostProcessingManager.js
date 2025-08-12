@@ -449,7 +449,12 @@ export class PostProcessingManager {
    * 렌더링 실행
    */
   render() {
-    this.composer.render();
+    if (this.composer) {
+      this.composer.render();
+    } else {
+      // fallback: 컴포저가 없으면 기본 렌더러 사용
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   /**

@@ -35,6 +35,315 @@ export class CommandManager {
     this.maxHistorySize = maxHistorySize
     this.eventBus = new EventTarget()
     this.commands = new Map() // 등록된 명령어들
+    
+    // Modern 패널들을 위한 기본 명령어들 등록
+    this.registerModernCommands()
+  }
+
+  /**
+   * Modern 패널들을 위한 명령어 등록
+   */
+  registerModernCommands() {
+    // 객체 속성 업데이트 명령
+    this.registerCommand('updateObjectProperty', (params) => {
+      const { object, property, value, previousValue } = params
+      return new Command(
+        'updateObjectProperty',
+        () => {
+          object[property] = value
+          if (object.updateMatrix) object.updateMatrix()
+        },
+        () => {
+          object[property] = previousValue
+          if (object.updateMatrix) object.updateMatrix()
+        },
+        { object, property, value, previousValue }
+      )
+    })
+
+    // 벡터 속성 업데이트 명령
+    this.registerCommand('updateObjectVectorProperty', (params) => {
+      const { object, property, value, previousValue } = params
+      return new Command(
+        'updateObjectVectorProperty',
+        () => {
+          object[property].set(value.x, value.y, value.z)
+          if (object.updateMatrix) object.updateMatrix()
+        },
+        () => {
+          object[property].set(previousValue.x, previousValue.y, previousValue.z)
+          if (object.updateMatrix) object.updateMatrix()
+        },
+        { object, property, value, previousValue }
+      )
+    })
+
+    // 에셋 배치 명령
+    this.registerCommand('placeAsset', (params) => {
+      const { assetType, assetId, parameters, position } = params
+      let createdObject = null
+      
+      return new Command(
+        'placeAsset',
+        async () => {
+          // 에셋 타입에 따라 객체 생성
+          createdObject = await this.createAssetObject(assetType, assetId, parameters)
+          if (createdObject) {
+            createdObject.position.set(position.x, position.y, position.z)
+            // 씬에 추가하는 로직은 SceneService에서 처리
+            const { eventBus, EventTypes } = await import('./EventBus.js')
+            eventBus.emit(EventTypes.OBJECT_ADDED, { object: createdObject })
+          }
+          return createdObject
+        },
+        () => {
+          if (createdObject) {
+            const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+              module.eventBus.emit(module.EventTypes.OBJECT_REMOVED, { object: createdObject })
+            })
+          }
+        },
+        { assetType, assetId, parameters, position }
+      )
+    })
+
+    // 포스트 프로세싱 토글 명령
+    this.registerCommand('togglePostProcessing', (params) => {
+      const { enabled } = params
+      return new Command(
+        'togglePostProcessing',
+        () => {
+          const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+            module.eventBus.emit(module.EventTypes.POST_PROCESSING_TOGGLED, { enabled })
+          })
+        },
+        () => {
+          const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+            module.eventBus.emit(module.EventTypes.POST_PROCESSING_TOGGLED, { enabled: !enabled })
+          })
+        },
+        { enabled }
+      )
+    })
+
+    // 포스트 프로세싱 효과 활성화 명령
+    this.registerCommand('enablePostProcessingEffect', (params) => {
+      const { effectId, settings } = params
+      return new Command(
+        'enablePostProcessingEffect',
+        () => {
+          const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+            module.eventBus.emit(module.EventTypes.POST_PROCESSING_EFFECT_ENABLED, { effectId, settings })
+          })
+        },
+        () => {
+          const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+            module.eventBus.emit(module.EventTypes.POST_PROCESSING_EFFECT_DISABLED, { effectId })
+          })
+        },
+        { effectId, settings }
+      )
+    })
+
+    // HDRI 환경맵 설정 명령
+    this.registerCommand('setEnvironmentMap', (params) => {
+      const { hdriId, url, settings } = params
+      return new Command(
+        'setEnvironmentMap',
+        () => {
+          const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+            module.eventBus.emit(module.EventTypes.ENVIRONMENT_MAP_CHANGED, { hdriId, url, settings })
+          })
+        },
+        null, // HDRI 변경은 undo 지원하지 않음 (복잡성 때문)
+        { hdriId, url, settings }
+      )
+    })
+
+    // 객체 이름 변경 명령
+    this.registerCommand('renameObject', (params) => {
+      const { objectId, newName } = params
+      let object = null
+      let oldName = null
+      
+      return new Command(
+        'renameObject',
+        () => {
+          // objectId로 객체 찾기 로직은 SceneService에서 처리
+          const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+            module.eventBus.emit(module.EventTypes.OBJECT_RENAMED, { objectId, newName, oldName })
+          })
+        },
+        () => {
+          if (object && oldName) {
+            const { eventBus, EventTypes } = import('./EventBus.js').then(module => {
+              module.eventBus.emit(module.EventTypes.OBJECT_RENAMED, { objectId, newName: oldName, oldName: newName })
+            })
+          }
+        },
+        { objectId, newName }
+      )
+    })
+  }
+
+  /**
+   * 에셋 타입에 따른 객체 생성
+   */
+  async createAssetObject(assetType, assetId, parameters) {
+    switch (assetType) {
+      case 'primitive':
+        return this.createPrimitive(assetId, parameters)
+      case 'light':
+        return this.createLight(assetId, parameters)
+      case 'helper':
+        return this.createHelper(assetId, parameters)
+      case 'gameplay':
+        return this.createGameplayObject(assetId, parameters)
+      default:
+        console.warn('Unknown asset type:', assetType)
+        return null
+    }
+  }
+
+  /**
+   * 프리미티브 객체 생성
+   */
+  createPrimitive(primitiveId, parameters) {
+    let geometry, material, mesh
+
+    material = new THREE.MeshStandardMaterial({ color: 0x888888 })
+
+    switch (primitiveId) {
+      case 'cube':
+        geometry = new THREE.BoxGeometry(
+          parameters.width || 1,
+          parameters.height || 1,
+          parameters.depth || 1
+        )
+        break
+      case 'sphere':
+        geometry = new THREE.SphereGeometry(
+          parameters.radius || 0.5,
+          parameters.segments || 32,
+          parameters.segments || 16
+        )
+        break
+      case 'plane':
+        geometry = new THREE.PlaneGeometry(
+          parameters.width || 2,
+          parameters.height || 2
+        )
+        break
+      case 'cylinder':
+        geometry = new THREE.CylinderGeometry(
+          parameters.radiusTop || 0.5,
+          parameters.radiusBottom || 0.5,
+          parameters.height || 1
+        )
+        break
+      default:
+        return null
+    }
+
+    mesh = new THREE.Mesh(geometry, material)
+    mesh.name = `${primitiveId}_${Date.now()}`
+    return mesh
+  }
+
+  /**
+   * 조명 객체 생성
+   */
+  createLight(lightId, parameters) {
+    let light
+
+    switch (lightId) {
+      case 'point_light':
+        light = new THREE.PointLight(
+          parameters.color || 0xffffff,
+          parameters.intensity || 1,
+          parameters.distance || 0
+        )
+        break
+      case 'directional_light':
+        light = new THREE.DirectionalLight(
+          parameters.color || 0xffffff,
+          parameters.intensity || 1
+        )
+        break
+      case 'spot_light':
+        light = new THREE.SpotLight(
+          parameters.color || 0xffffff,
+          parameters.intensity || 1,
+          parameters.distance || 0,
+          parameters.angle || Math.PI / 3
+        )
+        break
+      case 'ambient_light':
+        light = new THREE.AmbientLight(
+          parameters.color || 0x404040,
+          parameters.intensity || 0.5
+        )
+        break
+      default:
+        return null
+    }
+
+    light.name = `${lightId}_${Date.now()}`
+    return light
+  }
+
+  /**
+   * 헬퍼 객체 생성
+   */
+  createHelper(helperId, parameters) {
+    let helper
+
+    switch (helperId) {
+      case 'axes_helper':
+        helper = new THREE.AxesHelper(parameters.size || 1)
+        break
+      case 'grid_helper':
+        helper = new THREE.GridHelper(
+          parameters.size || 10,
+          parameters.divisions || 10
+        )
+        break
+      case 'box_helper':
+        // BoxHelper는 대상 객체가 필요하므로 빈 객체 생성
+        const box = new THREE.Box3().setFromCenterAndSize(
+          new THREE.Vector3(0, 0, 0),
+          new THREE.Vector3(1, 1, 1)
+        )
+        helper = new THREE.Box3Helper(box)
+        break
+      default:
+        return null
+    }
+
+    helper.name = `${helperId}_${Date.now()}`
+    return helper
+  }
+
+  /**
+   * 게임플레이 객체 생성
+   */
+  createGameplayObject(objectId, parameters) {
+    let object
+
+    // 게임플레이 객체는 보통 마커나 특수한 속성을 가진 객체
+    const geometry = new THREE.SphereGeometry(0.1, 8, 6)
+    const material = new THREE.MeshBasicMaterial({ 
+      color: objectId === 'start_position' ? 0x00ff00 : 
+             objectId === 'checkpoint' ? 0xff0000 : 0x0000ff,
+      transparent: true,
+      opacity: 0.7
+    })
+
+    object = new THREE.Mesh(geometry, material)
+    object.name = `${objectId}_${Date.now()}`
+    object.userData.gameplayType = objectId
+
+    return object
   }
 
   /**
@@ -172,6 +481,13 @@ export class CommandManager {
       canUndo: this.canUndo(),
       canRedo: this.canRedo()
     }
+  }
+
+  /**
+   * 사용 가능한 명령어 목록 반환
+   */
+  getAvailableCommands() {
+    return Array.from(this.commands.keys())
   }
 
   /**

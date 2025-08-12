@@ -13,10 +13,15 @@ import * as THREE from 'three'
 import { GLTFExporter } from 'three-stdlib'
 import { useEditorStore } from '../../store/editorStore'
 import InspectorPanel from './panels/InspectorPanel'
+import InspectorPanelModern from './panels/InspectorPanel.Modern'
 import LibraryPanel from './panels/LibraryPanel'
+import LibraryPanelModern from './panels/LibraryPanel.Modern'
 import AssetsPanel from './panels/AssetsPanel'
+import AssetsPanelModern from './panels/AssetsPanel.Modern'
 import PostProcessingPanel from './panels/PostProcessingPanel'
+import PostProcessingPanelModern from './panels/PostProcessingPanel.Modern'
 import HDRIPanel from './panels/HDRIPanel'
+import HDRIPanelModern from './panels/HDRIPanel.Modern'
 import ContextMenu from './ContextMenu'
 import Toast from '../ui/Toast'
 import { app } from '../../core/ApplicationBootstrap.js'
@@ -434,11 +439,31 @@ function EditorUIModern({
       </div>
 
       {/* 기존 패널들 */}
-      {showInspector && <InspectorPanel />}
-      {showLibrary && <LibraryPanel />}
-      {showAssets && <AssetsPanel />}
-      {showPostProcessing && <PostProcessingPanel />}
-      {showHDRI && <HDRIPanel />}
+      {showInspector && (
+        isNewArchitectureEnabled ? 
+          <InspectorPanelModern isNewArchitectureEnabled={isNewArchitectureEnabled} /> :
+          <InspectorPanel />
+      )}
+      {showLibrary && (
+        isNewArchitectureEnabled ? 
+          <LibraryPanelModern isNewArchitectureEnabled={isNewArchitectureEnabled} /> :
+          <LibraryPanel />
+      )}
+      {showAssets && (
+        isNewArchitectureEnabled ? 
+          <AssetsPanelModern isNewArchitectureEnabled={isNewArchitectureEnabled} /> :
+          <AssetsPanel />
+      )}
+      {showPostProcessing && (
+        isNewArchitectureEnabled ? 
+          <PostProcessingPanelModern isNewArchitectureEnabled={isNewArchitectureEnabled} /> :
+          <PostProcessingPanel />
+      )}
+      {showHDRI && (
+        isNewArchitectureEnabled ? 
+          <HDRIPanelModern isNewArchitectureEnabled={isNewArchitectureEnabled} /> :
+          <HDRIPanel />
+      )}
 
       {/* 동적 플러그인 패널들 */}
       {isNewArchitectureEnabled && (
