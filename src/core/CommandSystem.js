@@ -1,0 +1,236 @@
+/**
+ * Command System - 모든 액션을 명령어로 관리
+ * 
+ * 장점:
+ * - Undo/Redo 구현 용이
+ * - 액션 로깅 및 디버깅
+ * - 매크로 기능
+ * - 네트워크 동기화
+ */
+
+export class Command {
+  constructor(name, execute, undo = null, data = {}) {
+    this.name = name
+    this.execute = execute
+    this.undo = undo
+    this.data = data
+    this.timestamp = Date.now()
+    this.id = this.generateId()
+  }
+
+  generateId() {
+    return `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+  }
+
+  canUndo() {
+    return typeof this.undo === 'function'
+  }
+}
+
+export class CommandManager {
+  constructor(maxHistorySize = 100) {
+    this.history = []
+    this.currentIndex = -1
+    this.maxHistorySize = maxHistorySize
+    this.eventBus = new EventTarget()
+    this.commands = new Map() // 등록된 명령어들
+  }
+
+  /**
+   * 명령어 등록
+   */
+  registerCommand(name, factory) {
+    this.commands.set(name, factory)
+  }
+
+  /**
+   * 명령어 실행
+   */
+  async executeCommand(name, params = {}) {
+    const factory = this.commands.get(name)
+    if (!factory) {
+      throw new Error(`Unknown command: ${name}`)
+    }
+
+    const command = factory(params)
+    return this.execute(command)
+  }
+
+  /**
+   * 명령어 직접 실행
+   */
+  async execute(command) {
+    try {
+      // 명령어 실행
+      const result = await command.execute()
+
+      // 실행 가능한 명령어만 히스토리에 추가
+      if (command.canUndo()) {
+        this.addToHistory(command)
+      }
+
+      // 이벤트 발생
+      this.emit('command:executed', { command, result })
+
+      return result
+    } catch (error) {
+      this.emit('command:failed', { command, error })
+      throw error
+    }
+  }
+
+  /**
+   * 실행 취소
+   */
+  async undo() {
+    if (!this.canUndo()) return false
+
+    const command = this.history[this.currentIndex]
+    
+    try {
+      await command.undo()
+      this.currentIndex--
+      this.emit('command:undone', { command })
+      return true
+    } catch (error) {
+      this.emit('command:undo_failed', { command, error })
+      throw error
+    }
+  }
+
+  /**
+   * 다시 실행
+   */
+  async redo() {
+    if (!this.canRedo()) return false
+
+    this.currentIndex++
+    const command = this.history[this.currentIndex]
+    
+    try {
+      await command.execute()
+      this.emit('command:redone', { command })
+      return true
+    } catch (error) {
+      this.currentIndex--
+      this.emit('command:redo_failed', { command, error })
+      throw error
+    }
+  }
+
+  /**
+   * 히스토리에 추가
+   */
+  addToHistory(command) {
+    // 현재 인덱스 이후의 히스토리 제거 (새로운 명령어가 실행된 경우)
+    this.history = this.history.slice(0, this.currentIndex + 1)
+    
+    // 새 명령어 추가
+    this.history.push(command)
+    this.currentIndex++
+
+    // 히스토리 크기 제한
+    if (this.history.length > this.maxHistorySize) {
+      this.history.shift()
+      this.currentIndex--
+    }
+  }
+
+  /**
+   * 상태 확인
+   */
+  canUndo() {
+    return this.currentIndex >= 0
+  }
+
+  canRedo() {
+    return this.currentIndex < this.history.length - 1
+  }
+
+  /**
+   * 히스토리 정보
+   */
+  getHistory() {
+    return {
+      history: this.history.map(cmd => ({
+        id: cmd.id,
+        name: cmd.name,
+        timestamp: cmd.timestamp
+      })),
+      currentIndex: this.currentIndex,
+      canUndo: this.canUndo(),
+      canRedo: this.canRedo()
+    }
+  }
+
+  /**
+   * 이벤트 발생
+   */
+  emit(eventName, data) {
+    const event = new CustomEvent(eventName, { detail: data })
+    this.eventBus.dispatchEvent(event)
+  }
+
+  /**
+   * 이벤트 리스닝
+   */
+  on(eventName, callback) {
+    this.eventBus.addEventListener(eventName, callback)
+  }
+
+  /**
+   * 히스토리 클리어
+   */
+  clearHistory() {
+    this.history = []
+    this.currentIndex = -1
+    this.emit('history:cleared')
+  }
+}
+
+// 기본 명령어 팩토리들
+export const createTransformCommand = (object, newTransform, oldTransform) => {
+  return new Command(
+    'transform',
+    () => {
+      object.position.copy(newTransform.position)
+      object.rotation.copy(newTransform.rotation)
+      object.scale.copy(newTransform.scale)
+    },
+    () => {
+      object.position.copy(oldTransform.position)
+      object.rotation.copy(oldTransform.rotation)
+      object.scale.copy(oldTransform.scale)
+    },
+    { objectId: object.userData.id, newTransform, oldTransform }
+  )
+}
+
+export const createAddObjectCommand = (scene, object) => {
+  return new Command(
+    'addObject',
+    () => {
+      scene.add(object)
+    },
+    () => {
+      scene.remove(object)
+    },
+    { objectId: object.userData.id }
+  )
+}
+
+export const createDeleteObjectCommand = (scene, object) => {
+  return new Command(
+    'deleteObject',
+    () => {
+      scene.remove(object)
+    },
+    () => {
+      scene.add(object)
+    },
+    { objectId: object.userData.id }
+  )
+}
+
+// 글로벌 명령어 매니저
+export const commandManager = new CommandManager()

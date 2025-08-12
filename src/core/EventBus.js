@@ -1,0 +1,360 @@
+/**
+ * Event Bus - 중앙 이벤트 관리 시스템
+ * 
+ * 컴포넌트 간 느슨한 결합을 위한 이벤트 기반 통신
+ */
+
+export class EventBus {
+  constructor() {
+    this.events = new Map()
+    this.wildcardEvents = new Map()
+    this.middlewares = []
+    this.debug = false
+  }
+
+  /**
+   * 이벤트 리스너 등록
+   */
+  on(event, callback, options = {}) {
+    const { once = false, priority = 0 } = options
+
+    if (event.includes('*')) {
+      this.addWildcardListener(event, callback, { once, priority })
+    } else {
+      this.addEventListener(event, callback, { once, priority })
+    }
+
+    return () => this.off(event, callback)
+  }
+
+  /**
+   * 일회성 이벤트 리스너
+   */
+  once(event, callback, options = {}) {
+    return this.on(event, callback, { ...options, once: true })
+  }
+
+  /**
+   * 이벤트 리스너 제거
+   */
+  off(event, callback) {
+    if (event.includes('*')) {
+      this.removeWildcardListener(event, callback)
+    } else {
+      this.removeEventListener(event, callback)
+    }
+  }
+
+  /**
+   * 이벤트 발생
+   */
+  emit(event, data = {}, options = {}) {
+    const { sync = false, bubbles = true } = options
+
+    if (this.debug) {
+      console.log(`[EventBus] Emitting: ${event}`, data)
+    }
+
+    // 미들웨어 실행
+    const eventData = this.runMiddlewares(event, data)
+    if (eventData === false) return false // 미들웨어에서 중단
+
+    if (sync) {
+      return this.emitSync(event, eventData, bubbles)
+    } else {
+      return this.emitAsync(event, eventData, bubbles)
+    }
+  }
+
+  /**
+   * 동기 이벤트 발생
+   */
+  emitSync(event, data, bubbles) {
+    const results = []
+
+    // 정확한 이벤트 매치
+    const listeners = this.events.get(event)
+    if (listeners) {
+      results.push(...this.executeListeners(listeners, event, data))
+    }
+
+    // 와일드카드 매치
+    if (bubbles) {
+      for (const [pattern, listeners] of this.wildcardEvents) {
+        if (this.matchWildcard(pattern, event)) {
+          results.push(...this.executeListeners(listeners, event, data))
+        }
+      }
+    }
+
+    return results
+  }
+
+  /**
+   * 비동기 이벤트 발생
+   */
+  async emitAsync(event, data, bubbles) {
+    const promises = []
+
+    // 정확한 이벤트 매치
+    const listeners = this.events.get(event)
+    if (listeners) {
+      promises.push(...this.executeListenersAsync(listeners, event, data))
+    }
+
+    // 와일드카드 매치
+    if (bubbles) {
+      for (const [pattern, listeners] of this.wildcardEvents) {
+        if (this.matchWildcard(pattern, event)) {
+          promises.push(...this.executeListenersAsync(listeners, event, data))
+        }
+      }
+    }
+
+    return Promise.allSettled(promises)
+  }
+
+  /**
+   * 리스너들 실행 (동기)
+   */
+  executeListeners(listeners, event, data) {
+    const results = []
+    const toRemove = []
+
+    // 우선순위 순으로 정렬
+    const sortedListeners = [...listeners].sort((a, b) => b.priority - a.priority)
+
+    for (const listener of sortedListeners) {
+      try {
+        const result = listener.callback(data, event)
+        results.push(result)
+
+        // 일회성 리스너 제거 표시
+        if (listener.once) {
+          toRemove.push(listener)
+        }
+      } catch (error) {
+        console.error(`[EventBus] Error in listener for ${event}:`, error)
+      }
+    }
+
+    // 일회성 리스너들 제거
+    toRemove.forEach(listener => {
+      const index = listeners.indexOf(listener)
+      if (index > -1) listeners.splice(index, 1)
+    })
+
+    return results
+  }
+
+  /**
+   * 리스너들 실행 (비동기)
+   */
+  executeListenersAsync(listeners, event, data) {
+    const promises = []
+    const toRemove = []
+
+    // 우선순위 순으로 정렬
+    const sortedListeners = [...listeners].sort((a, b) => b.priority - a.priority)
+
+    for (const listener of sortedListeners) {
+      const promise = Promise.resolve().then(() => {
+        const result = listener.callback(data, event)
+
+        // 일회성 리스너 제거 표시
+        if (listener.once) {
+          toRemove.push(listener)
+        }
+
+        return result
+      }).catch(error => {
+        console.error(`[EventBus] Error in async listener for ${event}:`, error)
+        throw error
+      })
+
+      promises.push(promise)
+    }
+
+    // 일회성 리스너들 제거 (비동기로)
+    Promise.resolve().then(() => {
+      toRemove.forEach(listener => {
+        const index = listeners.indexOf(listener)
+        if (index > -1) listeners.splice(index, 1)
+      })
+    })
+
+    return promises
+  }
+
+  /**
+   * 이벤트 리스너 추가
+   */
+  addEventListener(event, callback, options) {
+    if (!this.events.has(event)) {
+      this.events.set(event, [])
+    }
+
+    this.events.get(event).push({
+      callback,
+      ...options
+    })
+  }
+
+  /**
+   * 와일드카드 리스너 추가
+   */
+  addWildcardListener(pattern, callback, options) {
+    if (!this.wildcardEvents.has(pattern)) {
+      this.wildcardEvents.set(pattern, [])
+    }
+
+    this.wildcardEvents.get(pattern).push({
+      callback,
+      ...options
+    })
+  }
+
+  /**
+   * 이벤트 리스너 제거
+   */
+  removeEventListener(event, callback) {
+    const listeners = this.events.get(event)
+    if (!listeners) return
+
+    const index = listeners.findIndex(l => l.callback === callback)
+    if (index > -1) {
+      listeners.splice(index, 1)
+    }
+
+    if (listeners.length === 0) {
+      this.events.delete(event)
+    }
+  }
+
+  /**
+   * 와일드카드 리스너 제거
+   */
+  removeWildcardListener(pattern, callback) {
+    const listeners = this.wildcardEvents.get(pattern)
+    if (!listeners) return
+
+    const index = listeners.findIndex(l => l.callback === callback)
+    if (index > -1) {
+      listeners.splice(index, 1)
+    }
+
+    if (listeners.length === 0) {
+      this.wildcardEvents.delete(pattern)
+    }
+  }
+
+  /**
+   * 와일드카드 매칭
+   */
+  matchWildcard(pattern, event) {
+    const regexPattern = pattern
+      .replace(/\./g, '\\.')
+      .replace(/\*/g, '.*')
+      .replace(/\?/g, '.')
+
+    const regex = new RegExp(`^${regexPattern}$`)
+    return regex.test(event)
+  }
+
+  /**
+   * 미들웨어 추가
+   */
+  use(middleware) {
+    this.middlewares.push(middleware)
+  }
+
+  /**
+   * 미들웨어 실행
+   */
+  runMiddlewares(event, data) {
+    let currentData = data
+
+    for (const middleware of this.middlewares) {
+      try {
+        const result = middleware(event, currentData)
+        if (result === false) return false // 중단
+        if (result !== undefined) currentData = result
+      } catch (error) {
+        console.error('[EventBus] Middleware error:', error)
+      }
+    }
+
+    return currentData
+  }
+
+  /**
+   * 모든 리스너 제거
+   */
+  clear() {
+    this.events.clear()
+    this.wildcardEvents.clear()
+  }
+
+  /**
+   * 디버그 모드 토글
+   */
+  setDebug(enabled) {
+    this.debug = enabled
+  }
+
+  /**
+   * 현재 등록된 이벤트들
+   */
+  getEvents() {
+    return {
+      events: Array.from(this.events.keys()),
+      wildcardEvents: Array.from(this.wildcardEvents.keys())
+    }
+  }
+}
+
+// 미리 정의된 이벤트 타입들
+export const EventTypes = {
+  // 객체 관련
+  OBJECT_ADDED: 'object.added',
+  OBJECT_REMOVED: 'object.removed',
+  OBJECT_SELECTED: 'object.selected',
+  OBJECT_DESELECTED: 'object.deselected',
+  OBJECT_TRANSFORMED: 'object.transformed',
+
+  // 씬 관련
+  SCENE_LOADED: 'scene.loaded',
+  SCENE_SAVED: 'scene.saved',
+  SCENE_CLEARED: 'scene.cleared',
+
+  // 에디터 관련
+  EDITOR_MODE_CHANGED: 'editor.mode.changed',
+  VIEWPORT_CHANGED: 'editor.viewport.changed',
+  GRID_TOGGLED: 'editor.grid.toggled',
+
+  // 명령어 관련
+  COMMAND_EXECUTED: 'command.executed',
+  COMMAND_UNDONE: 'command.undone',
+  COMMAND_REDONE: 'command.redone',
+
+  // 플러그인 관련
+  PLUGIN_LOADED: 'plugin.loaded',
+  PLUGIN_UNLOADED: 'plugin.unloaded',
+
+  // UI 관련
+  PANEL_OPENED: 'ui.panel.opened',
+  PANEL_CLOSED: 'ui.panel.closed',
+  DIALOG_OPENED: 'ui.dialog.opened',
+  DIALOG_CLOSED: 'ui.dialog.closed'
+}
+
+// 글로벌 이벤트 버스
+export const eventBus = new EventBus()
+
+// 개발 환경에서 디버그 모드 활성화
+if (process.env.NODE_ENV === 'development') {
+  eventBus.setDebug(true)
+  
+  // 전역에서 접근 가능하도록 (디버깅용)
+  window.eventBus = eventBus
+}
