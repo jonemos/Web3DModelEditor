@@ -93,20 +93,26 @@ export class StoreMigrationService extends BaseService {
     this.eventBus.on(EventTypes.OBJECT_SELECTED, (event) => {
       if (!this.migrationProgress.selectedObject) return
       
-      const { object } = event.detail
-      this.migratedState.selectedObject = object
+      const eventDetail = event.detail || {}
+      const { object } = eventDetail
       
-      // 기존 스토어와 동기화
-      if (this.originalStore && this.originalStore.getState().setSelectedObject) {
-        this.originalStore.getState().setSelectedObject(object)
+      if (object) {
+        this.migratedState.selectedObject = object
+        
+        // 기존 스토어와 동기화
+        if (this.originalStore && this.originalStore.getState().setSelectedObject) {
+          this.originalStore.getState().setSelectedObject(object)
+        }
       }
     })
 
-    this.eventBus.on(EventTypes.EDITOR_MODE_CHANGED, (event) => {
+    this.eventBus.on(EventTypes.TRANSFORM_MODE_CHANGED, (event) => {
       if (!this.migrationProgress.transformMode) return
       
-      const { mode } = event.detail
-      if (event.detail.type === 'transform') {
+      const eventDetail = event.detail || {}
+      const { mode } = eventDetail
+      
+      if (mode) {
         this.migratedState.transformMode = mode
         
         // 기존 스토어와 동기화
@@ -119,15 +125,19 @@ export class StoreMigrationService extends BaseService {
     this.eventBus.on(EventTypes.GRID_TOGGLED, (event) => {
       if (!this.migrationProgress.gridVisible) return
       
-      const { visible } = event.detail
-      this.migratedState.isGridVisible = visible
+      const eventDetail = event.detail || {}
+      const { visible } = eventDetail
       
-      // 기존 스토어와 동기화
-      if (this.originalStore && this.originalStore.getState().toggleGridVisible) {
-        // 현재 상태와 다른 경우에만 토글
-        const currentState = this.originalStore.getState().isGridVisible
-        if (currentState !== visible) {
-          this.originalStore.getState().toggleGridVisible()
+      if (typeof visible === 'boolean') {
+        this.migratedState.isGridVisible = visible
+        
+        // 기존 스토어와 동기화
+        if (this.originalStore && this.originalStore.getState().toggleGridVisible) {
+          // 현재 상태와 다른 경우에만 토글
+          const currentState = this.originalStore.getState().isGridVisible
+          if (currentState !== visible) {
+            this.originalStore.getState().toggleGridVisible()
+          }
         }
       }
     })
@@ -189,9 +199,9 @@ export class StoreMigrationService extends BaseService {
     console.log('🔄 Migrating transformMode to new system...')
     
     // 현재 상태를 새 시스템으로 이전
-    this.eventBus.emit(EventTypes.EDITOR_MODE_CHANGED, {
-      type: 'transform',
-      mode: this.migratedState.transformMode
+    this.eventBus.emit(EventTypes.TRANSFORM_MODE_CHANGED, {
+      mode: this.migratedState.transformMode,
+      previousMode: null
     })
 
     this.migrationProgress.transformMode = true

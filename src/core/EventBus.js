@@ -126,7 +126,16 @@ export class EventBus {
 
     for (const listener of sortedListeners) {
       try {
-        const result = listener.callback(data, event)
+        // DOM 이벤트 스타일 객체 생성
+        const eventObject = {
+          type: event,
+          detail: data,
+          target: this,
+          preventDefault: () => {},
+          stopPropagation: () => {}
+        }
+        
+        const result = listener.callback(eventObject, event)
         results.push(result)
 
         // 일회성 리스너 제거 표시
@@ -159,7 +168,16 @@ export class EventBus {
 
     for (const listener of sortedListeners) {
       const promise = Promise.resolve().then(() => {
-        const result = listener.callback(data, event)
+        // DOM 이벤트 스타일 객체 생성
+        const eventObject = {
+          type: event,
+          detail: data,
+          target: this,
+          preventDefault: () => {},
+          stopPropagation: () => {}
+        }
+        
+        const result = listener.callback(eventObject, event)
 
         // 일회성 리스너 제거 표시
         if (listener.once) {

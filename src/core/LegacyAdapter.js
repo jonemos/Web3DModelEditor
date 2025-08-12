@@ -106,29 +106,37 @@ export class LegacyAdapter {
   setupBidirectionalSync() {
     // 새 시스템의 이벤트를 기존 시스템으로 전달
     eventBus.on(EventTypes.OBJECT_SELECTED, (event) => {
-      const { object } = event.detail
-      if (this.editorStore.setSelectedObject) {
+      const eventDetail = event.detail || {}
+      const { object } = eventDetail
+      
+      if (object && this.editorStore.setSelectedObject) {
         this.editorStore.setSelectedObject(object)
       }
     })
 
-    eventBus.on(EventTypes.OBJECT_DESELECTED, () => {
+    eventBus.on(EventTypes.OBJECT_DESELECTED, (event) => {
       if (this.editorStore.setSelectedObject) {
         this.editorStore.setSelectedObject(null)
       }
     })
 
-    eventBus.on(EventTypes.EDITOR_MODE_CHANGED, (event) => {
-      const { mode } = event.detail
-      if (this.editorStore.setTransformMode) {
+    eventBus.on(EventTypes.TRANSFORM_MODE_CHANGED, (event) => {
+      const eventDetail = event.detail || {}
+      const { mode } = eventDetail
+      
+      if (mode && this.editorStore.setTransformMode) {
         this.editorStore.setTransformMode(mode)
       }
     })
 
     // 명령어 실행을 기존 시스템과 연동
     eventBus.on(EventTypes.COMMAND_EXECUTED, (event) => {
-      const { command } = event.detail
-      console.log(`[Legacy Adapter] Command executed: ${command.name}`)
+      const eventDetail = event.detail || {}
+      const { command } = eventDetail
+      
+      if (command && command.name) {
+        console.log(`[Legacy Adapter] Command executed: ${command.name}`)
+      }
     })
   }
 
