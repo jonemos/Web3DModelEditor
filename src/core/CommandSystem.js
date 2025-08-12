@@ -57,9 +57,19 @@ export class CommandManager {
   }
 
   /**
-   * 명령어 직접 실행
+   * 명령어 직접 실행 (문자열 명령어와 명령 객체 모두 지원)
    */
-  async execute(command) {
+  async execute(commandOrName, params = {}) {
+    let command
+
+    if (typeof commandOrName === 'string') {
+      // 문자열 명령어인 경우 executeCommand로 위임
+      return this.executeCommand(commandOrName, params)
+    } else {
+      // 명령 객체인 경우
+      command = commandOrName
+    }
+
     try {
       // 명령어 실행
       const result = await command.execute()
@@ -202,33 +212,170 @@ export const createTransformCommand = (object, newTransform, oldTransform) => {
       object.rotation.copy(oldTransform.rotation)
       object.scale.copy(oldTransform.scale)
     },
-    { objectId: object.userData.id, newTransform, oldTransform }
+    { object, newTransform, oldTransform }
   )
 }
 
-export const createAddObjectCommand = (scene, object) => {
+// 객체 선택 명령
+export const createSelectObjectCommand = (objectSelector, object, addToSelection = false) => {
+  const previousSelection = objectSelector.getSelectedObjects();
+  
   return new Command(
-    'addObject',
+    'selectObject',
     () => {
-      scene.add(object)
+      if (addToSelection) {
+        objectSelector.toggleObjectSelection(object);
+      } else {
+        objectSelector.selectObjects([object]);
+      }
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_SELECTED, { object });
+      });
     },
     () => {
-      scene.remove(object)
+      objectSelector.selectObjects(previousSelection);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        if (previousSelection.length > 0) {
+          eventBus.emit(EventTypes.OBJECT_SELECTED, { object: previousSelection[previousSelection.length - 1] });
+        } else {
+          eventBus.emit(EventTypes.OBJECT_DESELECTED, {});
+        }
+      });
     },
-    { objectId: object.userData.id }
+    { object, previousSelection, addToSelection }
   )
 }
 
-export const createDeleteObjectCommand = (scene, object) => {
+// 모든 선택 해제 명령
+export const createDeselectAllCommand = (objectSelector) => {
+  const previousSelection = objectSelector.getSelectedObjects();
+  
+  return new Command(
+    'deselectAll',
+    () => {
+      objectSelector.clearSelection();
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_DESELECTED, {});
+      });
+    },
+    () => {
+      objectSelector.selectObjects(previousSelection);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        if (previousSelection.length > 0) {
+          eventBus.emit(EventTypes.OBJECT_SELECTED, { object: previousSelection[previousSelection.length - 1] });
+        }
+      });
+    },
+    { previousSelection }
+  )
+}
+
+// 변형 모드 설정 명령
+export const createSetTransformModeCommand = (transformManager, mode) => {
+  const previousMode = transformManager.getMode();
+  
+  return new Command(
+    'setTransformMode',
+    () => {
+      transformManager.setMode(mode);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.TRANSFORM_MODE_CHANGED, { mode });
+      });
+    },
+    () => {
+      transformManager.setMode(previousMode);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.TRANSFORM_MODE_CHANGED, { mode: previousMode });
+      });
+    },
+    { mode, previousMode }
+  )
+}
+
+// 객체 삭제 명령
+export const createDeleteObjectCommand = (scene, objectManager, object) => {
+  const parent = object.parent;
+  const position = parent ? parent.children.indexOf(object) : -1;
+  
   return new Command(
     'deleteObject',
     () => {
-      scene.remove(object)
+      if (parent) {
+        parent.remove(object);
+      } else {
+        scene.remove(object);
+      }
+      
+      // 객체 관리자에서 제거
+      if (objectManager && objectManager.removeObject) {
+        objectManager.removeObject(object);
+      }
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_REMOVED, { object });
+      });
     },
     () => {
-      scene.add(object)
+      if (parent && position >= 0) {
+        parent.children.splice(position, 0, object);
+        object.parent = parent;
+      } else {
+        scene.add(object);
+      }
+      
+      // 객체 관리자에 추가
+      if (objectManager && objectManager.addObject) {
+        objectManager.addObject(object);
+      }
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_ADDED, { object });
+      });
     },
-    { objectId: object.userData.id }
+    { object, parent, position }
+  )
+}
+
+export const createAddObjectCommand = (scene, object, parent = null) => {
+  return new Command(
+    'addObject',
+    () => {
+      if (parent) {
+        parent.add(object);
+      } else {
+        scene.add(object);
+      }
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_ADDED, { object });
+      });
+    },
+    () => {
+      if (object.parent) {
+        object.parent.remove(object);
+      }
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.OBJECT_REMOVED, { object });
+      });
+    },
+    { object, parent }
   )
 }
 

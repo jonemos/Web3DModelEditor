@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CameraController } from './CameraController.js';
-import { ObjectSelector } from './ObjectSelector.js';
+import { ObjectSelectorModern } from './ObjectSelector.Modern.js'; // 새 ObjectSelector 사용
 import { TransformManager } from './TransformManager.js';
 import { InputManager } from './InputManager.js';
 import { KeyboardController } from './KeyboardController.js';
@@ -27,7 +27,7 @@ export class EditorControlsModern {
     
     // 모듈 초기화 (하이브리드 모드 지원)
     this.cameraController = new CameraController(camera, renderer, onCameraChange);
-    this.objectSelector = new ObjectSelector(
+    this.objectSelector = new ObjectSelectorModern(
       scene, 
       camera, 
       renderer, 

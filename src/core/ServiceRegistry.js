@@ -371,4 +371,59 @@ export async function setupDefaultServices() {
     .registerSingleton('selectionService', SelectionService)
     .registerSingleton('objectManagementService', ObjectManagementService, ['sceneService', 'commandManager'])
     .registerSingleton('transformService', TransformService, ['selectionService', 'commandManager'])
+
+  // 명령어 팩토리들 등록
+  await setupCommandFactories(commandManager)
+}
+
+// 명령어 팩토리들 등록
+async function setupCommandFactories(commandManager) {
+  const { 
+    createSelectObjectCommand,
+    createDeselectAllCommand,
+    createSetTransformModeCommand,
+    createDeleteObjectCommand,
+    createAddObjectCommand
+  } = await import('./CommandSystem.js')
+
+  // 선택 관련 명령어들
+  commandManager.registerCommand('selectObject', (params) => {
+    const objectSelector = serviceRegistry.get('selectionService')?.objectSelector
+    if (objectSelector) {
+      return createSelectObjectCommand(objectSelector, params.object, params.addToSelection)
+    }
+  })
+
+  commandManager.registerCommand('deselectAll', () => {
+    const objectSelector = serviceRegistry.get('selectionService')?.objectSelector
+    if (objectSelector) {
+      return createDeselectAllCommand(objectSelector)
+    }
+  })
+
+  // 변형 관련 명령어들
+  commandManager.registerCommand('setTransformMode', (params) => {
+    const transformService = serviceRegistry.get('transformService')
+    if (transformService) {
+      return createSetTransformModeCommand(transformService, params.mode)
+    }
+  })
+
+  // 객체 관리 명령어들
+  commandManager.registerCommand('deleteObject', (params) => {
+    const sceneService = serviceRegistry.get('sceneService')
+    const objectManager = serviceRegistry.get('objectManagementService')
+    if (sceneService && objectManager) {
+      return createDeleteObjectCommand(sceneService.scene, objectManager, params.object)
+    }
+  })
+
+  commandManager.registerCommand('addObject', (params) => {
+    const sceneService = serviceRegistry.get('sceneService')
+    if (sceneService) {
+      return createAddObjectCommand(sceneService.scene, params.object, params.parent)
+    }
+  })
+
+  console.log('✅ Command factories registered')
 }

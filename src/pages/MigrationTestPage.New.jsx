@@ -118,6 +118,126 @@ function MigrationTestPageNew() {
     }
   }
 
+  // 명령 시스템 테스트 함수들
+  const testSelectObjectCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      // 가상의 객체 데이터로 테스트
+      const mockObject = { 
+        id: 'test-object-' + Date.now(), 
+        name: 'Test Object', 
+        type: 'Mesh',
+        userData: { selected: false }
+      }
+      
+      await commandManager.execute('selectObject', { object: mockObject })
+      addLog(`✅ Select Object 명령 실행 완료 - Object: ${mockObject.name}`)
+    } catch (error) {
+      addLog(`❌ Select Object 명령 실행 실패: ${error.message}`)
+    }
+  }
+
+  const testDeselectAllCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      await commandManager.execute('deselectAll')
+      addLog('✅ Deselect All 명령 실행 완료')
+    } catch (error) {
+      addLog(`❌ Deselect All 명령 실행 실패: ${error.message}`)
+    }
+  }
+
+  const testTransformModeCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      const modes = ['translate', 'rotate', 'scale']
+      const randomMode = modes[Math.floor(Math.random() * modes.length)]
+      
+      await commandManager.execute('setTransformMode', { mode: randomMode })
+      addLog(`✅ Set Transform Mode 명령 실행 완료 - Mode: ${randomMode}`)
+    } catch (error) {
+      addLog(`❌ Set Transform Mode 명령 실행 실패: ${error.message}`)
+    }
+  }
+
+  const testUndoCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      const result = await commandManager.undo()
+      if (result) {
+        addLog('✅ Undo 명령 실행 완료')
+      } else {
+        addLog('⚠️ 실행 취소할 명령이 없습니다')
+      }
+    } catch (error) {
+      addLog(`❌ Undo 명령 실행 실패: ${error.message}`)
+    }
+  }
+
+  const testRedoCommand = async () => {
+    if (!adapter || !status?.newArchitectureEnabled) {
+      addLog('❌ 명령을 실행하려면 먼저 새 아키텍처를 활성화해야 합니다')
+      return
+    }
+
+    try {
+      const commandManager = adapter.legacyAdapter.services.get('commandManager')
+      if (!commandManager) {
+        addLog('❌ CommandManager 서비스를 찾을 수 없습니다')
+        return
+      }
+
+      const result = await commandManager.redo()
+      if (result) {
+        addLog('✅ Redo 명령 실행 완료')
+      } else {
+        addLog('⚠️ 다시 실행할 명령이 없습니다')
+      }
+    } catch (error) {
+      addLog(`❌ Redo 명령 실행 실패: ${error.message}`)
+    }
+  }
+
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial, sans-serif' }}>
       <h1>🔬 Migration Test Lab v2</h1>
@@ -227,6 +347,43 @@ function MigrationTestPageNew() {
             style={{ marginRight: '10px', padding: '8px 12px', background: '#9C27B0', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
           >
             📏 Load Grid Plugin
+          </button>
+        </div>
+      )}
+
+      {/* Command System Test Section */}
+      {status?.newArchitectureEnabled && (
+        <div style={{ marginBottom: '20px' }}>
+          <h2>⚡ Command System Testing</h2>
+          <button 
+            onClick={testSelectObjectCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#FF5722', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            🎯 Test Select Object Command
+          </button>
+          <button 
+            onClick={testDeselectAllCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#795548', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            ❌ Test Deselect All Command
+          </button>
+          <button 
+            onClick={testTransformModeCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#607D8B', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            🔄 Test Transform Mode Command
+          </button>
+          <button 
+            onClick={testUndoCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#FFC107', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            ↶ Test Undo
+          </button>
+          <button 
+            onClick={testRedoCommand} 
+            style={{ marginRight: '10px', padding: '8px 12px', background: '#CDDC39', color: 'black', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            ↷ Test Redo
           </button>
         </div>
       )}

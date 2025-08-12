@@ -325,6 +325,24 @@ export const EventTypes = {
   OBJECT_DESELECTED: 'object.deselected',
   OBJECT_TRANSFORMED: 'object.transformed',
 
+  // 변형 관련
+  TRANSFORM_MODE_CHANGED: 'transform.mode.changed',
+  TRANSFORM_CHANGED: 'transform.changed',
+  TRANSFORM_DRAGGING_CHANGED: 'transform.dragging.changed',
+
+  // 카메라 관련
+  CAMERA_CHANGED: 'camera.changed',
+  CAMERA_FOCUSED: 'camera.focused',
+  CAMERA_RESET: 'camera.reset',
+
+  // 그리드 관련
+  GRID_VISIBILITY_CHANGED: 'grid.visibility.changed',
+
+  // 마우스 관련
+  MOUSE_DOWN: 'mouse.down',
+  MOUSE_UP: 'mouse.up',
+  MOUSE_MOVE: 'mouse.move',
+
   // 씬 관련
   SCENE_LOADED: 'scene.loaded',
   SCENE_SAVED: 'scene.saved',
