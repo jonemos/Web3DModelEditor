@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import './MenuBar.css';
 
-const MenuBar = ({ onMenuAction }) => {
+const MenuBar = ({ onMenuAction, isNewArchitectureEnabled, migrationStatus }) => {
   const [activeMenu, setActiveMenu] = useState(null);
 
   const menus = [
@@ -30,6 +30,22 @@ const MenuBar = ({ onMenuAction }) => {
         { type: 'separator' },
         { label: '전체 선택', action: 'select-all', shortcut: 'Ctrl+A' },
         { label: '선택 해제', action: 'deselect-all', shortcut: 'Ctrl+D' }
+      ]
+    },
+    {
+      title: '시스템',
+      items: [
+        { 
+          label: isNewArchitectureEnabled ? '✅ 새 아키텍처 (활성)' : '🔧 새 아키텍처 활성화', 
+          action: isNewArchitectureEnabled ? 'show-migration-status' : 'enable-new-architecture'
+        },
+        ...(isNewArchitectureEnabled ? [
+          { label: '🔌 플러그인 관리', action: 'manage-plugins' },
+          { label: '⚡ 명령어 히스토리', action: 'show-command-history' },
+          { label: '📊 시스템 상태', action: 'show-system-status' },
+          { type: 'separator' }
+        ] : []),
+        { label: '⚙️ 기존 시스템 설정', action: 'legacy-settings' }
       ]
     },
     {

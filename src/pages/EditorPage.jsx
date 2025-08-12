@@ -6,6 +6,7 @@ import MenuBar from '../components/editor/MenuBar'
 import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
 import { getGLBMeshManager } from '../utils/GLBMeshManager'
+import { createLegacyAdapter } from '../core/LegacyAdapter'
 import Toast from '../components/ui/Toast'
 import * as THREE from 'three'
 import './EditorPage.css'
@@ -56,10 +57,73 @@ function EditorPage() {
   const [toast, setToast] = useState(null)
   const [showInspector, setShowInspector] = useState(true) // 인스펙터 패널 상태 추가
   
+  // 새로운 아키텍처 관련 상태
+  const [isNewArchitectureEnabled, setIsNewArchitectureEnabled] = useState(false)
+  const [migrationStatus, setMigrationStatus] = useState(null)
+  const legacyAdapterRef = useRef(null)
+  
   // EditorControls 인스턴스를 관리하기 위한 ref
   const editorControlsRef = useRef(null)
   const postProcessingRef = useRef(null)
   const glbMeshManager = useRef(getGLBMeshManager())
+
+  // 새로운 아키텍처 초기화
+  useEffect(() => {
+    // Legacy Adapter 생성
+    if (!legacyAdapterRef.current) {
+      const store = useEditorStore.getState()
+      legacyAdapterRef.current = createLegacyAdapter(store)
+      console.log('🔧 Legacy Adapter created')
+    }
+
+    // 컴포넌트 언마운트 시 정리
+    return () => {
+      if (legacyAdapterRef.current) {
+        legacyAdapterRef.current.destroy()
+        legacyAdapterRef.current = null
+      }
+    }
+  }, [])
+
+  // 새로운 아키텍처 활성화 함수
+  const enableNewArchitecture = async () => {
+    if (!legacyAdapterRef.current || isNewArchitectureEnabled) return
+
+    try {
+      setToast({
+        message: '새로운 아키텍처를 활성화하는 중...',
+        type: 'info',
+        duration: 2000
+      })
+
+      // EditorCanvas에서 canvas 요소 가져오기
+      const canvas = document.querySelector('canvas')
+      if (!canvas) {
+        throw new Error('Canvas element not found')
+      }
+
+      await legacyAdapterRef.current.enableNewArchitecture(canvas)
+      
+      setIsNewArchitectureEnabled(true)
+      setMigrationStatus(legacyAdapterRef.current.getMigrationStatus())
+      
+      setToast({
+        message: '✅ 새로운 아키텍처가 활성화되었습니다!',
+        type: 'success',
+        duration: 3000
+      })
+
+      console.log('🎉 New architecture enabled successfully')
+      
+    } catch (error) {
+      console.error('Failed to enable new architecture:', error)
+      setToast({
+        message: `❌ 새로운 아키텍처 활성화 실패: ${error.message}`,
+        type: 'error',
+        duration: 5000
+      })
+    }
+  }
 
   // HDRI 설정 지속 관리
   useEffect(() => {
@@ -515,6 +579,113 @@ function EditorPage() {
       case 'about':
         alert(MESSAGES.ABOUT_INFO)
         break
+
+      // 새로운 아키텍처 관련 액션들
+      case 'enable-new-architecture':
+        enableNewArchitecture()
+        break
+
+      case 'show-migration-status':
+        if (migrationStatus) {
+          const storeMigration = migrationStatus.storeMigration
+          let statusMessage = `
+🔧 마이그레이션 상태:
+• 새 아키텍처: ${migrationStatus.newArchitectureEnabled ? '✅ 활성' : '❌ 비활성'}
+• 활성 서비스: ${migrationStatus.availableServices.join(', ')}
+• 로드된 플러그인: ${migrationStatus.pluginCount}개
+• 명령어 히스토리: ${migrationStatus.commandHistory?.history?.length || 0}개`
+
+          if (storeMigration) {
+            statusMessage += `
+
+📊 스토어 마이그레이션 진행률: ${storeMigration.percentage}% (${storeMigration.migratedFeatures}/${storeMigration.totalFeatures})
+
+기능별 상태:
+• 선택된 객체: ${storeMigration.progress.selectedObject ? '✅ 새 시스템' : '⚙️ 기존 시스템'}
+• 변형 모드: ${storeMigration.progress.transformMode ? '✅ 새 시스템' : '⚙️ 기존 시스템'}
+• 그리드 표시: ${storeMigration.progress.gridVisible ? '✅ 새 시스템' : '⚙️ 기존 시스템'}
+• 객체 관리: ${storeMigration.progress.objects ? '✅ 새 시스템' : '⚙️ 기존 시스템'}
+• 벽 관리: ${storeMigration.progress.walls ? '✅ 새 시스템' : '⚙️ 기존 시스템'}`
+          }
+
+          alert(statusMessage.trim())
+        }
+        break
+
+      case 'manage-plugins':
+        if (legacyAdapterRef.current && isNewArchitectureEnabled) {
+          // 점진적 마이그레이션 옵션 제공
+          const migrationOptions = [
+            '1. 선택된 객체 → 새 시스템',
+            '2. 변형 모드 → 새 시스템', 
+            '3. 그리드 표시 → 새 시스템',
+            '4. 모든 기능 → 새 시스템',
+            '5. 모든 기능 → 기존 시스템 (롤백)'
+          ].join('\n')
+
+          const choice = prompt(`🔌 점진적 마이그레이션 관리:\n\n${migrationOptions}\n\n선택 (1-5):`)
+          
+          switch (choice) {
+            case '1':
+              if (legacyAdapterRef.current.migrateSelectedObject()) {
+                setToast({ message: '✅ 선택된 객체가 새 시스템으로 마이그레이션되었습니다', type: 'success' })
+              }
+              break
+            case '2':
+              if (legacyAdapterRef.current.migrateTransformMode()) {
+                setToast({ message: '✅ 변형 모드가 새 시스템으로 마이그레이션되었습니다', type: 'success' })
+              }
+              break
+            case '3':
+              if (legacyAdapterRef.current.migrateGridVisible()) {
+                setToast({ message: '✅ 그리드 표시가 새 시스템으로 마이그레이션되었습니다', type: 'success' })
+              }
+              break
+            case '4':
+              if (legacyAdapterRef.current.migrateAll()) {
+                setToast({ message: '✅ 모든 기능이 새 시스템으로 마이그레이션되었습니다', type: 'success' })
+              }
+              break
+            case '5':
+              if (legacyAdapterRef.current.rollbackAll()) {
+                setToast({ message: '🔙 모든 기능이 기존 시스템으로 롤백되었습니다', type: 'info' })
+              }
+              break
+          }
+          
+          // 상태 업데이트
+          setMigrationStatus(legacyAdapterRef.current.getMigrationStatus())
+        }
+        break
+
+      case 'show-command-history':
+        if (legacyAdapterRef.current && isNewArchitectureEnabled) {
+          const status = legacyAdapterRef.current.getMigrationStatus()
+          const history = status.commandHistory?.history || []
+          const historyText = history.length > 0 
+            ? history.map(cmd => `• ${cmd.name} (${new Date(cmd.timestamp).toLocaleTimeString()})`).join('\n')
+            : '명령어 히스토리가 없습니다.'
+          alert(`⚡ 명령어 히스토리:\n\n${historyText}`)
+        }
+        break
+
+      case 'show-system-status':
+        if (legacyAdapterRef.current && isNewArchitectureEnabled) {
+          const status = legacyAdapterRef.current.getMigrationStatus()
+          const statusText = `
+📊 시스템 상태:
+• 새 아키텍처: ${status.newArchitectureEnabled ? '활성' : '비활성'}
+• 서비스: ${status.availableServices.join(', ')}
+• 플러그인: ${status.pluginCount}개 로드됨
+• Undo/Redo: ${status.commandHistory?.canUndo ? '가능' : '불가능'} / ${status.commandHistory?.canRedo ? '가능' : '불가능'}
+          `.trim()
+          alert(statusText)
+        }
+        break
+
+      case 'legacy-settings':
+        alert('기존 시스템 설정은 현재 Zustand 스토어를 통해 관리됩니다.')
+        break
         
       default:
         // Unknown menu action
@@ -583,7 +754,11 @@ function EditorPage() {
 
   return (
     <div className="editor-page">
-      <MenuBar onMenuAction={handleMenuAction} />
+      <MenuBar 
+        onMenuAction={handleMenuAction} 
+        isNewArchitectureEnabled={isNewArchitectureEnabled}
+        migrationStatus={migrationStatus}
+      />
       <div className="editor-container">
         <PlainEditorCanvas 
           onEditorControlsReady={setEditorControls}

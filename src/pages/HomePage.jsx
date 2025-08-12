@@ -54,6 +54,13 @@ function HomePage() {
           >
             에디터
           </button>
+          <button 
+            className="menu-btn"
+            onClick={() => navigate('/migration-test')}
+            style={{ background: '#ff6b35' }}
+          >
+            🧪 마이그레이션 테스트
+          </button>
         </div>
       </div>
 

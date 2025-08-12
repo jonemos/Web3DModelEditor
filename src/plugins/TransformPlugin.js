@@ -4,8 +4,8 @@
  * 기존의 TransformManager를 플러그인 형태로 재구성
  */
 
-import { BaseService } from '../ServiceRegistry.js'
-import { EventTypes } from '../EventBus.js'
+import { BaseService } from '../core/ServiceRegistry.js'
+import { EventTypes } from '../core/EventBus.js'
 
 export class TransformPlugin {
   constructor() {
@@ -197,13 +197,17 @@ export class TransformPlugin {
   /**
    * 기즈모 생성
    */
-  createGizmo() {
+  async createGizmo() {
+    // Three.js 동적 import
+    const THREE = await import('three')
+    const { TransformControls } = await import('three/addons/controls/TransformControls.js')
+    
     // Three.js TransformControls 사용
     const scene = this.context.getService('sceneService').getScene()
     const camera = this.context.getService('sceneService').getCamera()
     const renderer = this.context.getService('sceneService').getRenderer()
 
-    this.gizmo = new THREE.TransformControls(camera, renderer.domElement)
+    this.gizmo = new TransformControls(camera, renderer.domElement)
     this.gizmo.setMode(this.mode)
     this.gizmo.setSpace(this.space)
 

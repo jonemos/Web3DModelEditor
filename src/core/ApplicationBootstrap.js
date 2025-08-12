@@ -12,6 +12,7 @@ import { configManager } from '../core/ConfigManager.js'
 
 // 플러그인들
 import { registerTransformPlugin } from '../plugins/TransformPlugin.js'
+import { registerGridPlugin } from '../plugins/GridPlugin.js'
 
 export class ApplicationBootstrap {
   constructor() {
@@ -197,6 +198,7 @@ export class ApplicationBootstrap {
     
     const defaultPlugins = [
       () => registerTransformPlugin(pluginSystem),
+      () => registerGridPlugin(pluginSystem),
       // 여기에 다른 기본 플러그인들 추가
     ]
 
