@@ -19,6 +19,7 @@ export class ApplicationBootstrap {
     this.initialized = false
     this.services = new Map()
     this.plugins = []
+    this.serviceRegistry = serviceRegistry // ServiceRegistry 참조 추가
   }
 
   /**
@@ -87,7 +88,7 @@ export class ApplicationBootstrap {
     console.log('🔧 Initializing services...')
     
     // 기본 서비스들 등록
-    setupDefaultServices()
+    await setupDefaultServices()
     
     // 서비스 인스턴스들을 맵에 저장 (빠른 접근용)
     this.services.set('scene', serviceRegistry.get('sceneService'))
@@ -181,7 +182,7 @@ export class ApplicationBootstrap {
         on: eventBus.on.bind(eventBus),
         executeHook: pluginSystem.executeHook.bind(pluginSystem),
         getPlugin: (name) => pluginSystem.plugins.get(name),
-        getService: (name) => serviceRegistry.get(name),
+        getService: (name) => this.serviceRegistry.get(name),
         getConfig: (namespace, key) => configManager.get(namespace, key),
         setConfig: (namespace, key, value) => configManager.set(namespace, key, value),
         registerCommand: commandManager.registerCommand.bind(commandManager),

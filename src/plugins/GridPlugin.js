@@ -147,45 +147,51 @@ export class GridPlugin {
    * UI 등록
    */
   registerUI() {
-    // 툴바에 그리드 토글 버튼 추가
-    this.context.registerToolbarButton({
-      id: 'grid_toggle',
-      icon: 'grid',
-      tooltip: 'Toggle Grid (G)',
-      action: () => this.toggle(),
-      shortcut: 'KeyG',
-      group: 'viewport',
-      isActive: () => this.isVisible
-    })
+    // 툴바에 그리드 토글 버튼 추가 (나중에 구현)
+    if (this.context.registerToolbarButton) {
+      this.context.registerToolbarButton({
+        id: 'grid_toggle',
+        icon: 'grid',
+        tooltip: 'Toggle Grid (G)',
+        action: () => this.toggle(),
+        shortcut: 'KeyG',
+        group: 'viewport',
+        isActive: () => this.isVisible
+      })
+    }
 
-    // 설정 패널 추가
-    this.context.registerPanel({
-      id: 'grid_settings',
-      title: 'Grid Settings',
-      component: this.createSettingsPanel(),
-      category: 'viewport'
-    })
+    // 설정 패널 추가 (나중에 구현)
+    if (this.context.registerPanel) {
+      this.context.registerPanel({
+        id: 'grid_settings',
+        title: 'Grid Settings',
+        component: this.createSettingsPanel(),
+        category: 'viewport'
+      })
+    }
   }
 
   /**
    * 명령어 등록
    */
   registerCommands() {
-    this.context.registerCommand('grid.toggle', () => {
-      this.toggle()
-    })
+    if (this.context.registerCommand) {
+      this.context.registerCommand('grid.toggle', () => {
+        this.toggle()
+      })
 
-    this.context.registerCommand('grid.setSize', (params) => {
-      this.setSize(params.size)
-    })
+      this.context.registerCommand('grid.setSize', (params) => {
+        this.setSize(params.size)
+      })
 
-    this.context.registerCommand('grid.setDivisions', (params) => {
-      this.setDivisions(params.divisions)
-    })
+      this.context.registerCommand('grid.setDivisions', (params) => {
+        this.setDivisions(params.divisions)
+      })
 
-    this.context.registerCommand('grid.setVisibility', (params) => {
-      this.setVisibility(params.visible)
-    })
+      this.context.registerCommand('grid.setVisibility', (params) => {
+        this.setVisibility(params.visible)
+      })
+    }
   }
 
   /**

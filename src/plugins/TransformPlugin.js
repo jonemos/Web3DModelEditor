@@ -87,41 +87,45 @@ export class TransformPlugin {
    * UI 등록
    */
   registerUI() {
-    // 툴바에 변형 도구 버튼들 추가
-    this.context.registerToolbarButton({
-      id: 'transform_translate',
-      icon: 'move',
-      tooltip: 'Move (W)',
-      action: () => this.setMode('translate'),
-      shortcut: 'KeyW',
-      group: 'transform'
-    })
+    // 툴바에 변형 도구 버튼들 추가 (나중에 구현)
+    if (this.context.registerToolbarButton) {
+      this.context.registerToolbarButton({
+        id: 'transform_translate',
+        icon: 'move',
+        tooltip: 'Move (W)',
+        action: () => this.setMode('translate'),
+        shortcut: 'KeyW',
+        group: 'transform'
+      })
 
-    this.context.registerToolbarButton({
-      id: 'transform_rotate',
-      icon: 'rotate',
-      tooltip: 'Rotate (E)',
-      action: () => this.setMode('rotate'),
-      shortcut: 'KeyE',
-      group: 'transform'
-    })
+      this.context.registerToolbarButton({
+        id: 'transform_rotate',
+        icon: 'rotate',
+        tooltip: 'Rotate (E)',
+        action: () => this.setMode('rotate'),
+        shortcut: 'KeyE',
+        group: 'transform'
+      })
 
-    this.context.registerToolbarButton({
-      id: 'transform_scale',
-      icon: 'scale',
-      tooltip: 'Scale (R)',
-      action: () => this.setMode('scale'),
-      shortcut: 'KeyR',
-      group: 'transform'
-    })
+      this.context.registerToolbarButton({
+        id: 'transform_scale',
+        icon: 'scale',
+        tooltip: 'Scale (R)',
+        action: () => this.setMode('scale'),
+        shortcut: 'KeyR',
+        group: 'transform'
+      })
+    }
 
-    // 설정 패널 추가
-    this.context.registerPanel({
-      id: 'transform_settings',
-      title: 'Transform Settings',
-      component: this.createSettingsPanel(),
-      category: 'tools'
-    })
+    // 설정 패널 추가 (나중에 구현)
+    if (this.context.registerPanel) {
+      this.context.registerPanel({
+        id: 'transform_settings',
+        title: 'Transform Settings',
+        component: this.createSettingsPanel(),
+        category: 'tools'
+      })
+    }
   }
 
   /**

@@ -179,17 +179,56 @@ export class ObjectManagementService extends BaseService {
     this.objects = new Map()
   }
 
-  addObject(object) {
-    const command = createAddObjectCommand(this.sceneService.getScene(), object)
-    return this.commandManager.execute(command)
+  async addObject(object) {
+    const scene = this.sceneService.getScene()
+    if (!scene) return false
+
+    // 간단한 명령어 구현 (나중에 CommandSystem의 createAddObjectCommand 사용)
+    const command = {
+      execute: () => {
+        scene.add(object)
+        this.objects.set(object.uuid, object)
+      },
+      undo: () => {
+        scene.remove(object)
+        this.objects.delete(object.uuid)
+      }
+    }
+    
+    if (this.commandManager && this.commandManager.execute) {
+      return this.commandManager.execute(command)
+    } else {
+      // 폴백: 직접 실행
+      command.execute()
+      return true
+    }
   }
 
-  removeObject(objectId) {
+  async removeObject(objectId) {
     const object = this.objects.get(objectId)
     if (!object) return false
 
-    const command = createDeleteObjectCommand(this.sceneService.getScene(), object)
-    return this.commandManager.execute(command)
+    const scene = this.sceneService.getScene()
+    if (!scene) return false
+
+    const command = {
+      execute: () => {
+        scene.remove(object)
+        this.objects.delete(objectId)
+      },
+      undo: () => {
+        scene.add(object)
+        this.objects.set(objectId, object)
+      }
+    }
+
+    if (this.commandManager && this.commandManager.execute) {
+      return this.commandManager.execute(command)
+    } else {
+      // 폴백: 직접 실행
+      command.execute()
+      return true
+    }
   }
 
   getObject(id) {
@@ -251,7 +290,7 @@ export class TransformService extends BaseService {
     this.mode = mode
   }
 
-  transformSelected(delta) {
+  async transformSelected(delta) {
     const selected = this.selectionService.getSelectedObjects()
     if (selected.length === 0) return
 
@@ -265,11 +304,30 @@ export class TransformService extends BaseService {
       
       const newTransform = this.calculateNewTransform(object, delta)
       
-      return createTransformCommand(object, newTransform, oldTransform)
+      return {
+        execute: () => {
+          object.position.copy(newTransform.position)
+          object.rotation.copy(newTransform.rotation)
+          object.scale.copy(newTransform.scale)
+        },
+        undo: () => {
+          object.position.copy(oldTransform.position)
+          object.rotation.copy(oldTransform.rotation)
+          object.scale.copy(oldTransform.scale)
+        }
+      }
     })
 
-    // 배치 명령어 실행
-    return this.commandManager.executeBatch(commands)
+    // 배치 명령어 실행 (간단 구현)
+    commands.forEach(cmd => {
+      if (this.commandManager && this.commandManager.execute) {
+        this.commandManager.execute(cmd)
+      } else {
+        cmd.execute()
+      }
+    })
+    
+    return true
   }
 
   calculateNewTransform(object, delta) {
@@ -301,11 +359,16 @@ export class TransformService extends BaseService {
 export const serviceRegistry = new ServiceRegistry()
 
 // 기본 서비스들 등록
-export function setupDefaultServices() {
+export async function setupDefaultServices() {
+  // configManager와 commandManager를 먼저 등록
+  const { configManager } = await import('./ConfigManager.js')
+  const { commandManager } = await import('./CommandSystem.js')
+  
   serviceRegistry
+    .registerInstance('configManager', configManager)
+    .registerInstance('commandManager', commandManager)
     .registerSingleton('sceneService', SceneService)
     .registerSingleton('selectionService', SelectionService)
     .registerSingleton('objectManagementService', ObjectManagementService, ['sceneService', 'commandManager'])
     .registerSingleton('transformService', TransformService, ['selectionService', 'commandManager'])
-    .registerInstance('commandManager', commandManager)
 }

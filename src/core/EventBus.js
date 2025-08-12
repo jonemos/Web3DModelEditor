@@ -315,6 +315,9 @@ export class EventBus {
 
 // 미리 정의된 이벤트 타입들
 export const EventTypes = {
+  // 앱 관련
+  APP_INITIALIZED: 'app.initialized',
+
   // 객체 관련
   OBJECT_ADDED: 'object.added',
   OBJECT_REMOVED: 'object.removed',
