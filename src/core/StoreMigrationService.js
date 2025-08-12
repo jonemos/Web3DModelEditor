@@ -89,20 +89,56 @@ export class StoreMigrationService extends BaseService {
    * 이벤트 리스너 설정
    */
   setupEventListeners() {
+    // 순환 참조 방지 플래그
+    this.isUpdatingFromNewArchitecture = false
+    
     // 새 시스템의 이벤트를 기존 스토어에 반영
     this.eventBus.on(EventTypes.OBJECT_SELECTED, (event) => {
       if (!this.migrationProgress.selectedObject) return
+      if (this.isUpdatingFromNewArchitecture) return // 순환 참조 방지
       
       const eventDetail = event.detail || {}
       const { object } = eventDetail
       
-      if (object) {
+      if (object && this.originalStore) {
+        const currentSelected = this.originalStore.getState().selectedObject
+        
+        // 같은 객체면 업데이트 건너뛰기 (순환 참조 방지)
+        if (currentSelected === object) return
+        
         this.migratedState.selectedObject = object
         
-        // 기존 스토어와 동기화
-        if (this.originalStore && this.originalStore.getState().setSelectedObject) {
+        // 기존 스토어와 동기화 (순환 참조 방지 플래그 설정)
+        if (this.originalStore.getState().setSelectedObject) {
+          this.isUpdatingFromNewArchitecture = true
           this.originalStore.getState().setSelectedObject(object)
+          // 다음 틱에서 플래그 해제
+          setTimeout(() => {
+            this.isUpdatingFromNewArchitecture = false
+          }, 0)
         }
+      }
+    })
+
+    // 객체 선택 해제 이벤트 처리
+    this.eventBus.on(EventTypes.OBJECT_DESELECTED, (event) => {
+      if (!this.migrationProgress.selectedObject) return
+      if (this.isUpdatingFromNewArchitecture) return
+      
+      const currentSelected = this.originalStore?.getState().selectedObject
+      
+      // 이미 선택 해제되어 있으면 건너뛰기
+      if (!currentSelected) return
+      
+      this.migratedState.selectedObject = null
+      
+      // 기존 스토어와 동기화
+      if (this.originalStore?.getState().setSelectedObject) {
+        this.isUpdatingFromNewArchitecture = true
+        this.originalStore.getState().setSelectedObject(null)
+        setTimeout(() => {
+          this.isUpdatingFromNewArchitecture = false
+        }, 0)
       }
     })
 

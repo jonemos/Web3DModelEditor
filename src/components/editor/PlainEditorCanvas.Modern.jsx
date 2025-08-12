@@ -5,6 +5,7 @@ import { useEditorStore } from '../../store/editorStore';
 import { EditorControls } from './EditorControls.js';
 import { PostProcessingManager } from './PostProcessingManager.js';
 import TransformManagerModern from './TransformManager.Modern.js';
+import GridManagerModern from './GridManager.Modern.js';
 import { getGLBMeshManager } from '../../utils/GLBMeshManager';
 
 // 새 아키텍처 통합
@@ -16,6 +17,7 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
   const editorControlsRef = useRef(null);
   const postProcessingRef = useRef(null);
   const transformManagerRef = useRef(null);
+  const gridManagerRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map());
   
@@ -157,6 +159,37 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
       transformManagerRef.current = transformManager;
     }
 
+    // GridManager.Modern 초기화 (새 아키텍처 활성화시)
+    let gridManager = null;
+    if (isNewArchitectureReady && services.serviceRegistry) {
+      gridManager = new GridManagerModern({
+        size: 10,
+        divisions: 10,
+        visible: true,
+        colorCenter: 0x888888,
+        colorGrid: 0x444444
+      });
+      
+      // 새 아키텍처에 연결
+      gridManager.connectToNewArchitecture(services.serviceRegistry)
+        .then((connected) => {
+          if (connected) {
+            gridManager.initialize();
+            
+            // 서비스 레지스트리에 등록
+            services.serviceRegistry.registerSingleton('gridManager', gridManager);
+            console.log('✅ GridManager.Modern registered with new architecture');
+          }
+        })
+        .catch(error => {
+          console.error('❌ Failed to initialize GridManager.Modern:', error);
+        });
+        
+      gridManagerRef.current = gridManager;
+        
+      gridManagerRef.current = gridManager;
+    }
+
     // PostProcessing 초기화
     const postProcessing = new PostProcessingManager(scene, camera, renderer);
     postProcessingRef.current = postProcessing;
@@ -212,6 +245,11 @@ function PlainEditorCanvasModern({ onEditorControlsReady, onPostProcessingReady,
       // TransformManager 정리
       if (transformManager) {
         transformManager.destroy();
+      }
+      
+      // GridManager 정리
+      if (gridManager) {
+        gridManager.destroy();
       }
       
       renderer.dispose();

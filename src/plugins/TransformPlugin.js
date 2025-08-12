@@ -51,7 +51,22 @@ export class TransformPlugin {
    */
   destroy() {
     if (this.gizmo) {
-      this.gizmo.dispose()
+      try {
+        // 씬에서 gizmo 제거
+        const sceneService = this.context.getService('sceneService')
+        if (sceneService) {
+          const scene = sceneService.getScene()
+          if (scene && scene.remove) {
+            scene.remove(this.gizmo)
+          }
+        }
+        
+        // gizmo 정리
+        this.gizmo.dispose()
+        this.gizmo = null
+      } catch (error) {
+        console.error('[TransformPlugin] Error destroying gizmo:', error)
+      }
     }
     
     // 이벤트 리스너 정리는 플러그인 시스템에서 자동으로 처리
@@ -63,8 +78,8 @@ export class TransformPlugin {
    */
   setupEventListeners() {
     // 선택 변경 감지
-    this.context.on(EventTypes.OBJECT_SELECTED, (event) => {
-      this.updateGizmoTarget(event.detail.object)
+    this.context.on(EventTypes.OBJECT_SELECTED, async (event) => {
+      await this.updateGizmoTarget(event.detail.object)
     })
 
     this.context.on(EventTypes.OBJECT_DESELECTED, (event) => {
@@ -189,40 +204,89 @@ export class TransformPlugin {
   /**
    * 기즈모 타겟 업데이트
    */
-  updateGizmoTarget(object) {
+  async updateGizmoTarget(object) {
     if (!this.gizmo) {
-      this.createGizmo()
+      await this.createGizmo()
     }
 
-    this.gizmo.attach(object)
-    this.showGizmo()
+    if (this.gizmo && object) {
+      try {
+        this.gizmo.attach(object)
+        this.showGizmo()
+      } catch (error) {
+        console.error('[TransformPlugin] Error attaching object to gizmo:', error)
+      }
+    }
   }
 
   /**
    * 기즈모 생성
    */
   async createGizmo() {
-    // Three.js 동적 import
-    const THREE = await import('three')
-    const { TransformControls } = await import('three/addons/controls/TransformControls.js')
+    // 이미 생성된 경우 중복 생성 방지
+    if (this.gizmo) {
+      console.log('[TransformPlugin] Gizmo already exists')
+      return
+    }
     
-    // Three.js TransformControls 사용
-    const scene = this.context.getService('sceneService').getScene()
-    const camera = this.context.getService('sceneService').getCamera()
-    const renderer = this.context.getService('sceneService').getRenderer()
+    try {
+      // Three.js 동적 import
+      const THREE = await import('three')
+      const { TransformControls } = await import('three/addons/controls/TransformControls.js')
+      
+      // 씬 서비스 유효성 체크
+      const sceneService = this.context.getService('sceneService')
+      if (!sceneService) {
+        console.error('[TransformPlugin] SceneService not found')
+        return
+      }
+      
+      const scene = sceneService.getScene()
+      const camera = sceneService.getCamera()
+      const renderer = sceneService.getRenderer()
 
-    this.gizmo = new TransformControls(camera, renderer.domElement)
-    this.gizmo.setMode(this.mode)
-    this.gizmo.setSpace(this.space)
+      if (!scene || !camera || !renderer) {
+        console.error('[TransformPlugin] Scene, camera, or renderer not available', {
+          scene: !!scene,
+          camera: !!camera,
+          renderer: !!renderer
+        })
+        return
+      }
 
-    // 기즈모 이벤트 처리
-    this.gizmo.addEventListener('change', () => {
-      this.context.emit(EventTypes.OBJECT_TRANSFORMED, {
-        object: this.gizmo.object
+      // Three.js TransformControls 생성
+      this.gizmo = new TransformControls(camera, renderer.domElement)
+      
+      // TransformControls 유효성 체크
+      if (!(this.gizmo instanceof TransformControls)) {
+        console.error('[TransformPlugin] Failed to create TransformControls')
+        this.gizmo = null
+        return
+      }
+      
+      this.gizmo.setMode(this.mode)
+      this.gizmo.setSpace(this.space)
+
+      // 기즈모 이벤트 처리
+      this.gizmo.addEventListener('change', () => {
+        this.context.emit(EventTypes.OBJECT_TRANSFORMED, {
+          object: this.gizmo.object
+        })
       })
-    })
 
-    scene.add(this.gizmo)
+      // 씬에 추가 (유효성 체크 후)
+      if (scene && scene.add && typeof scene.add === 'function') {
+        scene.add(this.gizmo)
+        console.log('[TransformPlugin] Gizmo added to scene successfully')
+      } else {
+        console.error('[TransformPlugin] Scene.add is not available')
+        this.gizmo = null
+      }
+      
+    } catch (error) {
+      console.error('[TransformPlugin] Error creating gizmo:', error)
+      this.gizmo = null
+    }
   }
 
   /**

@@ -387,7 +387,11 @@ async function setupCommandFactories(commandManager) {
     createRotateObjectCommand,
     createResetObjectRotationCommand,
     createMoveObjectCommand,
-    createScaleObjectCommand
+    createScaleObjectCommand,
+    createSetGridVisibilityCommand,
+    createSetGridSizeCommand,
+    createSetGridDivisionsCommand,
+    createToggleGridCommand
   } = await import('./CommandSystem.js')
 
   // 선택 관련 명령어들
@@ -448,5 +452,34 @@ async function setupCommandFactories(commandManager) {
     }
   })
 
-  console.log('✅ Command factories registered with Transform operations')
+  // 그리드 관련 명령어들
+  commandManager.registerCommand('setGridVisibility', (params) => {
+    const gridManager = serviceRegistry.get('gridManager')
+    if (gridManager) {
+      return createSetGridVisibilityCommand(gridManager, params.visible)
+    }
+  })
+
+  commandManager.registerCommand('setGridSize', (params) => {
+    const gridManager = serviceRegistry.get('gridManager')
+    if (gridManager) {
+      return createSetGridSizeCommand(gridManager, params.size)
+    }
+  })
+
+  commandManager.registerCommand('setGridDivisions', (params) => {
+    const gridManager = serviceRegistry.get('gridManager')
+    if (gridManager) {
+      return createSetGridDivisionsCommand(gridManager, params.divisions)
+    }
+  })
+
+  commandManager.registerCommand('toggleGrid', () => {
+    const gridManager = serviceRegistry.get('gridManager')
+    if (gridManager) {
+      return createToggleGridCommand(gridManager)
+    }
+  })
+
+  console.log('✅ Command factories registered with Transform and Grid operations')
 }

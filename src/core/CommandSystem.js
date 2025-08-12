@@ -521,5 +521,150 @@ export const createScaleObjectCommand = (object, scaleFactor) => {
   )
 }
 
+/**
+ * 그리드 표시/숨김 명령 생성
+ */
+export const createSetGridVisibilityCommand = (gridManager, visible) => {
+  const previousVisible = gridManager.state.visible;
+  
+  return new Command(
+    'setGridVisibility',
+    () => {
+      // 그리드 표시/숨김 적용
+      gridManager.setVisibilityInternal(visible);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_VISIBILITY_CHANGED, { 
+          visible, 
+          previousVisible 
+        });
+      });
+    },
+    () => {
+      // 이전 표시 상태 복원
+      gridManager.setVisibilityInternal(previousVisible);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_VISIBILITY_CHANGED, { 
+          visible: previousVisible, 
+          previousVisible: visible 
+        });
+      });
+    },
+    { gridManager, visible, previousVisible }
+  )
+}
+
+/**
+ * 그리드 크기 설정 명령 생성
+ */
+export const createSetGridSizeCommand = (gridManager, size) => {
+  const previousSize = gridManager.state.size;
+  
+  return new Command(
+    'setGridSize',
+    () => {
+      // 그리드 크기 적용
+      gridManager.setSizeInternal(size);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_SIZE_CHANGED, { 
+          size, 
+          previousSize 
+        });
+      });
+    },
+    () => {
+      // 이전 크기 복원
+      gridManager.setSizeInternal(previousSize);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_SIZE_CHANGED, { 
+          size: previousSize, 
+          previousSize: size 
+        });
+      });
+    },
+    { gridManager, size, previousSize }
+  )
+}
+
+/**
+ * 그리드 분할 수 설정 명령 생성
+ */
+export const createSetGridDivisionsCommand = (gridManager, divisions) => {
+  const previousDivisions = gridManager.state.divisions;
+  
+  return new Command(
+    'setGridDivisions',
+    () => {
+      // 그리드 분할 적용
+      gridManager.setDivisionsInternal(divisions);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_DIVISIONS_CHANGED, { 
+          divisions, 
+          previousDivisions 
+        });
+      });
+    },
+    () => {
+      // 이전 분할 수 복원
+      gridManager.setDivisionsInternal(previousDivisions);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_DIVISIONS_CHANGED, { 
+          divisions: previousDivisions, 
+          previousDivisions: divisions 
+        });
+      });
+    },
+    { gridManager, divisions, previousDivisions }
+  )
+}
+
+/**
+ * 그리드 토글 명령 생성
+ */
+export const createToggleGridCommand = (gridManager) => {
+  const currentVisible = gridManager.state.visible;
+  const newVisible = !currentVisible;
+  
+  return new Command(
+    'toggleGrid',
+    () => {
+      // 그리드 토글
+      gridManager.setVisibilityInternal(newVisible);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_TOGGLED, { 
+          visible: newVisible,
+          previousVisible: currentVisible
+        });
+      });
+    },
+    () => {
+      // 이전 상태로 복원
+      gridManager.setVisibilityInternal(currentVisible);
+      
+      // 이벤트 발행
+      import('./EventBus.js').then(({ eventBus, EventTypes }) => {
+        eventBus.emit(EventTypes.GRID_TOGGLED, { 
+          visible: currentVisible,
+          previousVisible: newVisible
+        });
+      });
+    },
+    { gridManager, currentVisible, newVisible }
+  )
+}
+
 // 글로벌 명령어 매니저
 export const commandManager = new CommandManager()

@@ -18,6 +18,9 @@ export class LegacyAdapter {
     this.editorStoreInstance = editorStoreInstance // getState() 접근 가능한 인스턴스
     this.isNewArchitectureEnabled = false
     this.services = new Map()
+    
+    // 순환 참조 방지 플래그
+    this.isUpdatingFromLegacy = false
     this.storeMigrationService = null
     
     this.setupEventBridge()
@@ -70,9 +73,15 @@ export class LegacyAdapter {
     if (this.editorStore.subscribe) {
       this.editorStore.subscribe((state, prevState) => {
         if (!this.isNewArchitectureEnabled) return
+        if (this.isUpdatingFromLegacy) return // 순환 참조 방지
 
         // 선택된 객체 변경 감지
         if (state.selectedObject !== prevState.selectedObject) {
+          // 중복 이벤트 방지를 위한 추가 체크
+          if (this.isUpdatingFromLegacy) return
+          
+          this.isUpdatingFromLegacy = true
+          
           if (state.selectedObject) {
             eventBus.emit(EventTypes.OBJECT_SELECTED, {
               object: state.selectedObject
@@ -80,6 +89,11 @@ export class LegacyAdapter {
           } else {
             eventBus.emit(EventTypes.OBJECT_DESELECTED, {})
           }
+          
+          // 다음 틱에서 플래그 해제
+          setTimeout(() => {
+            this.isUpdatingFromLegacy = false
+          }, 0)
         }
 
         // 변형 모드 변경 감지

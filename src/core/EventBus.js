@@ -186,7 +186,12 @@ export class EventBus {
 
         return result
       }).catch(error => {
-        console.error(`[EventBus] Error in async listener for ${event}:`, error)
+        console.error(`[EventBus] Error in async listener for ${event}:`, {
+          error,
+          listener: listener.name || listener.callback.name || 'anonymous',
+          eventDetail: eventObject.detail,
+          stack: error.stack
+        })
         throw error
       })
 
@@ -359,6 +364,13 @@ export const EventTypes = {
   GRID_VISIBILITY_CHANGED: 'grid.visibility.changed',
   GRID_SNAP_CHANGED: 'grid.snap.changed',
   GRID_SIZE_CHANGED: 'grid.size.changed',
+  GRID_DIVISIONS_CHANGED: 'grid.divisions.changed',
+  GRID_SNAP_SIZE_CHANGED: 'grid.snap.size.changed',
+  GRID_CREATED: 'grid.created',
+  GRID_REMOVED: 'grid.removed',
+  GRID_STATE_CHANGED: 'grid.state.changed',
+  GRID_MANAGER_READY: 'grid.manager.ready',
+  GRID_TOGGLED: 'editor.grid.toggled',
 
   // 자석 관련
   MAGNET_CHANGED: 'magnet.changed',
