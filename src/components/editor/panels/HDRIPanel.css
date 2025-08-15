@@ -1,0 +1,391 @@
+.hdri-panel {
+  position: fixed;
+  left: 70px;
+  top: 32px; /* 메뉴바 높이(32px)만큼 아래로 */
+  width: 140px; /* 라이브러리 패널과 동일한 크기 */
+  height: calc(100vh - 32px); /* 메뉴바 높이 제외 */
+  background: rgba(30, 30, 30, 0.95);
+  backdrop-filter: blur(10px);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  color: white;
+  z-index: 1000;
+  overflow-y: auto;
+  transition: transform 0.3s ease;
+}
+
+.hdri-header {
+  display: flex;
+  justify-content: space-between; /* 타이틀과 닫기 버튼 사이 공간 분배 */
+  align-items: center;
+  padding: 8px 10px; /* 패딩 증가 */
+  border-bottom: 1px solid rgba(255, 165, 0, 0.2); /* 주황색 테두리 */
+  background: linear-gradient(135deg, rgba(30, 30, 30, 0.95), rgba(40, 40, 40, 0.9));
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(15px);
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auto-save-indicator {
+  font-size: 12px;
+  opacity: 0.7;
+  cursor: help;
+  transition: opacity 0.3s ease;
+}
+
+.auto-save-indicator:hover {
+  opacity: 1;
+}
+
+.hdri-header h3 {
+  margin: 0;
+  font-family: 'Segoe UI', 'SF Pro Display', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-size: 12px;
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  background: linear-gradient(45deg, #ff8c00, #ffa500);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: block;
+}
+
+.hdri-header .close-btn {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.hdri-header .close-btn:hover {
+  color: #ff6b6b;
+  background: rgba(255, 255, 255, 0.05);
+  transform: scale(1.1);
+}
+
+.hdri-content {
+  padding: 12px 10px;
+  background: rgba(20, 20, 20, 0.8);
+}
+
+.category-section {
+  margin-bottom: 16px;
+}
+
+.category-title {
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 165, 0, 0.9);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 165, 0, 0.2);
+  padding-bottom: 4px;
+}
+
+.section-divider {
+  height: 1px;
+  background: linear-gradient(to right, transparent, rgba(255, 165, 0, 0.3), transparent);
+  margin: 12px 0;
+  opacity: 0.6;
+}
+
+/* 현재 HDRI 표시 */
+.current-hdri-display {
+  padding: 8px;
+  background: rgba(25, 25, 25, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  font-size: 11px;
+  text-align: center;
+}
+
+.hdri-name {
+  color: rgba(255, 165, 0, 0.9);
+  font-weight: 500;
+}
+
+.no-hdri {
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+}
+
+/* 업로드 버튼 */
+.hdri-upload-btn {
+  width: 100%;
+  padding: 8px;
+  background: rgba(25, 25, 25, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+}
+
+.hdri-upload-btn:hover {
+  background: rgba(255, 165, 0, 0.1);
+  border-color: rgba(255, 165, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.hdri-upload-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.upload-icon {
+  color: rgba(255, 165, 0, 0.8);
+}
+
+.upload-hint {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+  margin-top: 4px;
+  line-height: 1.2;
+}
+
+/* HDRI 그리드 */
+.hdri-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+  gap: 8px;
+}
+
+.hdri-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: rgba(25, 25, 25, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  min-height: 60px;
+}
+
+.hdri-item:hover {
+  background: rgba(255, 165, 0, 0.1);
+  border-color: rgba(255, 165, 0, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(255, 165, 0, 0.2);
+}
+
+.hdri-item.active {
+  background: rgba(255, 165, 0, 0.2);
+  border-color: rgba(255, 165, 0, 0.5);
+  box-shadow: 0 0 10px rgba(255, 165, 0, 0.3);
+}
+
+.hdri-thumbnail {
+  color: rgba(255, 165, 0, 0.8);
+  margin-bottom: 4px;
+}
+
+.hdri-item.active .hdri-thumbnail {
+  color: rgba(255, 165, 0, 1);
+}
+
+.hdri-label {
+  font-size: 9px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hdri-item.active .hdri-label {
+  color: white;
+  font-weight: 500;
+}
+
+/* 설정 슬라이더 */
+.setting-item {
+  margin-bottom: 12px;
+}
+
+.setting-item label {
+  display: block;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.slider-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hdri-slider {
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  outline: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.hdri-slider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 165, 0, 0.9);
+  cursor: pointer;
+  border: 1px solid rgba(255, 165, 0, 0.5);
+  transition: all 0.2s ease;
+}
+
+.hdri-slider::-webkit-slider-thumb:hover {
+  background: rgba(255, 165, 0, 1);
+  transform: scale(1.1);
+}
+
+.hdri-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 165, 0, 0.9);
+  cursor: pointer;
+  border: 1px solid rgba(255, 165, 0, 0.5);
+  transition: all 0.2s ease;
+}
+
+.slider-value {
+  font-size: 9px;
+  color: rgba(255, 165, 0, 0.9);
+  font-weight: 500;
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Toast 알림 */
+.hdri-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 10000;
+  max-width: 400px;
+  text-align: center;
+  animation: slideUp 0.3s ease;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.hdri-toast-info {
+  background: rgba(74, 144, 226, 0.9);
+  border: 1px solid rgba(74, 144, 226, 0.5);
+}
+
+.hdri-toast-success {
+  background: rgba(76, 175, 80, 0.9);
+  border: 1px solid rgba(76, 175, 80, 0.5);
+}
+
+.hdri-toast-error {
+  background: rgba(244, 67, 54, 0.9);
+  border: 1px solid rgba(244, 67, 54, 0.5);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* 태양 조명 설정 스타일 */
+.setting-section {
+  margin-top: 16px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.setting-section h4 {
+  margin: 0 0 8px 0;
+  font-size: 11px;
+  color: #ffa500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 0 8px;
+}
+
+.setting-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #ffa500;
+  cursor: pointer;
+}
+
+.color-preview {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 10px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  font-weight: 500;
+  letter-spacing: 0.3px;
+  min-width: 32px;
+}
+
+/* 체크박스 커스텀 스타일 */
+.setting-checkbox:checked {
+  background-color: #ffa500;
+  border-color: #ffa500;
+}
+
+.setting-checkbox:hover {
+  filter: brightness(1.1);
+}
+
+.setting-checkbox:focus {
+  outline: 2px solid rgba(255, 165, 0, 0.3);
+  outline-offset: 2px;
+}

@@ -2,25 +2,23 @@ import { useState, useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { GLTFExporter } from 'three-stdlib'
 import { useEditorStore } from '../../store/editorStore'
-import FloorSizePanel from './panels/FloorSizePanel'
-import SceneHierarchyPanel from './panels/SceneHierarchyPanel'
-import ObjectPropertiesPanel from './panels/ObjectPropertiesPanel'
+import InspectorPanel from './panels/InspectorPanel'
 import LibraryPanel from './panels/LibraryPanel'
+import AssetsPanel from './panels/AssetsPanel'
+import PostProcessingPanel from './panels/PostProcessingPanel'
+import HDRIPanel from './panels/HDRIPanel'
 import ContextMenu from './ContextMenu'
 import Toast from '../ui/Toast'
 import './EditorUI.css'
 
-function EditorUI({ editorControls }) {
+function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showInspector, onToggleInspector }) {
   const {
     selectedObject,
     transformMode,
-    floorWidth,
-    floorDepth,
     objects,
     walls,
     savedObjects,
     setTransformMode,
-    setFloorSize,
     addWall,
     addObject,
     removeObject,
@@ -29,6 +27,7 @@ function EditorUI({ editorControls }) {
     loadMap,
     clearMap,
     toggleObjectVisibility,
+    toggleObjectFreeze,
     renameObject,
     setSelectedObject
   } = useEditorStore()
@@ -36,6 +35,10 @@ function EditorUI({ editorControls }) {
   const [mapName, setMapName] = useState('')
   const [assetName, setAssetName] = useState('')
   const [showLibrary, setShowLibrary] = useState(false)
+  const [showAssets, setShowAssets] = useState(false)
+  const [showPostProcessing, setShowPostProcessing] = useState(false)
+  const [showHDRI, setShowHDRI] = useState(false)
+  const [isPostProcessingPanelOpen, setIsPostProcessingPanelOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState({
     isVisible: false,
     x: 0,
@@ -177,12 +180,12 @@ function EditorUI({ editorControls }) {
     }
   }
 
-  const handleFloorSizeChange = (width, depth) => {
-    setFloorSize(width, depth)
-  }
-
   const handleObjectVisibilityToggle = (obj) => {
     toggleObjectVisibility(obj)
+  }
+
+  const handleObjectFreezeToggle = (obj) => {
+    toggleObjectFreeze(obj)
   }
 
   const handleObjectSelect = (obj) => {
@@ -252,6 +255,48 @@ function EditorUI({ editorControls }) {
     }
   }
 
+  const handleObjectUpdate = (updatedObject) => {
+    // 오브젝트 속성 업데이트
+    console.log('오브젝트 업데이트:', updatedObject)
+    
+    // EditorControls를 통해 3D 뷰의 오브젝트도 업데이트
+    if (editorControls && updatedObject.id) {
+      const threeObject = editorControls.findObjectById(updatedObject.id)
+      if (threeObject) {
+        // 위치, 회전, 스케일 업데이트
+        if (updatedObject.position) {
+          threeObject.position.set(
+            updatedObject.position.x,
+            updatedObject.position.y,
+            updatedObject.position.z
+          )
+        }
+        if (updatedObject.rotation) {
+          threeObject.rotation.set(
+            updatedObject.rotation.x,
+            updatedObject.rotation.y,
+            updatedObject.rotation.z
+          )
+        }
+        if (updatedObject.scale) {
+          threeObject.scale.set(
+            updatedObject.scale.x,
+            updatedObject.scale.y,
+            updatedObject.scale.z
+          )
+        }
+        if (updatedObject.name) {
+          threeObject.name = updatedObject.name
+        }
+      }
+    }
+    
+    // 스토어의 selectedObject 업데이트
+    if (selectedObject?.id === updatedObject.id) {
+      setSelectedObject(updatedObject)
+    }
+  }
+
   const handleObjectRemove = (obj) => {
     // Console output removed
     // Console output removed
@@ -315,10 +360,142 @@ function EditorUI({ editorControls }) {
 
   const handleLibraryToggle = () => {
     setShowLibrary(!showLibrary)
+    if (showAssets) setShowAssets(false) // 다른 패널 닫기
+    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
+    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
+  }
+
+  const handleAssetsToggle = () => {
+    setShowAssets(!showAssets)
+    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
+    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
+    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
+  }
+
+  const handlePostProcessingToggle = () => {
+    setIsPostProcessingPanelOpen(!isPostProcessingPanelOpen)
+    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
+    if (showAssets) setShowAssets(false) // 다른 패널 닫기
+    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
+  }
+
+  const handleHDRIToggle = () => {
+    setShowHDRI(!showHDRI)
+    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
+    if (showAssets) setShowAssets(false) // 다른 패널 닫기
+    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
+  }
+
+  const handleAssetDrop = (assetData, position) => {
+    // 기본 에셋을 씬에 추가
+    console.log('에셋 드롭 시작:', assetData);
+    let newObject;
+
+    switch (assetData.type) {
+      case 'start_position':
+        newObject = {
+          id: Date.now(),
+          type: 'start_position',
+          name: assetData.name,
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          color: 0x00ff00,
+          geometry: 'marker'
+        };
+        break;
+      case 'directional_light':
+        newObject = {
+          id: Date.now(),
+          type: 'directional_light',
+          name: assetData.name,
+          position: position || { x: 5, y: 10, z: 5 },
+          rotation: { x: -Math.PI/4, y: Math.PI/4, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 1,
+          color: 0xffffff,
+          castShadow: true
+        };
+        break;
+      case 'point_light':
+        newObject = {
+          id: Date.now(),
+          type: 'point_light',
+          name: assetData.name,
+          position: position || { x: 0, y: 3, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 1,
+          color: 0xffffff,
+          distance: 10,
+          decay: 2
+        };
+        break;
+      case 'spot_light':
+        newObject = {
+          id: Date.now(),
+          type: 'spot_light',
+          name: assetData.name,
+          position: position || { x: 0, y: 5, z: 0 },
+          rotation: { x: -Math.PI/2, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 1,
+          color: 0xffffff,
+          distance: 10,
+          angle: Math.PI/6,
+          penumbra: 0.1
+        };
+        break;
+      case 'ambient_light':
+        newObject = {
+          id: Date.now(),
+          type: 'ambient_light',
+          name: assetData.name,
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          intensity: 0.3,
+          color: 0x404040
+        };
+        break;
+      case 'audio_source':
+        newObject = {
+          id: Date.now(),
+          type: 'audio_source',
+          name: assetData.name,
+          position: position || { x: 0, y: 1, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          volume: 1,
+          loop: false,
+          autoplay: false
+        };
+        break;
+      default:
+        // 기타 헬퍼나 효과들
+        newObject = {
+          id: Date.now(),
+          type: assetData.type,
+          name: assetData.name,
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 }
+        };
+    }
+
+    addObject(newObject);
+    
+    // 추가된 오브젝트를 선택 상태로 만들기
+    setTimeout(() => {
+      setSelectedObject(newObject);
+    }, 100);
+
+    showToast(`${assetData.name}이(가) 씬에 추가되었습니다.`, 'success');
   }
 
   const handleLibraryDrop = (objectData, position) => {
     // 라이브러리에서 드롭된 오브젝트를 씬에 추가
+    console.log('라이브러리 드롭 시작:', objectData);
     let newObject;
 
     if (objectData.type === 'library') {
@@ -332,8 +509,10 @@ function EditorUI({ editorControls }) {
         scale: { x: 1, y: 1, z: 1 },
         name: objectData.name
       };
+      console.log('라이브러리 메쉬 객체 생성:', newObject);
     } else if (objectData.type === 'custom') {
       // 사용자 정의 객체 (저장된 GLB 데이터)
+      console.log('커스텀 메쉬 처리 중:', objectData.name, 'GLB 데이터:', typeof objectData.glbData, objectData.glbData);
       newObject = {
         id: Date.now(),
         type: 'glb',
@@ -343,6 +522,7 @@ function EditorUI({ editorControls }) {
         scale: { x: 1, y: 1, z: 1 },
         name: objectData.name
       };
+      console.log('생성된 커스텀 객체:', newObject);
     } else {
       // 기본 도형
       newObject = {
@@ -379,6 +559,15 @@ function EditorUI({ editorControls }) {
       <div className="tool-panel">
         <div className="tool-section">
           <button 
+            className={`tool-btn assets-btn ${showAssets ? 'active' : ''}`}
+            onClick={handleAssetsToggle}
+            title="기본 에셋"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12,2L13.09,8.26L22,9L14.74,14.74L17.18,22L12,18.5L6.82,22L9.26,14.74L2,9L10.91,8.26L12,2Z"/>
+            </svg>
+          </button>
+          <button 
             className={`tool-btn library-btn ${showLibrary ? 'active' : ''}`}
             onClick={handleLibraryToggle}
             title="라이브러리"
@@ -387,8 +576,42 @@ function EditorUI({ editorControls }) {
               <path d="M4,6H20V8H4V6M4,11H20V13H4V11M4,16H20V18H4V16Z"/>
             </svg>
           </button>
+          <button 
+            className={`tool-btn post-processing-btn ${isPostProcessingPanelOpen ? 'active' : ''}`}
+            onClick={handlePostProcessingToggle}
+            title="포스트프로세싱 효과"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9,12L11,14L15,10L20,15H4L9,12Z"/>
+            </svg>
+          </button>
+          <button 
+            className={`tool-btn hdri-btn ${showHDRI ? 'active' : ''}`}
+            onClick={handleHDRIToggle}
+            title="HDRI 환경"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17Z"/>
+            </svg>
+          </button>
+
+          {/* 포스트프로세싱 패널 - 버튼 바로 옆에 */}
+          {isPostProcessingPanelOpen && (
+            <PostProcessingPanel 
+              postProcessingManager={postProcessingManager}
+              onClose={() => setIsPostProcessingPanelOpen(false)}
+            />
+          )}
         </div>
       </div>
+
+      {/* 기본 에셋 패널 */}
+      {showAssets && (
+        <AssetsPanel 
+          onAssetDrop={handleAssetDrop}
+          onClose={() => setShowAssets(false)}
+        />
+      )}
 
       {/* 라이브러리 패널 */}
       {showLibrary && (
@@ -396,6 +619,22 @@ function EditorUI({ editorControls }) {
           onObjectDrop={handleLibraryDrop}
           onClose={() => setShowLibrary(false)}
           forceRefresh={forceRefresh}
+        />
+      )}
+
+      {/* 포스트프로세싱 패널 */}
+      {showPostProcessing && (
+        <PostProcessingPanel 
+          postProcessingManager={postProcessingManager}
+          isVisible={showPostProcessing}
+        />
+      )}
+
+      {/* HDRI 패널 */}
+      {showHDRI && (
+        <HDRIPanel 
+          scene={editorControls?.scene}
+          onClose={() => setShowHDRI(false)}
         />
       )}
 
@@ -414,23 +653,18 @@ function EditorUI({ editorControls }) {
         isVisible={contextMenu.isVisible}
         onClose={handleCloseContextMenu}
         selectedObject={selectedObject}
+        onAddToLibrary={onAddToLibrary}
       />
 
-      {/* 우측 패널 - 오브젝트 목록 */}
-      <div className="right-panel">
-        {/* 바닥 크기 패널 */}
-        <FloorSizePanel 
-          floorWidth={floorWidth}
-          floorDepth={floorDepth}
-          onFloorSizeChange={handleFloorSizeChange}
-        />
-
-        {/* 씬 하이라키 패널 */}
-        <SceneHierarchyPanel 
+      {/* 우측 패널 - 인스펙터 */}
+      {showInspector && (
+        <InspectorPanel
+          // SceneHierarchy 관련 props
           objects={objects}
           walls={walls}
           selectedObject={selectedObject}
           onObjectVisibilityToggle={handleObjectVisibilityToggle}
+          onObjectFreezeToggle={handleObjectFreezeToggle}
           onObjectSelect={handleObjectSelect}
           onObjectRemove={handleObjectRemove}
           onObjectFocus={handleObjectFocus}
@@ -448,13 +682,13 @@ function EditorUI({ editorControls }) {
             });
           }}
           editorControls={editorControls}
+          
+          // ObjectProperties 관련 props
+          onObjectUpdate={handleObjectUpdate}
+          
+          onClose={() => onToggleInspector(false)}
         />
-
-        {/* 오브젝트 속성 패널 */}
-        <ObjectPropertiesPanel 
-          selectedObject={selectedObject}
-        />
-      </div>
+      )}
     </div>
   )
 }

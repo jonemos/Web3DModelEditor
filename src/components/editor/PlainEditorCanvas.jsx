@@ -3,16 +3,17 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { useEditorStore } from '../../store/editorStore';
 import { EditorControls } from './EditorControls.js';
+import { PostProcessingManager } from './PostProcessingManager.js';
+import { getGLBMeshManager } from '../../utils/GLBMeshManager';
 
-function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
+function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onContextMenu }) {
   const mountRef = useRef(null);
   const editorControlsRef = useRef(null);
+  const postProcessingRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
   
   const { 
-    floorWidth, 
-    floorDepth,
     objects,
     walls,
     setScene,
@@ -24,7 +25,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
 
     // Scene setup
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x333333); // Dark gray background
+    scene.background = new THREE.Color(0x2a2a2a); // 기본 배경 (회색)
 
     // Camera setup
     const camera = new THREE.PerspectiveCamera(
@@ -33,7 +34,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
       0.1,
       1000
     );
-    camera.position.set(20, 30, 20);
+    camera.position.set(15, 20, 15);
     camera.lookAt(0, 0, 0);
 
     // Renderer setup
@@ -72,9 +73,18 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
     const editorControls = new EditorControls(scene, camera, renderer, useEditorStore, handleCameraChange);
     editorControlsRef.current = editorControls;
     
+    // 포스트프로세싱 매니저 초기화
+    const postProcessingManager = new PostProcessingManager(scene, camera, renderer);
+    postProcessingRef.current = postProcessingManager;
+    
     // EditorControls가 준비되었음을 부모 컴포넌트에 알림
     if (onEditorControlsReady) {
       onEditorControlsReady(editorControls);
+    }
+    
+    // PostProcessingManager가 준비되었음을 부모 컴포넌트에 알림
+    if (onPostProcessingReady) {
+      onPostProcessingReady(postProcessingManager);
     }
 
     // Add lights
@@ -87,20 +97,6 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
     directionalLight.shadow.mapSize.width = 1024;
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
-
-    // Add floor
-    const floorGeometry = new THREE.PlaneGeometry(floorWidth, floorDepth);
-    const floorMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
-    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-    floor.rotation.x = -Math.PI / 2;
-    floor.receiveShadow = true;
-    scene.add(floor);
-
-    // Add grid helper
-    const gridHelper = new THREE.GridHelper(floorWidth, floorWidth);
-    gridHelper.position.y = 0.01;
-    gridHelper.material.color.setHex(0x666666);
-    scene.add(gridHelper);
 
     // Test cube
     const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
@@ -154,11 +150,17 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         editorControlsRef.current.updateSelectedOutlines();
       }
       
-      // 렌더링 (기즈모를 위한 특별한 렌더링)
+      // 렌더링 (포스트프로세싱 사용)
       renderer.clear();
       // EditorControls의 현재 카메라 사용 (Perspective/Orthographic 토글 대응)
       const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
-      renderer.render(scene, currentCamera);
+      
+      // 포스트프로세싱 매니저가 있으면 포스트프로세싱 렌더링, 없으면 기본 렌더링
+      if (postProcessingRef.current) {
+        postProcessingRef.current.render();
+      } else {
+        renderer.render(scene, currentCamera);
+      }
     };
     animate();
 
@@ -176,6 +178,274 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         const data = event.dataTransfer.getData('text/plain');
         if (data) {
           const objectData = JSON.parse(data);
+          
+          // 기본 에셋인 경우 별도 처리
+          if (objectData.type === 'start_position' || objectData.type === 'directional_light' || 
+              objectData.type === 'point_light' || objectData.type === 'spot_light' || 
+              objectData.type === 'ambient_light' || objectData.type === 'audio_source' ||
+              objectData.type === 'fog' || objectData.type === 'skybox' || 
+              objectData.type === 'post_process' || objectData.type === 'camera_helper' ||
+              objectData.type === 'grid_helper' || objectData.type === 'axes_helper') {
+            
+            // 마우스 위치를 3D 좌표로 변환
+            const rect = canvas.getBoundingClientRect();
+            const mouse = new THREE.Vector2();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            
+            // 바닥과의 교차점 계산 (y=0 평면)
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersection = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersection);
+            
+            // 에셋 타입에 따라 3D 객체 생성
+            let assetObject;
+            
+            switch (objectData.type) {
+              case 'start_position':
+                // 스타트 위치 마커
+                const markerGeometry = new THREE.ConeGeometry(0.3, 1, 8);
+                const markerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+                assetObject = new THREE.Mesh(markerGeometry, markerMaterial);
+                assetObject.position.copy(intersection);
+                break;
+                
+              case 'directional_light':
+                // 디렉셔널 라이트
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+                directionalLight.position.set(intersection.x + 5, intersection.y + 10, intersection.z + 5);
+                directionalLight.target.position.copy(intersection);
+                directionalLight.castShadow = true;
+                directionalLight.shadow.mapSize.width = 2048;
+                directionalLight.shadow.mapSize.height = 2048;
+                
+                // 라이트 헬퍼 추가
+                const directionalHelper = new THREE.DirectionalLightHelper(directionalLight, 1);
+                scene.add(directionalHelper);
+                
+                assetObject = directionalLight;
+                scene.add(directionalLight.target); // target도 씬에 추가
+                break;
+                
+              case 'point_light':
+                // 포인트 라이트
+                const pointLight = new THREE.PointLight(0xffffff, 1, 10, 2);
+                pointLight.position.set(intersection.x, intersection.y + 3, intersection.z);
+                pointLight.castShadow = true;
+                
+                // 라이트 헬퍼 추가
+                const pointHelper = new THREE.PointLightHelper(pointLight, 0.5);
+                scene.add(pointHelper);
+                
+                assetObject = pointLight;
+                break;
+                
+              case 'spot_light':
+                // 스포트 라이트
+                const spotLight = new THREE.SpotLight(0xffffff, 1, 10, Math.PI/6, 0.1, 2);
+                spotLight.position.set(intersection.x, intersection.y + 5, intersection.z);
+                spotLight.target.position.copy(intersection);
+                spotLight.castShadow = true;
+                
+                // 라이트 헬퍼 추가
+                const spotHelper = new THREE.SpotLightHelper(spotLight);
+                scene.add(spotHelper);
+                
+                assetObject = spotLight;
+                scene.add(spotLight.target); // target도 씬에 추가
+                break;
+                
+              case 'ambient_light':
+                // 앰비언트 라이트 (위치가 없으므로 표시용 구체 생성)
+                const ambientLight = new THREE.AmbientLight(0x404040, 0.3);
+                const ambientGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+                const ambientMaterial = new THREE.MeshBasicMaterial({ 
+                  color: 0x404040, 
+                  wireframe: true, 
+                  transparent: true, 
+                  opacity: 0.5 
+                });
+                assetObject = new THREE.Mesh(ambientGeometry, ambientMaterial);
+                assetObject.position.copy(intersection);
+                scene.add(ambientLight); // 실제 라이트도 씬에 추가
+                break;
+                
+              case 'audio_source':
+                // 오디오 소스 마커
+                const audioGeometry = new THREE.SphereGeometry(0.3, 16, 16);
+                const audioMaterial = new THREE.MeshStandardMaterial({ color: 0xff9900 });
+                assetObject = new THREE.Mesh(audioGeometry, audioMaterial);
+                assetObject.position.set(intersection.x, intersection.y + 1, intersection.z);
+                break;
+                
+              case 'grid_helper':
+                // 그리드 헬퍼
+                assetObject = new THREE.GridHelper(10, 10);
+                assetObject.position.copy(intersection);
+                break;
+                
+              case 'axes_helper':
+                // 축 헬퍼
+                assetObject = new THREE.AxesHelper(2);
+                assetObject.position.copy(intersection);
+                break;
+                
+              default:
+                // 기본 마커
+                const defaultGeometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const defaultMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+                assetObject = new THREE.Mesh(defaultGeometry, defaultMaterial);
+                assetObject.position.copy(intersection);
+            }
+            
+            if (assetObject) {
+              // 그림자 설정
+              if (assetObject.isMesh) {
+                assetObject.castShadow = true;
+                assetObject.receiveShadow = true;
+              }
+              
+              // 고유 ID 생성
+              const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+              assetObject.name = uniqueId;
+              assetObject.userData = {
+                id: uniqueId,
+                name: objectData.name,
+                type: objectData.type,
+                originalData: objectData
+              };
+              
+              scene.add(assetObject);
+              
+              // 선택 가능한 오브젝트로 등록
+              editorControls.addSelectableObject(assetObject);
+              
+              // 로드된 오브젝트로 기록
+              loadedObjectsRef.current.set(uniqueId, assetObject);
+              
+              // 에디터 스토어에 객체 등록
+              const addObject = useEditorStore.getState().addObject;
+              addObject({
+                id: uniqueId,
+                name: objectData.name,
+                type: objectData.type,
+                position: [assetObject.position.x, assetObject.position.y, assetObject.position.z],
+                rotation: [assetObject.rotation.x, assetObject.rotation.y, assetObject.rotation.z],
+                scale: [assetObject.scale.x, assetObject.scale.y, assetObject.scale.z],
+                visible: true,
+                userData: assetObject.userData
+              });
+              
+              // 새로 추가된 객체 선택
+              setSelectedObject(uniqueId);
+              
+            }
+            
+            return; // 기본 geometry 처리 로직을 건너뛰기
+          }
+          
+          // 커스텀 메쉬나 라이브러리 메쉬인 경우 별도 처리
+          if (objectData.type === 'custom' || objectData.type === 'library') {
+            
+            // 마우스 위치를 3D 좌표로 변환
+            const rect = canvas.getBoundingClientRect();
+            const mouse = new THREE.Vector2();
+            mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            
+            // 바닥과의 교차점 계산 (y=0 평면)
+            const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+            const intersection = new THREE.Vector3();
+            raycaster.ray.intersectPlane(plane, intersection);
+            
+            // GLB 로더로 메쉬 로드
+            const loader = new GLTFLoader();
+            let modelUrl;
+            
+            if (objectData.type === 'custom') {
+              // 커스텀 메쉬: GLB 데이터를 Blob URL로 변환
+              try {
+                const glbMeshManager = getGLBMeshManager();
+                modelUrl = glbMeshManager.createBlobURL(objectData.glbData);
+              } catch (error) {
+                console.error('GLB 데이터 변환 실패:', error);
+                return;
+              }
+            } else if (objectData.type === 'library') {
+              // 라이브러리 메쉬: glbUrl 사용
+              modelUrl = objectData.glbUrl;
+            }
+            
+            loader.load(
+              modelUrl,
+              (gltf) => {
+                const model = gltf.scene;
+                model.position.copy(intersection);
+                
+                // 그림자 설정
+                model.traverse((child) => {
+                  if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                  }
+                });
+                
+                scene.add(model);
+                
+                // 선택 가능한 오브젝트로 등록
+                editorControls.addSelectableObject(model);
+                
+                // 고유 ID 생성
+                const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                model.name = uniqueId;
+                model.userData = {
+                  id: uniqueId,
+                  name: objectData.name,
+                  type: objectData.type,
+                  originalData: objectData
+                };
+                
+                // 로드된 오브젝트로 기록
+                loadedObjectsRef.current.set(uniqueId, model);
+                
+                // 에디터 스토어에 객체 등록
+                const addObject = useEditorStore.getState().addObject;
+                addObject({
+                  id: uniqueId,
+                  name: objectData.name,
+                  type: 'mesh',
+                  position: [intersection.x, intersection.y, intersection.z],
+                  rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
+                  scale: [1, 1, 1],
+                  visible: true,
+                  userData: model.userData
+                });
+                
+                // 새로 추가된 객체 선택
+                setSelectedObject(uniqueId);
+                
+                // URL 정리 (커스텀 메쉬의 경우에만)
+                if (objectData.type === 'custom') {
+                  URL.revokeObjectURL(modelUrl);
+                }
+              },
+              undefined,
+              (error) => {
+                console.error('커스텀/라이브러리 메쉬 로드 실패:', error);
+                if (objectData.type === 'custom') {
+                  URL.revokeObjectURL(modelUrl);
+                }
+              }
+            );
+            
+            return; // 기본 geometry 처리 로직을 건너뛰기
+          }
           
           // 마우스 위치를 3D 좌표로 변환
           const rect = canvas.getBoundingClientRect();
@@ -224,14 +494,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
             case 'CustomGeometry':
               // 사용자 정의 객체 복제
               if (objectData.glbData) {
-                // GLB 데이터에서 Blob 생성
-                const uint8Array = new Uint8Array(objectData.glbData);
-                const blob = new Blob([uint8Array], { type: 'application/octet-stream' });
-                const url = URL.createObjectURL(blob);
-                
-                // GLB 파일 로드
-                const loader = new GLTFLoader();
-                loader.load(url, (gltf) => {
+                try {
+                  const glbMeshManager = getGLBMeshManager();
+                  const url = glbMeshManager.createBlobURL(objectData.glbData);
+                  
+                  // GLB 파일 로드
+                  const loader = new GLTFLoader();
+                  loader.load(url, (gltf) => {
                   const model = gltf.scene;
                   model.position.copy(intersection);
                   
@@ -284,8 +553,69 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
                   URL.revokeObjectURL(url);
                 });
                 return; // 여기서 함수 종료
+                } catch (error) {
+                  console.error('GLB 데이터 변환 실패:', error);
+                  return;
+                }
               } else if (objectData.originalObject && objectData.originalObject.geometry) {
                 geometry = objectData.originalObject.geometry.clone();
+              } else {
+                geometry = new THREE.BoxGeometry(1, 1, 1); // 기본값
+              }
+              break;
+            case 'LibraryMesh':
+              // 라이브러리 메쉬 로드
+              if (objectData.glbUrl) {
+                const loader = new GLTFLoader();
+                loader.load(objectData.glbUrl, (gltf) => {
+                  const model = gltf.scene;
+                  model.position.copy(intersection);
+                  
+                  // 고유 ID 생성
+                  const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                  model.name = uniqueId;
+                  model.userData = {
+                    id: uniqueId,
+                    name: objectData.name,
+                    type: objectData.type || 'library',
+                    originalName: objectData.name
+                  };
+                  
+                  // 그림자 설정
+                  model.traverse((child) => {
+                    if (child.isMesh) {
+                      child.castShadow = true;
+                      child.receiveShadow = true;
+                    }
+                  });
+                  
+                  scene.add(model);
+                  
+                  // 선택 가능한 오브젝트로 등록
+                  editorControls.addSelectableObject(model);
+                  
+                  // 로드된 오브젝트로 기록
+                  loadedObjectsRef.current.set(uniqueId, model);
+                  
+                  // 에디터 스토어에 객체 등록
+                  const addObject = useEditorStore.getState().addObject;
+                  addObject({
+                    id: uniqueId,
+                    name: objectData.name,
+                    type: 'mesh',
+                    position: [intersection.x, intersection.y, intersection.z],
+                    rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
+                    scale: [1, 1, 1],
+                    visible: true,
+                    userData: model.userData
+                  });
+                  
+                  // 새로 추가된 객체 선택
+                  setSelectedObject(uniqueId);
+                }, undefined, (error) => {
+                  console.error('라이브러리 메쉬 로드 오류:', error);
+                });
+                return; // 여기서 함수 종료
               } else {
                 geometry = new THREE.BoxGeometry(1, 1, 1); // 기본값
               }
@@ -355,6 +685,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         camera.updateProjectionMatrix();
         renderer.setSize(window.innerWidth, window.innerHeight);
       }
+      
+      // 포스트프로세싱 리사이즈
+      if (postProcessingRef.current) {
+        postProcessingRef.current.handleResize(window.innerWidth, window.innerHeight);
+      }
     };
     window.addEventListener('resize', handleResize);
 
@@ -367,12 +702,15 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
       if (editorControlsRef.current) {
         editorControlsRef.current.dispose();
       }
+      if (postProcessingRef.current) {
+        postProcessingRef.current.dispose();
+      }
       if (mountRef.current && renderer.domElement) {
         mountRef.current.removeChild(renderer.domElement);
       }
       renderer.dispose();
     };
-  }, [floorWidth, floorDepth, setScene]);
+  }, [setScene]); // floorWidth, floorDepth 제거하여 씬 재초기화 방지
 
   // GLB 파일 로드를 위한 별도 useEffect
   useEffect(() => {
@@ -386,16 +724,15 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
       // 이미 로드된 오브젝트는 건너뛰기
       if (loadedObjectsRef.current.has(obj.id)) return;
       
-      if (obj.type === 'glb' && obj.file) {
+      if (obj.type === 'glb' && (obj.file || obj.url)) {
         // GLB file loading started
         
-        // GLB 파일 로드
+        // GLB 파일 로드 (file 또는 url 사용)
+        const glbSource = obj.file || obj.url;
         loader.load(
-          obj.file,
+          glbSource,
           (gltf) => {
             const model = gltf.scene;
-            
-            // GLB loaded successfully
             
             // 바운딩 박스 계산하여 모델 크기 확인
             const box = new THREE.Box3().setFromObject(model);
@@ -404,31 +741,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
             
             // Model size and center calculated
             
-            // 모델이 너무 크거나 작으면 스케일 조정
-            const maxSize = Math.max(size.x, size.y, size.z);
-            let targetScale = 1;
-            
-            if (maxSize > 10) {
-              // 너무 크면 스케일 다운
-              targetScale = 5 / maxSize;
-              // Model is too large, scaling down
-            } else if (maxSize < 0.1) {
-              // 너무 작으면 스케일 업
-              targetScale = 1 / maxSize;
-              // Model is too small, scaling up
-            }
-            
             // 모델을 원점 중심으로 이동 (선택사항)
             model.position.sub(center);
             
             // 모델 위치 설정 (에디터에서 설정된 위치)
             model.position.set(obj.position.x, obj.position.y, obj.position.z);
             model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
-            model.scale.set(
-              obj.scale.x * targetScale, 
-              obj.scale.y * targetScale, 
-              obj.scale.z * targetScale
-            );
+            model.scale.set(obj.scale.x, obj.scale.y, obj.scale.z); // 자동 스케일 조정 제거
             
             // 메타데이터 설정
             model.name = obj.name;
@@ -456,16 +775,133 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
             // 로드된 오브젝트로 기록
             loadedObjectsRef.current.set(obj.id, model);
             
-            // 자동으로 선택
+            // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
+            editorControlsRef.current.selectObject(model);
             
             // GLB file loading completed
           },
-          (progress) => {
-            // GLB loading progress
-          },
+          undefined,
           (error) => {
             // GLB file loading error
+            console.error(`GLB 파일 로딩 실패: ${obj.name}`, error);
+            console.error(`GLB 파일 경로: ${glbSource}`);
+            console.error('객체 정보:', obj);
+            
+            // GLB 로딩 실패 시 기본 도형으로 대체
+            
+            // 기본 박스 생성
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            const material = new THREE.MeshLambertMaterial({ 
+              color: 0xff6b6b,  // 빨간색으로 에러 표시
+              transparent: true,
+              opacity: 0.7
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            // 위치 및 기본 속성 설정
+            mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
+            mesh.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+            mesh.scale.set(obj.scale.x, obj.scale.y, obj.scale.z);
+            mesh.name = `${obj.name} (로딩실패)`;
+            mesh.userData = { id: obj.id, type: obj.type, loadError: true };
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.visible = obj.visible !== false;
+            
+            // 씬에 추가
+            scene.add(mesh);
+            editorControlsRef.current.addSelectableObject(mesh);
+            loadedObjectsRef.current.set(obj.id, mesh);
+            
+            // 자동으로 선택 (스토어와 3D 뷰 모두)
+            setSelectedObject(obj.id);
+            editorControlsRef.current.selectObject(mesh);
+          }
+        );
+      } else if (obj.type === 'glb' && obj.glbData) {
+        // GLB 데이터가 있는 경우 (사용자 정의 객체)
+        
+        // GLB 데이터를 올바른 형태로 변환
+        let binaryData;
+        if (obj.glbData instanceof ArrayBuffer) {
+          binaryData = obj.glbData;
+        } else if (obj.glbData instanceof Uint8Array) {
+          binaryData = obj.glbData.buffer;
+        } else if (Array.isArray(obj.glbData)) {
+          // 배열 형태로 저장된 경우
+          binaryData = new Uint8Array(obj.glbData).buffer;
+        } else if (typeof obj.glbData === 'object' && obj.glbData.type === 'Buffer') {
+          // Node.js Buffer 객체
+          binaryData = new Uint8Array(obj.glbData.data || obj.glbData).buffer;
+        } else {
+          console.error('지원되지 않는 GLB 데이터 형식:', typeof obj.glbData, obj.glbData);
+          return;
+        }
+        
+        // Blob에서 URL 생성
+        const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
+        const url = URL.createObjectURL(blob);
+        
+        loader.load(
+          url,
+          (gltf) => {
+            const model = gltf.scene;
+            
+            // GLB data loaded successfully
+            
+            // 바운딩 박스 계산하여 모델 크기 확인
+            const box = new THREE.Box3().setFromObject(model);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            
+            // 모델을 원점 중심으로 이동
+            model.position.sub(center);
+            
+            // 모델 위치 설정
+            model.position.set(obj.position.x, obj.position.y, obj.position.z);
+            model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+            model.scale.set(obj.scale.x, obj.scale.y, obj.scale.z); // 자동 스케일 조정 제거
+            
+            // 메타데이터 설정
+            model.name = obj.name;
+            model.userData = { id: obj.id, type: obj.type };
+            
+            // 가시성 설정
+            model.visible = obj.visible !== false;
+            
+            // 그림자 설정
+            model.traverse((child) => {
+              if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+              }
+            });
+            
+            // 씬에 추가
+            scene.add(model);
+            
+            // 선택 가능한 오브젝트로 등록
+            editorControlsRef.current.addSelectableObject(model);
+            
+            // 로드된 오브젝트로 기록
+            loadedObjectsRef.current.set(obj.id, model);
+            
+            // 자동으로 선택 (스토어와 3D 뷰 모두)
+            setSelectedObject(obj.id);
+            editorControlsRef.current.selectObject(model);
+            
+            // URL 해제 (메모리 누수 방지)
+            URL.revokeObjectURL(url);
+            
+            // GLB data loading completed
+          },
+          (progress) => {
+            // GLB data loading progress
+          },
+          (error) => {
+            // GLB data loading error
+            URL.revokeObjectURL(url); // 에러 시에도 URL 해제
           }
         );
       } else if (obj.type === 'cube') {
@@ -483,6 +919,70 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
         scene.add(mesh);
         editorControlsRef.current.addSelectableObject(mesh);
         loadedObjectsRef.current.set(obj.id, mesh);
+        
+        // 자동으로 선택 (스토어와 3D 뷰 모두)
+        setSelectedObject(obj.id);
+        editorControlsRef.current.selectObject(mesh);
+      } else if (obj.type === 'basic' || (obj.geometry && obj.params)) {
+        // 기본 도형 처리 (라이브러리 패널에서 추가된 기본 도형들)
+        console.log('기본 도형 생성:', obj);
+        
+        const material = new THREE.MeshStandardMaterial({
+          color: 0x4CAF50,
+          roughness: 0.3,
+          metalness: 0.1
+        });
+        
+        let geometry;
+        
+        // 기하학적 도형 생성
+        switch (obj.geometry) {
+          case 'BoxGeometry':
+            geometry = new THREE.BoxGeometry(...obj.params);
+            break;
+          case 'SphereGeometry':
+            geometry = new THREE.SphereGeometry(...obj.params);
+            break;
+          case 'CylinderGeometry':
+            geometry = new THREE.CylinderGeometry(...obj.params);
+            break;
+          case 'ConeGeometry':
+            geometry = new THREE.ConeGeometry(...obj.params);
+            break;
+          case 'PlaneGeometry':
+            geometry = new THREE.PlaneGeometry(...obj.params);
+            break;
+          case 'TorusGeometry':
+            geometry = new THREE.TorusGeometry(...obj.params);
+            break;
+          default:
+            geometry = new THREE.BoxGeometry(1, 1, 1);
+        }
+        
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
+        mesh.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+        mesh.scale.set(obj.scale.x, obj.scale.y, obj.scale.z);
+        mesh.name = obj.name;
+        mesh.userData = { id: obj.id, type: obj.type };
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.visible = obj.visible !== false;
+        
+        // 평면의 경우 회전 조정
+        if (obj.geometry === 'PlaneGeometry') {
+          mesh.rotation.x = -Math.PI / 2;
+        }
+        
+        scene.add(mesh);
+        editorControlsRef.current.addSelectableObject(mesh);
+        loadedObjectsRef.current.set(obj.id, mesh);
+        
+        // 자동으로 선택 (스토어와 3D 뷰 모두)
+        setSelectedObject(obj.id);
+        editorControlsRef.current.selectObject(mesh);
+        
+        console.log('기본 도형 씬에 추가 완료:', mesh);
       }
     });
     
@@ -490,6 +990,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onContextMenu }) {
     const currentObjectIds = new Set(objects.map(obj => obj.id));
     for (const [objectId, mesh] of loadedObjectsRef.current) {
       if (!currentObjectIds.has(objectId)) {
+        // 시스템 객체는 삭제하지 않음
+        if (mesh.userData?.isSystemObject) {
+          continue;
+        }
+        
         scene.remove(mesh);
         editorControlsRef.current.removeSelectableObject(mesh);
         loadedObjectsRef.current.delete(objectId);
