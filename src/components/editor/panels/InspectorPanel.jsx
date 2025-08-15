@@ -16,6 +16,7 @@ const InspectorPanel = memo(function InspectorPanel({
   onObjectRename,
   onContextMenu,
   editorControls,
+  postProcessingManager,
   
   // ObjectProperties 관련 props
   onObjectUpdate,
@@ -75,6 +76,7 @@ const InspectorPanel = memo(function InspectorPanel({
 
   const objectType = propertiesManager?.getObjectType() || 'unknown'
   const objectInfo = propertiesManager?.getObjectInfo()
+  const selectedPartInfo = editorControls?.getSelectedPartInfo?.() || null
 
   // 탭 목록 정의
   const getAvailableTabs = () => {
@@ -97,6 +99,11 @@ const InspectorPanel = memo(function InspectorPanel({
     
     if (objectType === 'camera') {
       tabs.push({ id: 'camera', label: '카메라', icon: '📷' })
+    }
+
+    // Part Inspect 탭: 메시일 때 노출
+    if (objectType === 'mesh') {
+      tabs.push({ id: 'part', label: '파트', icon: '🧩' })
     }
 
     return tabs
@@ -391,6 +398,138 @@ const InspectorPanel = memo(function InspectorPanel({
     )
   }
 
+  // Part Inspect 탭 렌더링
+  const renderPartTab = () => {
+    if (objectType !== 'mesh') return <div className="not-available">메시 객체가 아닙니다</div>
+
+  const partEnabled = !!editorControls?.partInspector?.enabled
+    const solo = !!editorControls?.partInspector?.solo
+    const clipping = !!editorControls?.partInspector?.clipping
+  const partGizmo = !!editorControls?.partInspector?.gizmo
+    const info = selectedPartInfo
+
+    return (
+      <div className="part-properties">
+        <div className="property-group" style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+          <label>파트 인스펙션</label>
+          <label style={{display:'inline-flex', alignItems:'center', gap:6}}>
+            <input type="checkbox" checked={partEnabled}
+              onChange={(e)=>editorControls?.enablePartInspect?.(e.target.checked)} /> 사용
+          </label>
+          <label style={{display:'inline-flex', alignItems:'center', gap:6}}>
+            <input type="checkbox" checked={solo}
+              onChange={(e)=>editorControls?.setPartSolo?.(e.target.checked)} disabled={!partEnabled} /> 솔로 뷰
+          </label>
+          <label style={{display:'inline-flex', alignItems:'center', gap:6}}>
+            <input type="checkbox" checked={clipping}
+              onChange={(e)=>editorControls?.setPartClipping?.(e.target.checked)} disabled={!partEnabled} /> 클리핑
+          </label>
+          <button onClick={()=>editorControls?.clearPartSelection?.()} disabled={!partEnabled}>파트 선택 해제</button>
+        </div>
+
+        {/* 파트 기즈모 제어 */}
+        {partEnabled && (
+          <div className="property-group" style={{display:'flex', gap:8, alignItems:'center', flexWrap:'wrap'}}>
+            <label>파트 기즈모</label>
+            <label style={{display:'inline-flex', alignItems:'center', gap:6}}>
+              <input type="checkbox" checked={partGizmo}
+                onChange={(e)=>editorControls?.setPartGizmoEnabled?.(e.target.checked)} disabled={!editorControls?.getSelectedPart?.()} /> 활성화
+            </label>
+            <div style={{display:'inline-flex', gap:6}}>
+              <button onClick={()=>editorControls?.setPartGizmoMode?.('translate')} disabled={!partGizmo}>이동</button>
+              <button onClick={()=>editorControls?.setPartGizmoMode?.('rotate')} disabled={!partGizmo}>회전</button>
+              <button onClick={()=>editorControls?.setPartGizmoMode?.('scale')} disabled={!partGizmo}>스케일</button>
+            </div>
+          </div>
+        )}
+
+        {/* OutlinePass 간단 튜닝 */}
+        {partEnabled && (
+          <div className="property-group" style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:'8px 12px'}}>
+            <div style={{gridColumn:'1 / span 2', fontWeight:600}}>아웃라인</div>
+            <label>사용</label>
+            <input type="checkbox"
+              checked={!!postProcessingManager?.effectSettings?.outline?.enabled}
+              onChange={(e)=>{
+                try { postProcessingManager?.setEffectEnabled?.('outline', e.target.checked); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
+            <label>두께</label>
+            <input type="range" min="0" max="4" step="0.1"
+              value={postProcessingManager?.effectSettings?.outline?.edgeThickness ?? 1}
+              onChange={(e)=>{
+                const v = parseFloat(e.target.value);
+                try { postProcessingManager?.updateEffectSettings?.('outline', { edgeThickness: v }); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
+            <label>강도</label>
+            <input type="range" min="0" max="10" step="0.1"
+              value={postProcessingManager?.effectSettings?.outline?.edgeStrength ?? 3}
+              onChange={(e)=>{
+                const v = parseFloat(e.target.value);
+                try { postProcessingManager?.updateEffectSettings?.('outline', { edgeStrength: v }); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
+            <label>펄스 주기</label>
+            <input type="range" min="0" max="10" step="0.1"
+              value={postProcessingManager?.effectSettings?.outline?.pulsePeriod ?? 0}
+              onChange={(e)=>{
+                const v = parseFloat(e.target.value);
+                try { postProcessingManager?.updateEffectSettings?.('outline', { pulsePeriod: v }); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
+            <label>색상</label>
+            <input type="color"
+              value={(()=>{
+                const hex = postProcessingManager?.effectSettings?.outline?.visibleEdgeColor ?? 0xffffff;
+                const s = (hex >>> 0).toString(16).padStart(6,'0');
+                return `#${s}`;
+              })()}
+              onChange={(e)=>{
+                const hex = parseInt(e.target.value.replace('#',''), 16);
+                try { postProcessingManager?.updateEffectSettings?.('outline', { visibleEdgeColor: hex }); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
+          </div>
+        )}
+
+        {partEnabled && (
+          <div className="property-group">
+            <div style={{fontSize:12, color:'#aaa', marginBottom:6}}>서브메시를 클릭해 선택하세요.</div>
+            {info ? (
+              <div className="mesh-info" style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:'6px 12px'}}>
+                <div>이름</div><div>{info.name}</div>
+                <div>UUID</div><div style={{wordBreak:'break-all'}}>{info.uuid}</div>
+                <div>지오메트리</div><div>{info.geometry.type} {info.geometry.hasIndex ? '(Indexed)' : ''}</div>
+                <div>버텍스/트라이</div><div>{info.geometry.vertices} / {info.geometry.triangles}</div>
+                <div>속성</div><div>{info.geometry.attributes.join(', ')}</div>
+                <div>월드 크기</div><div>{info.geometry.world.size.map(n=>n.toFixed(3)).join(', ')}</div>
+                <div>월드 중심</div><div>{info.geometry.world.center.map(n=>n.toFixed(3)).join(', ')}</div>
+                <div>UV</div><div>{info.geometry.uv ? `${info.geometry.uv.count}x${info.geometry.uv.itemSize}` : '없음'}</div>
+                <div>UV2</div><div>{info.geometry.uv2 ? `${info.geometry.uv2.count}x${info.geometry.uv2.itemSize}` : '없음'}</div>
+                {info.material && (
+                  <>
+                    <div>머티리얼</div><div>{info.material.type} {info.material.name ? `(${info.material.name})` : ''}</div>
+                    <div>색상/불투명</div><div>{info.material.color || '-'} / {info.material.opacity}</div>
+                    <div>Metal/Rough</div><div>{info.material.metalness ?? '-'} / {info.material.roughness ?? '-'}</div>
+                    <div>맵들</div><div>{Object.entries(info.material.maps).filter(([,v])=>v).map(([k])=>k).join(', ') || '없음'}</div>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div style={{color:'#aaa'}}>선택된 파트가 없습니다.</div>
+            )}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   // Light 탭 렌더링
   const renderLightTab = () => {
     if (objectType !== 'light') return <div className="not-available">라이트 객체가 아닙니다</div>
@@ -579,6 +718,8 @@ const InspectorPanel = memo(function InspectorPanel({
         return renderObjectTab()
       case 'material':
         return renderMaterialTab()
+      case 'part':
+        return renderPartTab()
       case 'light':
         return renderLightTab()
       case 'camera':

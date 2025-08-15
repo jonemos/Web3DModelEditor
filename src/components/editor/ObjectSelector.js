@@ -41,7 +41,47 @@ export class ObjectSelector {
     
     this.initializeTransformControls();
     
+  // 히스토리 기록을 위한 프레임별 펜딩 큐
+  this._pendingTransformUpdates = new Map(); // id -> {position, rotation, scale}
+  this._rafScheduled = false;
+  
+  // 포스트프로세싱 매니저(Outline 일관성)
+  this.postProcessingManager = null;
+    
     // ObjectSelector initialized
+  }
+
+  setPostProcessingManager(manager) {
+    this.postProcessingManager = manager;
+  }
+
+  _syncOutlineWithSelection() {
+    if (!this.postProcessingManager) return;
+    try { this.postProcessingManager.setEffectEnabled('outline', true); } catch {}
+    const list = (this.selectedObjects && this.selectedObjects.length > 0) ? [...this.selectedObjects] : [];
+    try { this.postProcessingManager.setOutlineSelectedObjects(list); } catch {}
+  }
+
+  // 헬퍼: 오브젝트가 씬 그래프에 포함되어 있는지 검사
+  isInSceneGraph(object) {
+    if (!object) return false;
+    let current = object;
+    while (current) {
+      if (current === this.scene) return true;
+      current = current.parent;
+    }
+    return false;
+  }
+
+  // 프레임마다 기즈모 부착 유효성 검사 (씬 밖 오브젝트에 붙어있으면 분리)
+  validateTransformAttachment() {
+    if (!this.transformControls || !this.transformControls.object) return;
+    const attached = this.transformControls.object;
+    if (!this.isInSceneGraph(attached)) {
+      try { this.transformControls.detach(); } catch {}
+      // 선택 상태도 정리
+      this.editorStore.getState().setSelectedObject(null);
+    }
   }
   
   // 임시 그룹 생성 및 중앙 계산
@@ -268,6 +308,11 @@ export class ObjectSelector {
         if (event.value) {
           // ?�래�??�작 - 모든 ?�택???�브?�트??초기 ?�태 ?�??
           this.saveInitialTransformStates();
+          // 배치 시작 (Undo/Redo 묶음)
+          try {
+            const api = this.editorStore?.getState?.();
+            api?.beginBatch && api.beginBatch();
+          } catch {}
           // Transform drag started, saved initial states
         } else {
           // ?�래�?종료 - 자석 기능 적용 후 초기 ?�태 ?�리??
@@ -282,7 +327,30 @@ export class ObjectSelector {
               this.lastSelectedObject.position.copy(snappedPosition);
             }
           }
+          // 드래그 동안 누적되지 못한 펜딩 업데이트를 먼저 플러시
+          try { this.flushPendingTransformUpdates?.(); } catch {}
           this.initialTransformStates.clear();
+          // 최종 상태를 히스토리에 반영 (선택 전체)
+          try {
+            const api = this.editorStore?.getState?.();
+            const update = api?.updateObjectTransform;
+            if (update) {
+              const targets = this.selectedObjects && this.selectedObjects.length > 0
+                ? this.selectedObjects
+                : (this.lastSelectedObject ? [this.lastSelectedObject] : []);
+              for (const obj of targets) {
+                const id = obj?.userData?.id;
+                if (!id) continue;
+                update(id, {
+                  position: { x: obj.position.x, y: obj.position.y, z: obj.position.z },
+                  rotation: { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z },
+                  scale: { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z }
+                });
+              }
+            }
+            // 배치 종료
+            api?.endBatch && api.endBatch();
+          } catch {}
           // Transform drag ended, cleared initial states
         }
       });
@@ -290,6 +358,13 @@ export class ObjectSelector {
       // ?�중 ?�택???�브?�트?�의 ?�시 변?�을 ?�한 ?�벤??리스??
       this.transformControls.addEventListener('change', () => {
         this.applyTransformToSelectedObjects();
+        // 동일 프레임 내 다중 변경은 병합하여 히스토리에 누적
+        try {
+          const selected = this.selectedObjects && this.selectedObjects.length > 0
+            ? this.selectedObjects
+            : (this.lastSelectedObject ? [this.lastSelectedObject] : []);
+          selected.forEach(obj => this.scheduleTransformUpdate(obj));
+        } catch {}
       });
       
       // 기즈�??�정
@@ -311,6 +386,37 @@ export class ObjectSelector {
       // Failed to initialize TransformControls
       this.transformControls = null;
     }
+  }
+
+  // 선택된 오브젝트의 현재 변환을 히스토리 펜딩 큐에 등록하고, RAF로 프레임당 한 번만 스토어 갱신
+  scheduleTransformUpdate(object) {
+    if (!object) return;
+    const id = object.userData?.id;
+    if (!id) return;
+    this._pendingTransformUpdates.set(id, {
+      position: { x: object.position.x, y: object.position.y, z: object.position.z },
+      rotation: { x: object.rotation.x, y: object.rotation.y, z: object.rotation.z },
+      scale: { x: object.scale.x, y: object.scale.y, z: object.scale.z }
+    });
+    if (this._rafScheduled) return;
+    this._rafScheduled = true;
+    requestAnimationFrame(() => this.flushPendingTransformUpdates());
+  }
+
+  // 펜딩된 변환 업데이트를 스토어에 반영 (배치 중이면 배치 버퍼에 누적)
+  flushPendingTransformUpdates() {
+    this._rafScheduled = false;
+    if (!this._pendingTransformUpdates || this._pendingTransformUpdates.size === 0) return;
+    try {
+      const api = this.editorStore?.getState?.();
+      const update = api?.updateObjectTransform;
+      if (update) {
+        for (const [id, transform] of this._pendingTransformUpdates.entries()) {
+          update(id, transform);
+        }
+      }
+    } catch {}
+    this._pendingTransformUpdates.clear();
   }
   
   createSelectionBox() {
@@ -364,8 +470,13 @@ export class ObjectSelector {
     this.selectedObjects = [object];
     this.lastSelectedObject = object; // 마�?�??�택???�브?�트 ?�데?�트
     this.editorStore.getState().setSelectedObject(object);
+    try {
+      const api = this.editorStore.getState();
+      const id = object?.userData?.id;
+      api?.setSelectedIds && api.setSelectedIds(id ? [id] : []);
+    } catch {}
     
-    // 단일 선택이므로 임시 그룹 제거
+  // 단일 선택이므로 임시 그룹 제거
     this.clearTempGroup();
     
     // 기즈�??�결 (객체가 ?�에 ?�는지 ?�인)
@@ -390,8 +501,8 @@ export class ObjectSelector {
       }
     }
     
-    // ?�각???�드�?
-    this.addSelectionOutline(object);
+  // PostProcessing Outline 동기화
+  this._syncOutlineWithSelection();
     
     // Console output removed
   }
@@ -408,7 +519,7 @@ export class ObjectSelector {
       this.deselectAllObjects();
     }
     
-    for (const object of objects) {
+  for (const object of objects) {
       // �??�브?�트???�효??검??
       if (object && !this.selectedObjects.includes(object)) {
         this.selectedObjects.push(object);
@@ -418,7 +529,7 @@ export class ObjectSelector {
     }
     
   // 다중 선택인 경우 임시 그룹 생성 및 기즈모 연결
-    if (this.selectedObjects.length > 1) {
+  if (this.selectedObjects.length > 1) {
       const tempGroup = this.createTempGroup();
       if (tempGroup && this.transformControls) {
         // 임시 그룹이 씬에 추가되었는지 확인
@@ -427,7 +538,7 @@ export class ObjectSelector {
           this.transformControls.attach(tempGroup);
           this.setGizmoMode(this.gizmoMode);
           // Console output removed
-        } else {
+  } else {
           console.error('임시 그룹이 씬에 추가되지 않았습니다.');
         }
       }
@@ -441,8 +552,15 @@ export class ObjectSelector {
         this.setGizmoMode(this.gizmoMode);
       }
     }
+    // 스토어에 선택 집합 동기화
+    try {
+      const api = this.editorStore.getState();
+      const ids = this.selectedObjects.map(o => o?.userData?.id).filter(Boolean);
+      api?.setSelectedIds && api.setSelectedIds(ids);
+    } catch {}
     
-    // Console output removed
+  // PostProcessing Outline 동기화
+  this._syncOutlineWithSelection();
   }
   
   // ?�브?�트 ?�택 ?��?
@@ -455,7 +573,7 @@ export class ObjectSelector {
     
     const index = this.selectedObjects.indexOf(object);
     
-    if (index > -1) {
+  if (index > -1) {
       // ?��? ?�택???�브?�트 - ?�택 ?�제
       this.selectedObjects.splice(index, 1);
       this.removeSelectionOutline(object);
@@ -488,7 +606,7 @@ export class ObjectSelector {
           this.transformControls.attach(singleObject);
           this.setGizmoMode(this.gizmoMode);
         }
-      } else {
+  } else {
         // 선택된 것이 없는 경우
         this.clearTempGroup();
         this.editorStore.getState().setSelectedObject(null);
@@ -496,7 +614,7 @@ export class ObjectSelector {
         if (this.transformControls) {
           this.transformControls.detach();
         }
-      }
+  }
     } else {
       // ?�로???�브?�트 ?�택
       this.selectedObjects.push(object);
@@ -527,9 +645,15 @@ export class ObjectSelector {
         }
       }
     }
+    // 스토어에 선택 집합 동기화
+    try {
+      const api = this.editorStore.getState();
+      const ids = this.selectedObjects.map(o => o?.userData?.id).filter(Boolean);
+      api?.setSelectedIds && api.setSelectedIds(ids);
+    } catch {}
     
-    // Console output removed
-    // Console output removed
+  // PostProcessing Outline 동기화
+  this._syncOutlineWithSelection();
   }
   
   // 모든 ?�브?�트 ?�택 ?�제
@@ -550,7 +674,7 @@ export class ObjectSelector {
     this.clearTempGroup();
     
     // 배열 ?�리 먼�? ?�행
-    this.cleanupSelectedObjects();
+  this.cleanupSelectedObjects();
     
     // 모든 ?�택???�브?�트???�웃?�인 ?�거 (?�전??검???�함)
     for (const object of this.selectedObjects) {
@@ -566,30 +690,24 @@ export class ObjectSelector {
     this.selectedObjects = [];
     this.lastSelectedObject = null; // 마�?�??�택???�브?�트??초기??
     this.editorStore.getState().setSelectedObject(null);
+    try {
+      const api = this.editorStore.getState();
+      api?.setSelectedIds && api.setSelectedIds([]);
+    } catch {}
     
-    // Console output removed
+  // PostProcessing Outline 동기화
+  this._syncOutlineWithSelection();
   }
   
-  // ?�택??객체 배열?�서 ?�효?��? ?��? 객체?�을 ?�거
+  // 선택 배열 정리: 무효/씬 밖/비가시/프리즈된 객체 제거 + 기즈모 부착 유효성 검사
   cleanupSelectedObjects() {
-    this.selectedObjects = this.selectedObjects.filter(obj => {
-      const isValid = this.isObjectValidForSelection(obj);
-      if (!isValid) {
-        // Console output removed
-        // ?�효?��? ?��? 객체???�웃?�인 ?�거
-        try {
-          this.removeSelectionOutline(obj);
-        } catch (error) {
-          // Console output removed
-        }
-      }
-      return isValid;
-    });
-    
-    // 마�?�??�택??객체??검??
-    if (this.lastSelectedObject && !this.isObjectValidForSelection(this.lastSelectedObject)) {
+    const before = this.selectedObjects.length;
+    this.selectedObjects = this.selectedObjects.filter(obj => this.isObjectValidForSelection(obj) && this.isInSceneGraph(obj));
+    if (this.lastSelectedObject && (!this.isObjectValidForSelection(this.lastSelectedObject) || !this.isInSceneGraph(this.lastSelectedObject))) {
       this.lastSelectedObject = this.selectedObjects.length > 0 ? this.selectedObjects[this.selectedObjects.length - 1] : null;
     }
+    // 부착된 기즈모가 씬 밖 오브젝트를 참조하면 분리
+    this.validateTransformAttachment();
   }
   
   // 마우???�치?�서 ?�브?�트 ?�택 처리
@@ -773,23 +891,8 @@ export class ObjectSelector {
   
   // 모든 ?�택???�브?�트???�웃?�인 ?�데?�트 (?�니메이??중인 ?�브?�트??
   updateAllSelectionOutlines() {
-    // 아웃라인 기능 비활성화됨
-    this.cleanupSelectedObjects();
-  }
-  
-  // selectedObjects 배열?�서 ?�효?��? ?��? 객체???�거
-  cleanupSelectedObjects() {
-    const initialLength = this.selectedObjects.length;
-    this.selectedObjects = this.selectedObjects.filter(object => object != null);
-    
-    if (this.selectedObjects.length !== initialLength) {
-      // Console output removed
-      
-      // lastSelectedObject???�인
-      if (!this.selectedObjects.includes(this.lastSelectedObject)) {
-        this.lastSelectedObject = this.selectedObjects.length > 0 ? this.selectedObjects[this.selectedObjects.length - 1] : null;
-      }
-    }
+  this.cleanupSelectedObjects();
+  this._syncOutlineWithSelection();
   }
   
   // 기즈�?모드 ?�정

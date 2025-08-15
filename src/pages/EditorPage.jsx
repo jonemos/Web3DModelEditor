@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import PlainEditorCanvas from '../components/editor/PlainEditorCanvas'
 import EditorUI from '../components/editor/EditorUI'
+import HierarchyTreePanel from '../components/editor/panels/HierarchyTreePanel.jsx'
 import MenuBar from '../components/editor/MenuBar'
 import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
@@ -38,6 +39,7 @@ function EditorPage() {
     setSelectedObject, 
     addCustomMesh, 
     selectedObject, 
+  selectedIds,
     toggleGridVisible,
     scene,
     hdriSettings,
@@ -45,6 +47,9 @@ function EditorPage() {
     setSunLightRef,
     saveHDRISettings,
     objects,
+  setSelectedIds,
+  setParent,
+  reorderSiblings,
     copyObject,
     pasteObject,
     deleteSelectedObject,
@@ -306,7 +311,7 @@ function EditorPage() {
         id: Date.now(),
         type: 'glb', // 중요: 타입을 명시적으로 설정
         file: url, // URL을 file 속성으로 설정
-        position: { x: 0, y: 0, z: 0 }, // 객체 형태로 변경
+        position: { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
         name: fileName
@@ -585,6 +590,29 @@ function EditorPage() {
     <div className="editor-page">
       <MenuBar onMenuAction={handleMenuAction} />
       <div className="editor-container">
+        {/* 좌측 트리 패널 */}
+        <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid #333', overflow: 'auto' }}>
+          <HierarchyTreePanel
+            objects={objects}
+            selectedIds={selectedIds}
+            onSelect={(id) => {
+              setSelectedIds([id]);
+              // Three 씬의 객체도 선택
+              const obj = editorControlsRef.current?.findObjectById(id);
+              if (obj) editorControlsRef.current?.selectObject?.(obj);
+            }}
+            onReparent={(childId, newParentId) => {
+              // 배치로 묶고 리패런트
+              const api = useEditorStore.getState();
+              api.beginBatch?.();
+              setParent(childId, newParentId);
+              api.endBatch?.();
+            }}
+            onReorder={(parentId, orderedIds) => {
+              reorderSiblings(parentId, orderedIds);
+            }}
+          />
+        </div>
         <PlainEditorCanvas 
           onEditorControlsReady={setEditorControls}
           onPostProcessingReady={setPostProcessingManager}

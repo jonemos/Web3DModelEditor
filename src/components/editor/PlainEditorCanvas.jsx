@@ -12,6 +12,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const postProcessingRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
+  const dropIndicatorRef = useRef(null); // 드롭 위치 인디케이터(링)
+  const dropFadeRef = useRef({ animId: null, t: 0, target: 0, start: 0, startTime: 0, duration: 220 });
   
   const { 
     objects,
@@ -57,7 +59,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       }
     };
 
-    renderer.domElement.addEventListener('contextmenu', handleCanvasContextMenu);
+  renderer.domElement.addEventListener('contextmenu', handleCanvasContextMenu);
 
     // Store scene reference
     sceneRef.current = scene;
@@ -76,6 +78,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     // 포스트프로세싱 매니저 초기화
     const postProcessingManager = new PostProcessingManager(scene, camera, renderer);
     postProcessingRef.current = postProcessingManager;
+  // 파트 아웃라인 동기화를 위해 EditorControls에 주입
+  try { editorControls.setPostProcessingManager(postProcessingManager); } catch {}
     
     // EditorControls가 준비되었음을 부모 컴포넌트에 알림
     if (onEditorControlsReady) {
@@ -138,7 +142,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     editorControls.addSelectableObject(trunk);
     editorControls.addSelectableObject(leaves);
 
-    // Animation loop
+  // Animation loop
     const animate = () => {
       requestAnimationFrame(animate);
       
@@ -150,6 +154,24 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         editorControlsRef.current.updateSelectedOutlines();
       }
       
+      // 드롭 링 rAF 페이드 처리 (easeInOutQuad)
+      if (dropIndicatorRef.current) {
+        const ring = dropIndicatorRef.current;
+        const f = dropFadeRef.current;
+        if (f && f.duration > 0 && (f.t < 1 || ring.material.opacity !== f.target)) {
+          const now = performance.now();
+          const elapsed = Math.min(1, (now - f.startTime) / f.duration);
+          // 이징: easeInOutQuad
+          const ease = elapsed < 0.5 ? 2 * elapsed * elapsed : -1 + (4 - 2 * elapsed) * elapsed;
+          const nextOpacity = f.start + (f.target - f.start) * ease;
+          if (ring.material) ring.material.opacity = Math.max(0, Math.min(1, nextOpacity));
+          f.t = elapsed;
+          if (elapsed >= 1 && f.target === 0 && ring.visible) {
+            ring.visible = false; // 완전 페이드아웃 시 숨김
+          }
+        }
+      }
+
       // 렌더링 (포스트프로세싱 사용)
       renderer.clear();
       // EditorControls의 현재 카메라 사용 (Perspective/Orthographic 토글 대응)
@@ -167,12 +189,102 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     // 드래그 앤 드롭 이벤트 핸들러 추가
     const canvas = renderer.domElement;
     
+    const setDropFade = (to, duration = 220) => {
+      const ring = dropIndicatorRef.current;
+      if (!ring) return;
+      const f = dropFadeRef.current;
+      f.start = ring.material?.opacity ?? 0;
+      f.target = to;
+      f.t = 0;
+      f.duration = duration;
+      f.startTime = performance.now();
+      if (to > 0) ring.visible = true;
+    };
+
     canvas.addEventListener('dragover', (event) => {
       event.preventDefault();
+      // 드롭 인디케이터 업데이트
+      try {
+        const rect = canvas.getBoundingClientRect();
+        const mouse = new THREE.Vector2();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        const raycaster = new THREE.Raycaster();
+        const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
+        raycaster.setFromCamera(mouse, currentCamera);
+        // 지면(y=0)뿐만 아니라 씬의 메시 충돌도 고려하여 정렬
+        const meshes = [];
+        scene.traverse((child)=>{ if (child.isMesh && child.visible) meshes.push(child); });
+        const hits = raycaster.intersectObjects(meshes, true);
+        if (hits && hits.length > 0) {
+          const hit = hits[0];
+          const point = hit.point;
+          const normal = hit.face && hit.face.normal ? hit.face.normal.clone() : new THREE.Vector3(0,1,0);
+          // 월드 노말로 변환
+          if (hit.object && hit.object.isMesh && hit.object.normalMatrix) {
+            normal.applyMatrix3(hit.object.normalMatrix).normalize();
+          }
+          // 링 생성 또는 업데이트
+          if (!dropIndicatorRef.current) {
+            const ringGeo = new THREE.RingGeometry(0.6, 0.75, 48);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+            const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+            ringMesh.position.copy(point);
+            // 노말 정렬: 기본 up(0,1,0)에서 normal로 회전
+            const from = new THREE.Vector3(0,1,0);
+            const q = new THREE.Quaternion().setFromUnitVectors(from, normal.clone().normalize());
+            ringMesh.quaternion.copy(q);
+            ringMesh.userData.isSystemObject = true;
+            scene.add(ringMesh);
+            dropIndicatorRef.current = ringMesh;
+          } else {
+            const ring = dropIndicatorRef.current;
+            ring.position.copy(point);
+            const from = new THREE.Vector3(0,1,0);
+            const q = new THREE.Quaternion().setFromUnitVectors(from, normal.clone().normalize());
+            ring.quaternion.copy(q);
+            ring.visible = true;
+          }
+          // 카메라 거리 기반 스케일 자동 조정
+          const camPos = currentCamera.position;
+          const dist = camPos.distanceTo(point);
+          const scale = Math.max(0.5, Math.min(4, dist * 0.06));
+          dropIndicatorRef.current.scale.setScalar(scale);
+          // 페이드 인 목표
+          setDropFade(0.6, 200);
+        } else {
+          // 바닥 평면으로 대체
+          const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+          const intersection = new THREE.Vector3();
+          if (raycaster.ray.intersectPlane(plane, intersection)) {
+            if (!dropIndicatorRef.current) {
+              const ringGeo = new THREE.RingGeometry(0.6, 0.75, 48);
+              const ringMat = new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.0, side: THREE.DoubleSide });
+              const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+              ringMesh.rotation.x = -Math.PI / 2;
+              ringMesh.position.copy(intersection);
+              ringMesh.userData.isSystemObject = true;
+              scene.add(ringMesh);
+              dropIndicatorRef.current = ringMesh;
+            } else {
+              dropIndicatorRef.current.position.copy(intersection);
+              dropIndicatorRef.current.rotation.set(-Math.PI/2, 0, 0);
+              dropIndicatorRef.current.visible = true;
+            }
+    const camPos = currentCamera.position;
+            const dist = camPos.distanceTo(intersection);
+            const scale = Math.max(0.5, Math.min(4, dist * 0.06));
+            dropIndicatorRef.current.scale.setScalar(scale);
+    setDropFade(0.6, 200);
+          }
+        }
+      } catch {}
     });
 
     canvas.addEventListener('drop', (event) => {
       event.preventDefault();
+      // 드롭 시 인디케이터 숨김
+  if (dropIndicatorRef.current) setDropFade(0.0, 180);
       
       try {
         const data = event.dataTransfer.getData('text/plain');
@@ -332,9 +444,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                 id: uniqueId,
                 name: objectData.name,
                 type: objectData.type,
-                position: [assetObject.position.x, assetObject.position.y, assetObject.position.z],
-                rotation: [assetObject.rotation.x, assetObject.rotation.y, assetObject.rotation.z],
-                scale: [assetObject.scale.x, assetObject.scale.y, assetObject.scale.z],
+                position: { x: assetObject.position.x, y: assetObject.position.y, z: assetObject.position.z },
+                rotation: { x: assetObject.rotation.x, y: assetObject.rotation.y, z: assetObject.rotation.z },
+                scale: { x: assetObject.scale.x, y: assetObject.scale.y, z: assetObject.scale.z },
                 visible: true,
                 userData: assetObject.userData
               });
@@ -420,9 +532,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                   id: uniqueId,
                   name: objectData.name,
                   type: 'mesh',
-                  position: [intersection.x, intersection.y, intersection.z],
-                  rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
-                  scale: [1, 1, 1],
+                  position: { x: intersection.x, y: intersection.y, z: intersection.z },
+                  rotation: { x: model.rotation.x, y: model.rotation.y, z: model.rotation.z },
+                  scale: { x: 1, y: 1, z: 1 },
                   visible: true,
                   userData: model.userData
                 });
@@ -536,9 +648,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                     id: uniqueId,
                     name: objectData.name,
                     type: 'mesh',
-                    position: [intersection.x, intersection.y, intersection.z],
-                    rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
-                    scale: [1, 1, 1],
+                    position: { x: intersection.x, y: intersection.y, z: intersection.z },
+                    rotation: { x: model.rotation.x, y: model.rotation.y, z: model.rotation.z },
+                    scale: { x: 1, y: 1, z: 1 },
                     visible: true,
                     userData: model.userData
                   });
@@ -603,9 +715,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                     id: uniqueId,
                     name: objectData.name,
                     type: 'mesh',
-                    position: [intersection.x, intersection.y, intersection.z],
-                    rotation: [model.rotation.x, model.rotation.y, model.rotation.z],
-                    scale: [1, 1, 1],
+                    position: { x: intersection.x, y: intersection.y, z: intersection.z },
+                    rotation: { x: model.rotation.x, y: model.rotation.y, z: model.rotation.z },
+                    scale: { x: 1, y: 1, z: 1 },
                     visible: true,
                     userData: model.userData
                   });
@@ -660,9 +772,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             id: uniqueId,
             name: objectData.name,
             type: 'mesh',
-            position: [intersection.x, intersection.y, intersection.z],
-            rotation: [mesh.rotation.x, mesh.rotation.y, mesh.rotation.z],
-            scale: [1, 1, 1],
+            position: { x: intersection.x, y: intersection.y, z: intersection.z },
+            rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
+            scale: { x: 1, y: 1, z: 1 },
             visible: true,
             userData: mesh.userData
           });
@@ -673,6 +785,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       } catch (error) {
         console.warn('드롭된 데이터 파싱 실패:', error);
       }
+    });
+
+    canvas.addEventListener('dragleave', () => {
+      if (dropIndicatorRef.current) setDropFade(0.0, 220);
     });
 
     // Handle resize

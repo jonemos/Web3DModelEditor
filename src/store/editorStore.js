@@ -19,6 +19,33 @@ const loadInitialHDRISettings = () => {
 
 const initialHDRISettings = loadInitialHDRISettings()
 
+// 벡터 정규화 유틸: [x,y,z] 또는 {x,y,z} 또는 null 모두 안전 처리
+const normalizeVec3 = (v, def = { x: 0, y: 0, z: 0 }) => {
+  if (!v && v !== 0) return { ...def }
+  if (Array.isArray(v)) {
+    const [x = def.x, y = def.y, z = def.z] = v
+    return { x, y, z }
+  }
+  if (typeof v === 'object') {
+    const x = Number.isFinite(v.x) ? v.x : def.x
+    const y = Number.isFinite(v.y) ? v.y : def.y
+    const z = Number.isFinite(v.z) ? v.z : def.z
+    return { x, y, z }
+  }
+  // 단일 숫자 등 예외 입력은 기본값으로 처리
+  return { ...def }
+}
+
+// 오브젝트 변환 필드 정규화
+const normalizeTransformFields = (obj) => {
+  if (!obj || typeof obj !== 'object') return obj
+  const normalized = { ...obj }
+  normalized.position = normalizeVec3(obj.position, { x: 0, y: 0, z: 0 })
+  normalized.rotation = normalizeVec3(obj.rotation, { x: 0, y: 0, z: 0 })
+  normalized.scale = normalizeVec3(obj.scale, { x: 1, y: 1, z: 1 })
+  return normalized
+}
+
 export const useEditorStore = create((set, get) => {
   console.log('🔥 에디터 스토어 생성 시작');
   
@@ -28,8 +55,18 @@ export const useEditorStore = create((set, get) => {
   camera: null,
   renderer: null,
   
+  // History (Undo/Redo)
+  _historyPast: [],
+  _historyFuture: [],
+  _batchActive: false,
+  _batchBuffer: [],
+  // UI 피드백용 히스토리 가능 여부
+  canUndo: false,
+  canRedo: false,
+  
   // Selected object
   selectedObject: null,
+  selectedIds: [],
   transformMode: 'translate',
   
   // Viewport settings
@@ -65,18 +102,8 @@ export const useEditorStore = create((set, get) => {
 
   // Assets
   savedObjects: new Map(),
-  customMeshes: (() => {
-    // 스토어 초기화 시 로컬 스토리지에서 커스텀 메쉬 로드
-    try {
-      const stored = localStorage.getItem('customMeshes');
-      const meshes = stored ? JSON.parse(stored) : [];
-      console.log('에디터 스토어 초기화: 로컬 스토리지에서 커스텀 메쉬 로드:', meshes.length, '개');
-      return meshes;
-    } catch (error) {
-      console.error('로컬 스토리지에서 커스텀 메쉬 로드 실패:', error);
-      return [];
-    }
-  })(), // 즉시 실행 함수로 초기값 설정
+  // 커스텀 메쉬 목록 (IndexedDB에서 앱 시작 시 로드됨)
+  customMeshes: [],
   objects: [],
   walls: [],
   
@@ -85,6 +112,7 @@ export const useEditorStore = create((set, get) => {
   
   // Actions
   setSelectedObject: (object) => set({ selectedObject: object }),
+  setSelectedIds: (ids) => set({ selectedIds: Array.isArray(ids) ? Array.from(new Set(ids)) : [] }),
   setTransformMode: (mode) => set({ transformMode: mode }),
   
   // Viewport actions
@@ -163,17 +191,46 @@ export const useEditorStore = create((set, get) => {
   }),
   
   // 객체의 transform 정보 업데이트
-  updateObjectTransform: (objectId, transform) => set((state) => ({
-    objects: state.objects.map(obj => 
+  updateObjectTransform: (objectId, transform) => set((state) => {
+    const norm = normalizeTransformFields(transform)
+    const before = state.objects.find(o => o.id === objectId)
+    const after = before ? { ...before, ...norm } : null
+    const next = state.objects.map(obj => 
       obj.id === objectId 
-        ? { ...obj, ...transform }
+        ? { ...obj, ...norm }
         : obj
     )
-  })),
+    if (before) {
+      const entry = {
+        type: 'transform',
+        id: objectId,
+        before: pickTransform(before),
+        after: pickTransform(after)
+      }
+      const { _pushHistory } = get()
+      _pushHistory(entry)
+    }
+    return { objects: next }
+  }),
   
-  addObject: (object) => set((state) => ({
-    objects: [...state.objects, object]
-  })),
+  addObject: (object) => set((state) => {
+    const normalized = normalizeTransformFields(object)
+  // parentId/order 기본값 처리 및 order 자동 배정
+  const parentId = Object.prototype.hasOwnProperty.call(normalized, 'parentId') ? normalized.parentId ?? null : null
+  let order = normalized.order
+  if (!Number.isFinite(order)) {
+    const siblings = state.objects.filter(o => (o.parentId ?? null) === parentId)
+    const maxOrder = siblings.reduce((m, o) => Number.isFinite(o.order) ? Math.max(m, o.order) : m, -1)
+    order = maxOrder + 1
+  }
+  const enriched = { ...normalized, parentId, order }
+  const nextObjects = [...state.objects, enriched]
+  // 히스토리: add (큰 glbData, file 등 제외)
+  const entry = { type: 'add', object: safeCloneForHistory(enriched) }
+  const { _pushHistory } = get()
+  _pushHistory(entry)
+  return { objects: nextObjects }
+  }),
   
   removeObject: (object) => set((state) => {
     // 시스템 객체는 삭제할 수 없음
@@ -181,11 +238,76 @@ export const useEditorStore = create((set, get) => {
       console.warn('시스템 객체는 삭제할 수 없습니다:', object.name);
       return state;
     }
-    
+    const filtered = state.objects.filter(obj => obj !== object)
+    // 히스토리: remove (삭제된 객체 보관)
+    const entry = { type: 'remove', object: safeCloneForHistory(object) }
+    const { _pushHistory } = get()
+    _pushHistory(entry)
     return {
-      objects: state.objects.filter(obj => obj !== object),
+      objects: filtered,
       selectedObject: state.selectedObject === object ? null : state.selectedObject
     };
+  }),
+
+  // ID로 객체 제거 (Three.js 연산과 연동하기 쉬운 버전)
+  removeObjectById: (objectId) => set((state) => {
+    const target = state.objects.find(o => o.id === objectId)
+    if (!target) return {}
+    if (target.isSystemObject) {
+      console.warn('시스템 객체는 삭제할 수 없습니다:', target.name)
+      return {}
+    }
+    const { _pushHistory } = get()
+    // 1) 자식들을 대상의 부모로 승격 (parentId 변경) - 히스토리 reparent를 먼저 기록
+    const children = state.objects.filter(o => o.parentId === objectId)
+    let objectsNext = state.objects
+    for (const child of children) {
+      const beforeParent = child.parentId ?? null
+      const afterParent = target.parentId ?? null
+      if (beforeParent !== afterParent) {
+        _pushHistory({ type: 'reparent', id: child.id, before: { parentId: beforeParent }, after: { parentId: afterParent } })
+        objectsNext = objectsNext.map(o => o.id === child.id ? { ...o, parentId: afterParent } : o)
+      }
+    }
+    // 2) 대상 제거 - 히스토리 remove 기록
+    const entry = { type: 'remove', object: safeCloneForHistory(target) }
+    _pushHistory(entry)
+    const filtered = objectsNext.filter(o => o.id !== objectId)
+    return {
+      objects: filtered,
+      selectedObject: state.selectedObject === objectId ? null : state.selectedObject
+    }
+  }),
+
+  // 부모 변경 (계층 재구성)
+  setParent: (objectId, newParentId) => set((state) => {
+    const target = state.objects.find(o => o.id === objectId)
+    if (!target) return {}
+    const beforeParent = target.parentId ?? null
+    const afterParent = newParentId ?? null
+    if (beforeParent === afterParent) return {}
+    const entry = { type: 'reparent', id: objectId, before: { parentId: beforeParent }, after: { parentId: afterParent } }
+    const { _pushHistory } = get();
+    _pushHistory(entry)
+    // 새 부모의 끝으로 order 부여
+    const siblings = state.objects.filter(o => (o.parentId ?? null) === afterParent && o.id !== objectId)
+    const maxOrder = siblings.reduce((m, o) => Number.isFinite(o.order) ? Math.max(m, o.order) : m, -1)
+    const newOrder = maxOrder + 1
+    return {
+      objects: state.objects.map(o => o.id === objectId ? { ...o, parentId: afterParent, order: newOrder } : o)
+    }
+  }),
+
+  // 동일 parent 내 순서 재배치
+  reorderSiblings: (parentId, orderedIds) => set((state) => {
+    if (!Array.isArray(orderedIds)) return {}
+    const orderMap = new Map(orderedIds.map((id, idx) => [id, idx]))
+    const updated = state.objects.map(o => {
+      if ((o.parentId ?? null) !== (parentId ?? null)) return o
+      if (!orderMap.has(o.id)) return o
+      return { ...o, order: orderMap.get(o.id) }
+    })
+    return { objects: updated }
   }),
   
   addWall: (wall) => set((state) => ({
@@ -196,11 +318,24 @@ export const useEditorStore = create((set, get) => {
     walls: state.walls.filter(wall => wall.id !== wallId)
   })),
   
-  updateObject: (id, updates) => set((state) => ({
-    objects: state.objects.map(obj => 
-      obj.id === id ? { ...obj, ...updates } : obj
+  updateObject: (id, updates) => set((state) => {
+    const before = state.objects.find(o => o.id === id)
+    const norm = normalizeTransformFields(updates)
+    const next = state.objects.map(obj => 
+      obj.id === id ? { ...obj, ...norm } : obj
     )
-  })),
+    if (before) {
+      const entry = {
+        type: 'update',
+        id,
+        before: snapshotForUpdate(before, norm),
+        after: norm
+      }
+      const { _pushHistory } = get()
+      _pushHistory(entry)
+    }
+    return { objects: next }
+  }),
   
   // Clipboard actions
   copyObject: (object) => {
@@ -396,8 +531,12 @@ export const useEditorStore = create((set, get) => {
       return;
     }
     
-    // 객체 삭제
-    const updatedObjects = state.objects.filter(obj => obj.id !== state.selectedObject);
+  // 객체 삭제
+  const updatedObjects = state.objects.filter(obj => obj.id !== state.selectedObject);
+  // 히스토리 기록
+  const entry = { type: 'remove', object: safeCloneForHistory(objectToDelete) }
+  const { _pushHistory } = get();
+  _pushHistory(entry)
     console.log('삭제 후 객체 목록:', updatedObjects);
     
     set({ 
@@ -418,9 +557,11 @@ export const useEditorStore = create((set, get) => {
     const newVisibleState = object.visible !== false ? false : true
     
     // 오브젝트 배열에서 찾아서 업데이트
-    const updatedObjects = state.objects.map(obj => 
-      obj.id === object.id ? { ...obj, visible: newVisibleState } : obj
-    )
+    const updatedObjects = state.objects.map(obj => obj.id === object.id ? { ...obj, visible: newVisibleState } : obj)
+    // 히스토리
+    const entry = { type: 'update', id: object.id, before: { visible: object.visible }, after: { visible: newVisibleState } }
+    const { _pushHistory } = get();
+    _pushHistory(entry)
     
     // 벽 배열에서 찾아서 업데이트
     const updatedWalls = state.walls.map(wall => 
@@ -437,9 +578,11 @@ export const useEditorStore = create((set, get) => {
     const newFreezeState = object.frozen !== true ? true : false
     
     // 오브젝트 배열에서 찾아서 업데이트
-    const updatedObjects = state.objects.map(obj => 
-      obj.id === object.id ? { ...obj, frozen: newFreezeState } : obj
-    )
+    const updatedObjects = state.objects.map(obj => obj.id === object.id ? { ...obj, frozen: newFreezeState } : obj)
+    // 히스토리
+    const entry = { type: 'update', id: object.id, before: { frozen: object.frozen }, after: { frozen: newFreezeState } }
+    const { _pushHistory } = get();
+    _pushHistory(entry)
     
     // 벽 배열에서 찾아서 업데이트
     const updatedWalls = state.walls.map(wall => 
@@ -454,9 +597,13 @@ export const useEditorStore = create((set, get) => {
 
   renameObject: (objectId, newName) => set((state) => {
     // 오브젝트 배열에서 찾아서 이름 업데이트
-    const updatedObjects = state.objects.map(obj => 
-      obj.id === objectId ? { ...obj, name: newName } : obj
-    )
+    const before = state.objects.find(o => o.id === objectId)
+    const updatedObjects = state.objects.map(obj => obj.id === objectId ? { ...obj, name: newName } : obj)
+    if (before) {
+      const entry = { type: 'update', id: objectId, before: { name: before.name }, after: { name: newName } }
+      const { _pushHistory } = get();
+      _pushHistory(entry)
+    }
     
     // 벽 배열에서 찾아서 이름 업데이트
     const updatedWalls = state.walls.map(wall => 
@@ -472,8 +619,8 @@ export const useEditorStore = create((set, get) => {
   saveMap: (name) => {
     const state = get()
     const mapData = {
-      walls: state.walls,
-      objects: state.objects
+  walls: state.walls,
+  objects: state.objects
     }
     localStorage.setItem(`map_${name}`, JSON.stringify(mapData))
   },
@@ -483,12 +630,19 @@ export const useEditorStore = create((set, get) => {
     if (mapDataString) {
       const mapData = JSON.parse(mapDataString)
       
-      set((state) => {
-        return {
-          walls: mapData.walls || [],
-          objects: mapData.objects || []
-        };
-      });
+      // 로드 시 변환 필드 정규화 적용
+      const normalizedObjects = (mapData.objects || []).map(o => {
+        const n = normalizeTransformFields(o)
+        const parentId = Object.prototype.hasOwnProperty.call(n, 'parentId') ? n.parentId ?? null : null
+        let order = n.order
+        if (!Number.isFinite(order)) order = 0
+        return { ...n, parentId, order }
+      })
+      const normalizedWalls = (mapData.walls || []).map(normalizeTransformFields)
+      set(() => ({
+        walls: normalizedWalls,
+        objects: normalizedObjects
+      }))
       
       return true
     }
@@ -502,6 +656,245 @@ export const useEditorStore = create((set, get) => {
   })),
   
   // Scene setup
-  setScene: (scene, camera, renderer) => set({ scene, camera, renderer })
+  setScene: (scene, camera, renderer) => set({ scene, camera, renderer }),
+
+  // ------------------------
+  // History API
+  // ------------------------
+  _pushHistory: (entry) => {
+    const { _batchActive, _historyPast } = get()
+    if (_batchActive) {
+      // 배치 중에는 버퍼에 누적 (스토어 상태의 배열 사용)
+      set((state) => ({ _batchBuffer: [...state._batchBuffer, entry] }))
+      return
+    }
+    const nextPast = [..._historyPast, entry]
+    set({ _historyPast: nextPast, _historyFuture: [], canUndo: nextPast.length > 0, canRedo: false })
+  },
+  beginBatch: () => set({ _batchActive: true, _batchBuffer: [] }),
+  endBatch: () => set((state) => {
+    if (!state._batchActive) return {}
+    const entries = state._batchBuffer
+    if (entries.length === 0) return { _batchActive: false, _batchBuffer: [] }
+    const batchEntry = { type: 'batch', entries }
+    const nextPast = [...state._historyPast, batchEntry]
+    return {
+      _batchActive: false,
+      _batchBuffer: [],
+      _historyPast: nextPast,
+      _historyFuture: [],
+      canUndo: nextPast.length > 0,
+      canRedo: false
+    }
+  }),
+  undo: () => {
+    const state = get()
+    const past = [...state._historyPast]
+    if (past.length === 0) return false
+  // 선택/기즈모 안전 분리
+  try { state.setSelectedObject && state.setSelectedObject(null); state.setSelectedIds && state.setSelectedIds([]) } catch {}
+    const entry = past.pop()
+    applyUndo(entry, set, get)
+    const nextFuture = [...state._historyFuture, entry]
+    set({ _historyPast: past, _historyFuture: nextFuture, canUndo: past.length > 0, canRedo: nextFuture.length > 0 })
+    return true
+  },
+  redo: () => {
+    const state = get()
+    const future = [...state._historyFuture]
+    if (future.length === 0) return false
+  // 선택/기즈모 안전 분리
+  try { state.setSelectedObject && state.setSelectedObject(null); state.setSelectedIds && state.setSelectedIds([]) } catch {}
+    const entry = future.pop()
+    applyRedo(entry, set, get)
+    const nextPast = [...state._historyPast, entry]
+    set({ _historyFuture: future, _historyPast: nextPast, canUndo: nextPast.length > 0, canRedo: future.length > 0 })
+    return true
+  }
   };
 });
+
+// =====================
+// 히스토리 헬퍼 함수들
+// =====================
+
+function safeCloneForHistory(obj) {
+  if (!obj || typeof obj !== 'object') return obj
+  const clone = { ...obj }
+  // 큰 바이너리/파일 제거
+  if ('glbData' in clone) delete clone.glbData
+  if ('file' in clone) delete clone.file
+  return clone
+}
+
+function pickTransform(obj) {
+  return {
+    position: normalizeVec3(obj.position, { x: 0, y: 0, z: 0 }),
+    rotation: normalizeVec3(obj.rotation, { x: 0, y: 0, z: 0 }),
+    scale: normalizeVec3(obj.scale, { x: 1, y: 1, z: 1 })
+  }
+}
+
+function snapshotForUpdate(obj, updates) {
+  const snap = {}
+  const fields = ['name', 'visible', 'frozen', 'parentId', 'position', 'rotation', 'scale']
+  for (const k of fields) {
+    if (k in updates) {
+      if (k === 'position' || k === 'rotation' || k === 'scale') {
+        snap[k] = normalizeVec3(obj[k], k === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 })
+      } else {
+        snap[k] = obj[k]
+      }
+    }
+  }
+  return snap
+}
+
+function applyUndo(entry, set, get) {
+  if (!entry) return
+  switch (entry.type) {
+    case 'part-transform': {
+      const state = get()
+      const scene = state.scene
+      if (!scene) break
+      // 새로운 구조: parts 배열 우선
+      const parts = Array.isArray(entry.parts) && entry.parts.length > 0
+        ? entry.parts
+        : (entry.part && entry.before && entry.after
+            ? [{ uuid: entry.part.uuid, before: entry.before }]
+            : []);
+      for (const p of parts) {
+        const uuid = p.uuid
+        const before = p.before || entry.before
+        if (!uuid || !before) continue
+        let target = null
+        scene.traverse((child)=>{ if (!target && child.uuid === uuid) target = child })
+        if (target && target.isObject3D) {
+          try {
+            target.position.set(before.position.x, before.position.y, before.position.z)
+            target.rotation.set(before.rotation.x, before.rotation.y, before.rotation.z)
+            target.scale.set(before.scale.x, before.scale.y, before.scale.z)
+            target.updateMatrix()
+            target.updateMatrixWorld(true)
+          } catch {}
+        }
+      }
+      break
+    }
+    case 'batch': {
+      for (let i = entry.entries.length - 1; i >= 0; i--) {
+        applyUndo(entry.entries[i], set, get)
+      }
+      break
+    }
+    case 'reparent': {
+      const state = get()
+      const id = entry.id
+      const before = entry.before
+      if (!id || !before) break
+      set({ objects: state.objects.map(o => o.id === id ? { ...o, parentId: before.parentId ?? null } : o) })
+      break
+    }
+    case 'add': {
+      const id = entry.object?.id
+      if (!id) break
+      const state = get()
+      set({ objects: state.objects.filter(o => o.id !== id) })
+      break
+    }
+    case 'remove': {
+      const state = get()
+      const restored = entry.object
+      if (!restored) break
+      set({ objects: [...state.objects, normalizeTransformFields(restored)] })
+      break
+    }
+    case 'update':
+    case 'transform': {
+      const state = get()
+      const id = entry.id
+      const before = entry.before
+      if (!id || !before) break
+      set({
+        objects: state.objects.map(o => o.id === id ? { ...o, ...normalizeTransformFields(before) } : o)
+      })
+      break
+    }
+    default:
+      break
+  }
+}
+
+function applyRedo(entry, set, get) {
+  if (!entry) return
+  switch (entry.type) {
+    case 'part-transform': {
+      const state = get()
+      const scene = state.scene
+      if (!scene) break
+      const parts = Array.isArray(entry.parts) && entry.parts.length > 0
+        ? entry.parts
+        : (entry.part && entry.before && entry.after
+            ? [{ uuid: entry.part.uuid, after: entry.after }]
+            : []);
+      for (const p of parts) {
+        const uuid = p.uuid
+        const after = p.after || entry.after
+        if (!uuid || !after) continue
+        let target = null
+        scene.traverse((child)=>{ if (!target && child.uuid === uuid) target = child })
+        if (target && target.isObject3D) {
+          try {
+            target.position.set(after.position.x, after.position.y, after.position.z)
+            target.rotation.set(after.rotation.x, after.rotation.y, after.rotation.z)
+            target.scale.set(after.scale.x, after.scale.y, after.scale.z)
+            target.updateMatrix()
+            target.updateMatrixWorld(true)
+          } catch {}
+        }
+      }
+      break
+    }
+    case 'batch': {
+      for (let i = 0; i < entry.entries.length; i++) {
+        applyRedo(entry.entries[i], set, get)
+      }
+      break
+    }
+    case 'reparent': {
+      const state = get()
+      const id = entry.id
+      const after = entry.after
+      if (!id || !after) break
+      set({ objects: state.objects.map(o => o.id === id ? { ...o, parentId: after.parentId ?? null } : o) })
+      break
+    }
+    case 'add': {
+      const state = get()
+      const added = entry.object
+      if (!added) break
+      set({ objects: [...state.objects, normalizeTransformFields(added)] })
+      break
+    }
+    case 'remove': {
+      const id = entry.object?.id
+      if (!id) break
+      const state = get()
+      set({ objects: state.objects.filter(o => o.id !== id) })
+      break
+    }
+    case 'update':
+    case 'transform': {
+      const state = get()
+      const id = entry.id
+      const after = entry.after
+      if (!id || !after) break
+      set({
+        objects: state.objects.map(o => o.id === id ? { ...o, ...normalizeTransformFields(after) } : o)
+      })
+      break
+    }
+    default:
+      break
+  }
+}

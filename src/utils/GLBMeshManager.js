@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import { idbGetAllCustomMeshes, idbAddCustomMesh, idbDeleteCustomMesh, migrateLocalStorageCustomMeshesToIDB } from './idb.js';
 
 /**
  * GLB 메쉬 관리를 위한 통합 클래스
@@ -12,6 +13,8 @@ export class GLBMeshManager {
     this.exporter = new GLTFExporter();
     this.thumbnailRenderer = null;
     this.initThumbnailRenderer();
+  // 초기 1회: localStorage → IndexedDB 마이그레이션 시도
+  migrateLocalStorageCustomMeshesToIDB();
   }
 
   /**
@@ -528,8 +531,8 @@ export class GLBMeshManager {
         }
       };
 
-      // 로컬 스토리지에 저장
-      this.saveCustomMesh(meshData);
+  // IndexedDB에 저장 (완료 보장)
+  await this.saveCustomMesh(meshData);
 
       return meshData;
     } catch (error) {
@@ -542,29 +545,30 @@ export class GLBMeshManager {
    * 커스텀 메쉬를 로컬 스토리지에 저장
    * @param {Object} meshData 메쉬 데이터
    */
-  saveCustomMesh(meshData) {
-    const customMeshes = this.getCustomMeshes();
-    
-    // GLB 데이터를 저장 가능한 형태로 변환
-    const storableMeshData = {
-      ...meshData,
-      glbData: Array.from(new Uint8Array(meshData.glbData)) // ArrayBuffer를 배열로 변환
-    };
-    
-    customMeshes.push(storableMeshData);
-    localStorage.setItem('customMeshes', JSON.stringify(customMeshes));
-    console.log('커스텀 메쉬 저장됨:', storableMeshData.name, '총 개수:', customMeshes.length);
+  async saveCustomMesh(meshData) {
+    // IndexedDB에 저장 (ArrayBuffer 그대로 보관)
+    await idbAddCustomMesh(meshData);
+    console.log('커스텀 메쉬(IDB) 저장됨:', meshData.name);
   }
 
   /**
    * 로컬 스토리지에서 커스텀 메쉬 목록 가져오기
    * @returns {Array} 커스텀 메쉬 배열
    */
-  getCustomMeshes() {
-    const stored = localStorage.getItem('customMeshes');
-    const meshes = stored ? JSON.parse(stored) : [];
-    console.log('로컬 스토리지에서 커스텀 메쉬 로드:', meshes.length, '개');
-    return meshes;
+  async getCustomMeshes() {
+    const meshes = await idbGetAllCustomMeshes();
+    // 썸네일이 Blob이면 Object URL로 변환해 UI에서 직접 사용 가능하도록 가공
+    const processed = meshes.map((m) => {
+      const out = { ...m };
+      if (m && m.thumbnail && typeof m.thumbnail === 'object' && 'size' in m.thumbnail) {
+        try {
+          out.thumbnail = URL.createObjectURL(m.thumbnail);
+        } catch {}
+      }
+      return out;
+    });
+    console.log('IndexedDB에서 커스텀 메쉬 로드:', processed.length, '개');
+    return processed;
   }
 
   /**
@@ -572,12 +576,12 @@ export class GLBMeshManager {
    * @param {string} meshId 삭제할 메쉬 ID
    * @returns {Array} 업데이트된 커스텀 메쉬 배열
    */
-  deleteCustomMesh(meshId) {
-    const customMeshes = this.getCustomMeshes();
-    const filteredMeshes = customMeshes.filter(mesh => mesh.id !== meshId);
-    localStorage.setItem('customMeshes', JSON.stringify(filteredMeshes));
-    console.log('커스텀 메쉬 삭제됨:', meshId, '남은 개수:', filteredMeshes.length);
-    return filteredMeshes;
+  async deleteCustomMesh(meshId) {
+    await idbDeleteCustomMesh(meshId);
+    console.log('커스텀 메쉬(IDB) 삭제됨:', meshId);
+    // 호출자가 새 목록을 원하면 getCustomMeshes()를 다시 호출
+    const meshes = await idbGetAllCustomMeshes();
+    return meshes;
   }
 
   /**

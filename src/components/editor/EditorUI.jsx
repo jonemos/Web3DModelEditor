@@ -116,8 +116,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
   const handleAddWall = () => {
     const newWall = {
       id: Date.now(),
-      position: [0, 2.5, 0],
-      scale: [1, 1, 1],
+  position: { x: 0, y: 2.5, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
       name: `wall_${walls.length + 1}`
     }
     addWall(newWall)
@@ -142,9 +142,9 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     const newObject = {
       id: Date.now(),
       url: assetUrl,
-      position: [0, 0, 0],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
+  position: { x: 0, y: 0, z: 0 },
+  rotation: { x: 0, y: 0, z: 0 },
+  scale: { x: 1, y: 1, z: 1 },
       name: assetName
     }
     addObject(newObject)
@@ -682,6 +682,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
             });
           }}
           editorControls={editorControls}
+          postProcessingManager={postProcessingManager}
           
           // ObjectProperties 관련 props
           onObjectUpdate={handleObjectUpdate}

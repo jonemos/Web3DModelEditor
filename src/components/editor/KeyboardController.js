@@ -5,6 +5,8 @@
 export class KeyboardController {
   constructor(inputManager) {
     this.inputManager = inputManager;
+  // Ctrl 조합의 단일 트리거 보장을 위한 잠금 관리
+  this.comboLocks = new Set();
     
     // 키보드 액션 카테고리
     this.actions = {
@@ -228,6 +230,14 @@ export class KeyboardController {
       requiresCtrl: true
     });
 
+    this.actions.system.set('KeyY', {
+      name: 'Redo',
+      description: '다시 실행',
+      action: null,
+      category: 'system',
+      requiresCtrl: true
+    });
+
     this.actions.system.set('KeyS', {
       name: 'Save',
       description: '저장',
@@ -250,6 +260,11 @@ export class KeyboardController {
    */
   handleKeyInput(keyInfo) {
     const { code, ctrl, shift, originalEvent } = keyInfo;
+    // 키업에서는 콤보 잠금 해제만 수행하고 종료 (액션은 키다운에서만 실행)
+    if (originalEvent?.type === 'keyup') {
+      this.releaseComboLocksForKey(code);
+      return;
+    }
     
     // Ctrl 조합키 처리
     if (ctrl) {
@@ -281,6 +296,18 @@ export class KeyboardController {
    */
   handleCtrlKeyPress(keyInfo) {
     const { code, shift, originalEvent } = keyInfo;
+    // Undo/Redo는 키 자동 반복 시 여러 번 실행되면 안 됨
+    // keydown의 KeyboardEvent.repeat이 true이면 무시하여 "한 번 누를 때 한 번"만 실행
+    const isUndoRedoKey = code === 'KeyZ' || code === 'KeyY';
+    if (isUndoRedoKey && originalEvent?.repeat) {
+      return;
+    }
+
+    // 추가 안전장치: 같은 조합은 키업 전까지 1회만 허용
+    const comboSig = this.buildComboSignature(code, { ctrl: true, shift });
+    if (isUndoRedoKey && this.comboLocks.has(comboSig)) {
+      return;
+    }
     
     // 해당 키에 대한 액션 찾기
     const action = this.findAction(code);
@@ -291,11 +318,37 @@ export class KeyboardController {
       if (shift && code === 'KeyG') {
         this.executeSpecialAction('ungroupObjects', keyInfo);
       } else if (shift && code === 'KeyZ') {
+    // Ctrl+Shift+Z 또한 자동 반복 방지
+    if (originalEvent?.repeat) return;
+        if (isUndoRedoKey) this.comboLocks.add(comboSig);
         this.executeSpecialAction('redo', keyInfo);
       } else {
+        if (isUndoRedoKey) this.comboLocks.add(comboSig);
         this.executeAction(action, keyInfo);
       }
     }
+  }
+
+  /**
+   * 콤보 시그니처 생성 (예: Ctrl+Shift+KeyZ)
+   */
+  buildComboSignature(code, { ctrl = false, shift = false } = {}) {
+    const parts = [];
+    if (ctrl) parts.push('Ctrl');
+    if (shift) parts.push('Shift');
+    parts.push(code);
+    return parts.join('+');
+  }
+
+  /**
+   * 특정 키코드와 관련된 잠금 해제 (KeyZ/KeyY 키업 시 해제)
+   */
+  releaseComboLocksForKey(code) {
+    const targets = [];
+    for (const sig of this.comboLocks) {
+      if (sig.endsWith(`+${code}`)) targets.push(sig);
+    }
+    for (const sig of targets) this.comboLocks.delete(sig);
   }
 
   /**
@@ -467,6 +520,10 @@ export class KeyboardController {
     
     if (actions.redo) {
       this.actions.system.get('KeyZ').redoAction = actions.redo;
+      // Ctrl+Y도 Redo로 지원
+      if (this.actions.system.has('KeyY')) {
+        this.actions.system.get('KeyY').action = actions.redo;
+      }
     }
     
     if (actions.save) {

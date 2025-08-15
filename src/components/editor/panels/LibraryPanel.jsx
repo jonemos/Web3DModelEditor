@@ -59,14 +59,27 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
   // 컴포넌트 마운트 시 커스텀 메쉬 로드
   useEffect(() => {
-    const meshes = glbMeshManager.current.getCustomMeshes();
-    loadCustomMeshes(meshes);
+    let currentThumbnails = []
+    ;(async () => {
+      const meshes = await glbMeshManager.current.getCustomMeshes();
+      // 생성된 Object URL 추적
+      currentThumbnails = meshes
+        .map(m => typeof m.thumbnail === 'string' && m.thumbnail.startsWith('blob:') ? m.thumbnail : null)
+        .filter(Boolean)
+      loadCustomMeshes(meshes);
+    })();
+    return () => {
+      // Object URL 해제
+      currentThumbnails.forEach(url => {
+        try { URL.revokeObjectURL(url) } catch {}
+      })
+    }
   }, [loadCustomMeshes]);
 
   // 커스텀 메쉬 추가 이벤트 리스너
   useEffect(() => {
-    const handleCustomMeshAdded = (event) => {
-      const meshes = glbMeshManager.current.getCustomMeshes();
+    const handleCustomMeshAdded = async () => {
+      const meshes = await glbMeshManager.current.getCustomMeshes();
       loadCustomMeshes(meshes);
     };
 
@@ -220,15 +233,15 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     }
   };
 
-  const handleDeleteCustomMesh = (meshToDelete, event) => {
+  const handleDeleteCustomMesh = async (meshToDelete, event) => {
     event.stopPropagation(); // 부모 클릭 이벤트 방지
     
     if (window.confirm(`"${meshToDelete.name}"을(를) 라이브러리에서 삭제하시겠습니까?`)) {
       // GLBMeshManager를 사용하여 커스텀 메쉬 삭제
-      glbMeshManager.current.deleteCustomMesh(meshToDelete.id);
+      await glbMeshManager.current.deleteCustomMesh(meshToDelete.id);
       
       // 메쉬 목록 새로고침
-      const meshes = glbMeshManager.current.getCustomMeshes();
+      const meshes = await glbMeshManager.current.getCustomMeshes();
       loadCustomMeshes(meshes);
     }
   };
