@@ -49,6 +49,15 @@ export class ObjectSelector {
     // ObjectSelector initialized
   }
 
+  // 온디맨드 렌더 모드 호환: 가능하면 렌더 요청
+  _requestRender() {
+    try {
+      if (typeof window !== 'undefined' && typeof window.__requestRender === 'function') {
+        window.__requestRender();
+      }
+    } catch {}
+  }
+
   // Outline 효과 제거: 항상 로컬 대체 아웃라인 경로 사용
   _shouldUseFallbackOutline() { return true; }
 
@@ -147,6 +156,8 @@ export class ObjectSelector {
   // 프레임마다 기즈모 부착 유효성 검사 (씬 밖 오브젝트에 붙어있으면 분리)
   validateTransformAttachment() {
     if (!this.transformControls || !this.transformControls.object) return;
+    // 드래그 중에는 임시 분리/선택 해제를 수행하지 않음 (인스펙터 깜빡임 방지)
+    if (this.isDragging) return;
     const attached = this.transformControls.object;
     if (!this.isInSceneGraph(attached)) {
       try { this.transformControls.detach(); } catch {}
@@ -564,7 +575,8 @@ export class ObjectSelector {
   
   // 객체가 ?�택???�효?��? 검?�하???�퍼 메서??
   isObjectValidForSelection(object) {
-    if (!object || !(object.isMesh || object.isGroup) || !object.userData || !object.visible) {
+  // Mesh/Group 뿐 아니라 GLB 루트처럼 일반 Object3D도 허용
+  if (!object || !object.visible || !object.isObject3D) {
       return false;
     }
     
@@ -634,6 +646,8 @@ export class ObjectSelector {
   // PostProcessing Outline 동기화 + 대체 아웃라인 즉시 적용
   this._syncOutlineWithSelection();
   try { this.addSelectionOutline(object); this.updateSelectionOutline(object); } catch {}
+  // 렌더 요청
+  this._requestRender();
     
     // Console output removed
   }
@@ -692,6 +706,8 @@ export class ObjectSelector {
     
   // PostProcessing Outline 동기화
   this._syncOutlineWithSelection();
+  // 렌더 요청
+  this._requestRender();
   }
   
   // ?�브?�트 ?�택 ?��?
@@ -785,6 +801,8 @@ export class ObjectSelector {
     
   // PostProcessing Outline 동기화
   this._syncOutlineWithSelection();
+  // 렌더 요청
+  this._requestRender();
   }
   
   // 모든 ?�브?�트 ?�택 ?�제
@@ -828,10 +846,14 @@ export class ObjectSelector {
     
   // PostProcessing Outline 동기화
   this._syncOutlineWithSelection();
+  // 렌더 요청
+  this._requestRender();
   }
   
   // 선택 배열 정리: 무효/씬 밖/비가시/프리즈된 객체 제거 + 기즈모 부착 유효성 검사
   cleanupSelectedObjects() {
+  // 드래그 중에는 정리/분리를 수행하지 않아 선택 상태가 유지되도록 한다.
+  if (this.isDragging) return;
     const before = this.selectedObjects.length;
     this.selectedObjects = this.selectedObjects.filter(obj => this.isObjectValidForSelection(obj) && this.isInSceneGraph(obj));
     if (this.lastSelectedObject && (!this.isObjectValidForSelection(this.lastSelectedObject) || !this.isInSceneGraph(this.lastSelectedObject))) {
@@ -841,37 +863,55 @@ export class ObjectSelector {
     this.validateTransformAttachment();
   }
   
-  // 마우???�치?�서 ?�브?�트 ?�택 처리
+  // 마우스 위치에서 오브젝트 선택 처리
   handleObjectSelection(mousePosition, isMultiSelect = false) {
-    // 기즈�??�릭 체크
-    if (this.transformControls && this.transformControls.dragging) return;
-    
+    // TransformControls 드래그 중에는 선택 변경을 하지 않음 (깜빡임 방지)
+    if (this.isDragging) return;
+
     this.raycaster.setFromCamera(mousePosition, this.camera);
-    const intersects = this.raycaster.intersectObjects(this.selectableObjects, true);
-    
-    if (intersects.length > 0) {
-      // �?번째 교차?�의 ?�브?�트 ?�택
+    let intersects = [];
+    try {
+      intersects = this.raycaster.intersectObjects(this.selectableObjects, true);
+    } catch { intersects = []; }
+
+    // 폴백: selectableObjects에서 교차가 없으면 씬 전체 검사 → selectableObjects 조상 승격
+    if ((!intersects || intersects.length === 0) && this.scene) {
+      try {
+        const allHits = this.raycaster.intersectObjects(this.scene.children, true);
+        const pickSelectableAncestor = (n) => {
+          let cur = n;
+          while (cur) {
+            if (this.selectableObjects.includes(cur)) return cur;
+            cur = cur.parent;
+          }
+          return null;
+        };
+        for (const hit of allHits) {
+          const found = pickSelectableAncestor(hit.object);
+          if (found) { intersects = [{ object: found }]; break; }
+          // selectableObjects 조상이 없으면 첫 히트를 그대로 사용 (유효 객체 허용)
+          if (!intersects.length && hit?.object) {
+            intersects = [{ object: hit.object }];
+            break;
+          }
+        }
+      } catch {}
+    }
+
+    if (intersects && intersects.length > 0) {
       let selectedObject = intersects[0].object;
-      
-      // 부�??�브?�트 찾기 (그룹??경우)
-      while (selectedObject.parent && !this.selectableObjects.includes(selectedObject)) {
+      // selectableObjects에 포함될 때까지 상위로 승격 시도
+      while (selectedObject && selectedObject.parent && !this.selectableObjects.includes(selectedObject)) {
         selectedObject = selectedObject.parent;
       }
-      
-      // ?�택???�브?�트가 ?�효?��? ?�인
-      if (!selectedObject || !this.selectableObjects.includes(selectedObject) || !this.isObjectValidForSelection(selectedObject)) {
-        // Console output removed
-        return;
-      }
-      
-      if (isMultiSelect) {
-        this.toggleObjectSelection(selectedObject);
-      } else {
-        this.selectSingleObject(selectedObject);
-      }
+      // 최종 유효성 검사
+      if (!selectedObject || !this.isObjectValidForSelection(selectedObject)) return;
+
+      if (isMultiSelect) this.toggleObjectSelection(selectedObject);
+      else this.selectSingleObject(selectedObject);
     } else if (!isMultiSelect) {
-      // �?공간 ?�릭 ??모든 ?�택 ?�제
-      this.deselectAllObjects();
+      // 빈공간 클릭 → 전체 해제
+      if (!this.isDragging) this.deselectAllObjects();
     }
   }
   
@@ -1058,6 +1098,8 @@ export class ObjectSelector {
       
       // 메모�??�리
       if (object.userData.outlineObject.geometry) {
+      // TransformControls 드래그 중에는 선택 변경을 하지 않음 (깜빡임 방지)
+      if (this.isDragging) return;
         object.userData.outlineObject.geometry.dispose();
       }
       if (object.userData.outlineObject.material) {
@@ -1079,7 +1121,7 @@ export class ObjectSelector {
   
   // ?�웃?�인 ?�치/?�전/?��????�데?�트
   updateSelectionOutline(object) {
-    if (!object) return;
+  // 선택 해제 유발 로직 제거: 아웃라인 갱신은 상태를 변경하지 않아야 함
   if (object.userData?.isSelectionOutline) return;
     if (!this._shouldUseFallbackOutline()) return;
     if (object.isGroup || (object.children && object.children.length > 0)) {
@@ -1119,7 +1161,11 @@ export class ObjectSelector {
   
   // 모든 ?�택???�브?�트???�웃?�인 ?�데?�트 (?�니메이??중인 ?�브?�트??
   updateAllSelectionOutlines() {
-    this.cleanupSelectedObjects();
+    // 드래그 중에는 선택 정리/부착 유효성 검사를 건너뛰어
+    // 일시적인 선택 해제(깜빡임)를 방지한다.
+    if (!this.isDragging) {
+      this.cleanupSelectedObjects();
+    }
     // PostProcessing Outline 동기화 (PP 켜진 경우에만 의미)
     this._syncOutlineWithSelection();
     // 대체 아웃라인 적용/정리

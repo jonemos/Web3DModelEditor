@@ -127,6 +127,15 @@ export const useEditorStore = create((set, get) => {
     return { ...base, ...(env?.safeMode || {}) };
   })(),
   vramEstimateMB: 0,
+  // 렌더러/렌더 모드 설정 (환경 저장 연동)
+  rendererAA: (() => {
+    try { return loadEnvironmentSettings()?.rendererAA || 'msaa' } catch {}
+    return 'msaa';
+  })(), // 'msaa' | 'fxaa' | 'none'
+  renderMode: (() => {
+    try { return loadEnvironmentSettings()?.renderMode || 'continuous' } catch {}
+    return 'continuous';
+  })(), // 'continuous' | 'on-demand'
 
   // Assets
   savedObjects: new Map(),
@@ -212,6 +221,23 @@ export const useEditorStore = create((set, get) => {
 
   // 포스트프로세싱 매니저 참조 저장
   setPostProcessingManager: (ppm) => set({ postProcessingManager: ppm }),
+  setRendererAA: (mode) => {
+    const valid = ['msaa', 'fxaa', 'none'];
+    const m = valid.includes(mode) ? mode : 'msaa';
+    set({ rendererAA: m });
+    try { saveEnvironmentSettings({ rendererAA: m }) } catch {}
+    // 런타임 반영: FXAA 상호배타 처리 및 렌더러 AA는 재생성 시 반영(현재 프레임 즉시 반영 불가)
+    try {
+      const ppm = get().postProcessingManager;
+      if (ppm) ppm.setEffectEnabled('fxaa', m === 'fxaa' && !get().safeMode?.enabled);
+    } catch {}
+  },
+  setRenderMode: (mode) => {
+    const valid = ['continuous', 'on-demand'];
+    const m = valid.includes(mode) ? mode : 'continuous';
+    set({ renderMode: m });
+    try { saveEnvironmentSettings({ renderMode: m }) } catch {}
+  },
   // 포스트프로세싱 전체 온/오프
   togglePostProcessingEnabled: () => set((state) => ({ isPostProcessingEnabled: !state.isPostProcessingEnabled })),
   setPostProcessingPreset: (key) => set({ postProcessingPreset: key || 'default' }),

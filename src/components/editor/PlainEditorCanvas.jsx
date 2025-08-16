@@ -57,8 +57,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     camera.position.set(15, 20, 15);
     camera.lookAt(0, 0, 0);
 
-    // Renderer setup
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // Renderer setup (AA 모드 반영)
+  const aaMode = (() => { try { return useEditorStore.getState().rendererAA || 'msaa' } catch { return 'msaa' } })();
+  const renderer = new THREE.WebGLRenderer({ antialias: aaMode === 'msaa', powerPreference: 'high-performance' });
   try {
     const st = useEditorStore.getState();
     const initialPR = st.safeMode?.enabled ? (st.safeMode.pixelRatio || 1.0) : Math.min(2, window.devicePixelRatio || 1);
@@ -163,7 +164,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       }
     } catch {}
     
-    // 포스트프로세싱 매니저 초기화
+  // 포스트프로세싱 매니저 초기화
     const postProcessingManager = new PostProcessingManager(scene, camera, renderer);
     postProcessingRef.current = postProcessingManager;
   try { postProcessingManager.setCamera(camera); } catch {}
@@ -183,6 +184,12 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   // 파트 아웃라인 동기화를 위해 EditorControls에 주입
   try { editorControls.setPostProcessingManager(postProcessingManager); } catch {}
   try { useEditorStore.getState().setPostProcessingManager(postProcessingManager); } catch {}
+  // FXAA 상호배타 처리: rendererAA가 fxaa일 때만 FXAA 켜고, msaa/none이면 끔(세이프모드 우선)
+  try {
+    const st = useEditorStore.getState();
+    const wantFXAA = st.rendererAA === 'fxaa' && !st.safeMode?.enabled;
+    postProcessingManager.setEffectEnabled('fxaa', !!wantFXAA);
+  } catch {}
   try { useEditorStore.getState().estimateVRAMUsage(); } catch {}
     
   // EditorControls가 준비되었음을 부모 컴포넌트에 알림
@@ -263,8 +270,14 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     editorControls.addSelectableObject(trunk);
     editorControls.addSelectableObject(leaves);
 
-  // Animation loop
+  // Animation loop with on-demand rendering support
+    let needsRender = true;
+    const getRenderMode = () => { try { return useEditorStore.getState().renderMode || 'continuous' } catch { return 'continuous' } };
+    const requestRender = () => { needsRender = true; };
+    try { window.__requestRender = requestRender } catch {}
+
     const animate = () => {
+      const mode = getRenderMode();
       requestAnimationFrame(animate);
       
       // Rotate cube slowly for visual feedback
@@ -308,9 +321,14 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       }
 
   // BlenderControls 업데이트
-  try { blenderControlsRef.current?.update?.() } catch {}
+  const bcUpdated = (() => { try { return blenderControlsRef.current?.update?.() } catch { return false } })();
+  if (bcUpdated) needsRender = true;
 
   // 렌더링 (포스트프로세싱 사용 여부)
+      if (mode === 'on-demand' && !needsRender) {
+        return; // 스킵 프레임
+      }
+      needsRender = false;
       renderer.clear();
       // EditorControls의 현재 카메라 사용 (Perspective/Orthographic 토글 대응)
       const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
@@ -330,7 +348,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       renderer.render(gizmoScene, currentCamera);
   try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
     };
-    animate();
+  animate();
 
     // 드래그 앤 드롭 이벤트 핸들러 추가
     const canvas = renderer.domElement;
@@ -941,12 +959,19 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       }
     });
 
-    canvas.addEventListener('dragleave', () => {
+  canvas.addEventListener('dragleave', () => {
       if (dropIndicatorRef.current) {
         const di = useEditorStore.getState().dropIndicator;
         setDropFade(0.0, di?.outMs ?? 220);
       }
     });
+
+  // on-demand 모드용 렌더 트리거 이벤트 등록
+  const triggerEvents = ['mousedown','mouseup','mousemove','wheel','keydown','keyup','resize'];
+  const onTrigger = () => { try { if ((useEditorStore.getState().renderMode || 'continuous') === 'on-demand') window.__requestRender?.(); } catch {} };
+  triggerEvents.forEach(ev => window.addEventListener(ev, onTrigger, { passive: true }));
+  canvas.addEventListener('dragover', onTrigger, { passive: true });
+  canvas.addEventListener('drop', onTrigger, { passive: true });
 
     // Handle resize
     const handleResize = () => {
@@ -976,7 +1001,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
 
     // Cleanup
     return () => {
-  window.removeEventListener('resize', handleResize);
+  try { triggerEvents.forEach(ev => window.removeEventListener(ev, onTrigger)); } catch {}
+  try { canvas.removeEventListener('dragover', onTrigger); canvas.removeEventListener('drop', onTrigger); } catch {}
+      window.removeEventListener('resize', handleResize);
       if (renderer.domElement) {
         renderer.domElement.removeEventListener('contextmenu', handleCanvasContextMenu);
         renderer.domElement.removeEventListener('webglcontextlost', onContextLost);

@@ -164,7 +164,7 @@ export class EditorControls {
       }
 
       // 오브젝트 선택 처리
-      this.objectSelector.handleObjectSelection(this.mousePosition, isMultiSelect);
+  this.objectSelector.handleObjectSelection(this.mousePosition, isMultiSelect);
     });
 
     // 중간 클릭: 팬/궤도 회전
@@ -505,8 +505,14 @@ export class EditorControls {
     if (selectedInArea.length > 0) {
       this.objectSelector.selectMultipleObjects(selectedInArea, isMultiSelect);
     } else if (!isMultiSelect) {
-      // 빈 영역을 드래그했고 Ctrl을 안눌렀으면 모든 선택 해제
-      this.objectSelector.deselectAllObjects();
+      // 빈 영역 드래그: 너무 작은 드래그 박스는 클릭/미스 처리로 간주하고 해제하지 않음
+      const dx = Math.abs(endX - startX);
+      const dy = Math.abs(endY - startY);
+      const diag = Math.hypot(dx, dy);
+      const MIN_CLEAR_DIAG = 12; // px 최소 대각선 길이
+      if (diag >= MIN_CLEAR_DIAG) {
+        this.objectSelector.deselectAllObjects();
+      }
     }
 
     this.objectSelector.hideSelectionBox();

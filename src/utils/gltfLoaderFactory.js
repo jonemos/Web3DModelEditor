@@ -1,7 +1,7 @@
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
-import * as MeshoptDecoderModule from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 // Singleton instances to avoid reinitialization cost
 let dracoLoader = null;
@@ -44,9 +44,6 @@ export function getGLTFLoader() {
   const loader = new GLTFLoader();
   try { loader.setDRACOLoader(dracoLoader); } catch {}
   try { loader.setKTX2Loader(ktx2Loader); } catch {}
-  try {
-    const MeshoptDecoder = MeshoptDecoderModule?.default ?? MeshoptDecoderModule;
-    loader.setMeshoptDecoder(MeshoptDecoder);
-  } catch {}
+  try { loader.setMeshoptDecoder(MeshoptDecoder); } catch {}
   return loader;
 }
