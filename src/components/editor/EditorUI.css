@@ -381,6 +381,12 @@
   background: #0099ff;
 }
 
+/* ===== Annotation overlay ===== */
+.annotation-layer { z-index: 30; }
+.annotation-line-layer { z-index: 29; }
+.annotation-box { backdrop-filter: blur(2px); }
+.annotation-box .annotation-close:hover { opacity: 0.8; }
+
 /* 바닥 크기 조절 입력 */
 .slider-group {
   display: flex;

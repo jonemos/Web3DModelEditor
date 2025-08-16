@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import './ContextMenu.css';
 
-const ContextMenu = ({ x, y, isVisible, onClose, selectedObject, onAddToLibrary }) => {
+const ContextMenu = ({ x, y, isVisible, onClose, selectedObject, onAddToLibrary, onAddComment, hitInfo }) => {
   const menuRef = useRef(null);
 
   useEffect(() => {
@@ -48,6 +48,22 @@ const ContextMenu = ({ x, y, isVisible, onClose, selectedObject, onAddToLibrary 
       </div>
       
       <div className="context-menu-items">
+        <button
+          className={`context-menu-item ${hitInfo ? '' : 'disabled'}`}
+          disabled={!hitInfo}
+          onClick={() => {
+            if (hitInfo && onAddComment) {
+              onAddComment(hitInfo);
+            }
+            onClose();
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9,22V19H5A2,2 0 0,1 3,17V5A2,2 0 0,1 5,3H19A2,2 0 0,1 21,5V17A2,2 0 0,1 19,19H13L9,22M7,7V9H17V7H7M7,11V13H14V11H7Z"/>
+          </svg>
+          <span>코멘트</span>
+        </button>
+
         <button 
           className="context-menu-item"
           onClick={() => {

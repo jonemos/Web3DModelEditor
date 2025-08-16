@@ -54,7 +54,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
   const [contextMenu, setContextMenu] = useState({
     isVisible: false,
     x: 0,
-    y: 0
+  y: 0,
+  hit: null
   })
   const [forceRefresh, setForceRefresh] = useState(0)
   const [toast, setToast] = useState({
@@ -86,16 +87,28 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
 
   // 컨텍스트 메뉴 핸들러 함수 추가
   const handleContextMenu = (e) => {
-    // 선택된 객체가 있을 때만 컨텍스트 메뉴 표시
-    if (selectedObject) {
-      e.preventDefault();
-      
-      setContextMenu({
-        isVisible: true,
-        x: e.clientX,
-        y: e.clientY
-      });
-    }
+    // 우클릭 위치에서 레이캐스트
+    e.preventDefault();
+    let hit = null;
+    try {
+      if (editorControls && editorControls.raycastMeshAtNDC) {
+        const rect = editorControls.renderer?.domElement?.getBoundingClientRect?.();
+        if (rect) {
+          const ndc = new THREE.Vector2(
+            ((e.clientX - rect.left) / rect.width) * 2 - 1,
+            -((e.clientY - rect.top) / rect.height) * 2 + 1
+          );
+          const inter = editorControls.raycastMeshAtNDC(ndc);
+          if (inter && inter.point) hit = { point: inter.point.clone(), object: inter.object };
+        }
+      }
+    } catch {}
+    setContextMenu({
+      isVisible: true,
+      x: e.clientX,
+      y: e.clientY,
+      hit
+    });
   };
 
   // 전역 키보드 이벤트 처리
@@ -555,9 +568,141 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     setContextMenu({
       isVisible: false,
       x: 0,
-      y: 0
+      y: 0,
+      hit: null
     })
   }
+
+  // ===== 주석(코멘트) 시스템 =====
+  const annotationsRef = useRef([]); // {id, targetObject, localPoint, el}
+  const lineCanvasRef = useRef(null);
+
+  const ensureAnnotationLayers = () => {
+    let layer = document.querySelector('.annotation-layer');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.className = 'annotation-layer';
+      Object.assign(layer.style, {
+        position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh', pointerEvents: 'none', zIndex: 30
+      });
+      document.body.appendChild(layer);
+    }
+    if (!lineCanvasRef.current) {
+      let line = document.querySelector('.annotation-line-layer');
+      if (!line) {
+        line = document.createElement('canvas');
+        line.className = 'annotation-line-layer';
+        Object.assign(line.style, {
+          position: 'fixed', left: 0, top: 0, width: '100vw', height: '100vh', pointerEvents: 'none', zIndex: 29
+        });
+        document.body.appendChild(line);
+      }
+      lineCanvasRef.current = line;
+    }
+    return { layer, lineCanvas: lineCanvasRef.current };
+  };
+
+  const worldToScreen = (world) => {
+    const cam = editorControls?.cameraController?.getCamera?.();
+    const renderer = editorControls?.renderer;
+    if (!cam || !renderer) return null;
+    const rect = renderer.domElement.getBoundingClientRect();
+    const p = world.clone().project(cam);
+    return {
+      x: rect.left + (p.x + 1) * 0.5 * rect.width,
+      y: rect.top + (1 - (p.y + 1) * 0.5) * rect.height,
+      z: p.z
+    };
+  };
+
+  const updateAnnotations = () => {
+    const { layer, lineCanvas } = ensureAnnotationLayers();
+    const cam = editorControls?.cameraController?.getCamera?.();
+    if (!cam || !editorControls?.renderer) return;
+    const ctx = lineCanvas.getContext('2d');
+    const w = (lineCanvas.width = window.innerWidth);
+    const h = (lineCanvas.height = window.innerHeight);
+    ctx.clearRect(0, 0, w, h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+
+    const scene = editorControls?.scene;
+    const keep = [];
+    for (const a of annotationsRef.current) {
+      // 오브젝트가 씬에 남아있는지 확인
+      let inScene = false; let p = a.targetObject;
+      while (p) { if (p === scene) { inScene = true; break; } p = p.parent; }
+      if (!a.targetObject || !inScene) { try { a.el?.remove?.(); } catch {}; continue; }
+      // 월드 포인트 계산
+      try { a.targetObject.updateMatrixWorld?.(true); } catch {}
+      const world = a.localPoint.clone();
+      a.targetObject.localToWorld(world);
+      const scr = worldToScreen(world);
+      if (!scr) { keep.push(a); continue; }
+      // UI 박스 위치 (화면 고정: 픽셀 크기 유지)
+      const el = a.el;
+      const ox = 10, oy = -10; // 살짝 오프셋
+      el.style.left = `${Math.round(scr.x + ox)}px`;
+      el.style.top = `${Math.round(scr.y + oy)}px`;
+      // 라인: 포인트 → 박스 좌상단
+      const box = el.getBoundingClientRect();
+      ctx.moveTo(scr.x, scr.y);
+      ctx.lineTo(box.left, box.top);
+      keep.push(a);
+    }
+    ctx.stroke();
+    annotationsRef.current = keep;
+  };
+
+  useEffect(() => {
+    let raf;
+    const tick = () => { updateAnnotations(); raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editorControls]);
+
+  const handleAddComment = (hitInfo) => {
+    const text = prompt('코멘트를 입력하세요:');
+    if (!text) return;
+    const { layer } = ensureAnnotationLayers();
+    // UI 박스 생성
+    const el = document.createElement('div');
+    el.className = 'annotation-box';
+    el.innerHTML = `<div class="annotation-text"></div><button class="annotation-close">✕</button>`;
+    const textEl = el.querySelector('.annotation-text');
+    textEl.textContent = text;
+    Object.assign(el.style, {
+      position: 'fixed', minWidth: '180px', maxWidth: '260px',
+      padding: '8px 10px', background: 'rgba(0,0,0,0.66)', color: '#fff',
+      border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.35)', fontSize: '12px', lineHeight: '1.4',
+      pointerEvents: 'auto'
+    });
+    const closeBtn = el.querySelector('.annotation-close');
+    Object.assign(closeBtn.style, {
+      position: 'absolute', top: '4px', right: '6px', border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer'
+    });
+    layer.appendChild(el);
+
+    // 로컬 포인트로 저장
+    const target = hitInfo?.object;
+    let local = hitInfo?.point?.clone?.();
+    if (target && local) { try { target.worldToLocal(local); } catch {} }
+    const id = Date.now();
+    const entry = { id, targetObject: target || null, localPoint: local || new THREE.Vector3(), el };
+    annotationsRef.current.push(entry);
+
+    closeBtn.addEventListener('click', () => {
+      // 삭제
+      try { el.remove(); } catch {}
+      annotationsRef.current = annotationsRef.current.filter(a => a.id !== id);
+      updateAnnotations();
+    });
+
+    updateAnnotations();
+  };
 
   return (
     <div className="editor-ui">
@@ -655,7 +800,9 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         isVisible={contextMenu.isVisible}
         onClose={handleCloseContextMenu}
         selectedObject={selectedObject}
-        onAddToLibrary={onAddToLibrary}
+  onAddToLibrary={onAddToLibrary}
+  onAddComment={handleAddComment}
+  hitInfo={contextMenu.hit}
       />
 
       {/* 우측 패널 - 인스펙터 */}
