@@ -1256,15 +1256,12 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             if (loadedObjectsRef.current.has(obj.id)) { try { loadingIdsRef.current.delete(obj.id); } catch {} return; }
             const model = gltf.scene;
             
-            // 바운딩 박스 계산하여 모델 크기 확인
+            // 바운딩 박스 계산하여 모델 크기 확인 (피벗/원점 보정은 하지 않음)
             const box = new THREE.Box3().setFromObject(model);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
             
             // Model size and center calculated
-            
-            // 모델을 원점 중심으로 이동 (선택사항)
-            model.position.sub(center);
             
             // 모델 위치 설정 (에디터에서 설정된 위치)
             model.position.set(obj.position.x, obj.position.y, obj.position.z);
@@ -1395,12 +1392,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       // 중복 가드
       if (loadedObjectsRef.current.has(obj.id)) { try { URL.revokeObjectURL(u) } catch {}; try { loadingIdsRef.current.delete(obj.id) } catch {}; return; }
               const model = gltf.scene;
-              // 바운딩 박스 계산하여 모델 크기 확인
+              // 바운딩 박스 계산(피벗/원점 보정은 하지 않음)
               const box = new THREE.Box3().setFromObject(model);
               const size = box.getSize(new THREE.Vector3());
               const center = box.getCenter(new THREE.Vector3());
-              // 모델을 원점 중심으로 이동
-              model.position.sub(center);
               // 모델 위치 설정
               model.position.set(obj.position.x, obj.position.y, obj.position.z);
               model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);

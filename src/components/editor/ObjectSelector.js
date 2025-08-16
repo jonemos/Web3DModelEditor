@@ -662,9 +662,26 @@ export class ObjectSelector {
     
     return true;
   }
+
+  // 선택 표준화: ownerId가 있고 id가 없는 서브노드는 루트(id===ownerId)로 승격
+  _promoteToCanonical(object) {
+    if (!object || !object.userData) return object;
+    const hasId = !!object.userData.id;
+    const ownerId = object.userData.ownerId;
+    if (!hasId && ownerId != null) {
+      let cur = object;
+      while (cur) {
+        if (cur.userData && cur.userData.id === ownerId) return cur;
+        cur = cur.parent;
+      }
+    }
+    return object;
+  }
   
   // ?�일 ?�브?�트 ?�택
   selectSingleObject(object) {
+  // 루트 승격
+  object = this._promoteToCanonical(object);
     // ?�전??검??
     if (!object || !this.isObjectValidForSelection(object)) {
       // Console output removed
@@ -685,8 +702,8 @@ export class ObjectSelector {
     this.editorStore.getState().setSelectedObject(object);
     try {
       const api = this.editorStore.getState();
-      const id = object?.userData?.id;
-      api?.setSelectedIds && api.setSelectedIds(id ? [id] : []);
+  const id = object?.userData?.id ?? object?.userData?.ownerId;
+  api?.setSelectedIds && api.setSelectedIds(id != null ? [id] : []);
     } catch {}
     
   // 단일 선택이므로 임시 그룹 제거
@@ -735,7 +752,8 @@ export class ObjectSelector {
       this.deselectAllObjects();
     }
     
-  for (const object of objects) {
+  for (let object of objects) {
+      object = this._promoteToCanonical(object);
       // �??�브?�트???�효??검??
       if (object && !this.selectedObjects.includes(object)) {
         this.selectedObjects.push(object);
@@ -772,7 +790,9 @@ export class ObjectSelector {
     // 스토어에 선택 집합 동기화
     try {
       const api = this.editorStore.getState();
-      const ids = this.selectedObjects.map(o => o?.userData?.id).filter(Boolean);
+      const ids = this.selectedObjects
+        .map(o => (o?.userData?.id ?? o?.userData?.ownerId))
+        .filter((v) => v != null);
       api?.setSelectedIds && api.setSelectedIds(ids);
     } catch {}
     
@@ -789,6 +809,8 @@ export class ObjectSelector {
       // Console output removed
       return;
     }
+  // 루트 승격
+  object = this._promoteToCanonical(object);
     
     const index = this.selectedObjects.indexOf(object);
     
@@ -868,7 +890,9 @@ export class ObjectSelector {
     // 스토어에 선택 집합 동기화
     try {
       const api = this.editorStore.getState();
-      const ids = this.selectedObjects.map(o => o?.userData?.id).filter(Boolean);
+      const ids = this.selectedObjects
+        .map(o => (o?.userData?.id ?? o?.userData?.ownerId))
+        .filter((v) => v != null);
       api?.setSelectedIds && api.setSelectedIds(ids);
     } catch {}
     

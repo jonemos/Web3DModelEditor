@@ -16,6 +16,31 @@ const LEGACY_IDB_NAME = 'Web3DModelEditorDB';
 const LEGACY_IDB_STORE = 'customMeshes';
 const LEGACY_MIGRATION_FLAG = 'sqlite_legacy_migrated_v1';
 
+// ---- Safe base64 helpers (avoid call stack overflow on large buffers) ----
+function uint8ToBase64(uint8) {
+  const CHUNK = 0x8000; // 32KB
+  let binary = '';
+  for (let i = 0; i < uint8.length; i += CHUNK) {
+    const sub = uint8.subarray(i, Math.min(i + CHUNK, uint8.length));
+    binary += String.fromCharCode.apply(null, Array.from(sub));
+  }
+  return btoa(binary);
+}
+
+function abToBase64(ab) {
+  if (ab instanceof Uint8Array) return uint8ToBase64(ab);
+  return uint8ToBase64(new Uint8Array(ab));
+}
+
+function base64ToUint8(b64) {
+  if (!b64) return new Uint8Array(0);
+  const binary = atob(b64);
+  const len = binary.length;
+  const out = new Uint8Array(len);
+  for (let i = 0; i < len; i++) out[i] = binary.charCodeAt(i);
+  return out;
+}
+
 function idbOpen() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(IDB_NAME, 1);
@@ -84,7 +109,7 @@ async function saveToStorage() {
     await idbSet(DB_BLOB_KEY, new Blob([data], { type: 'application/octet-stream' }));
     // Also save small mirror to localStorage (best effort)
     try {
-      const b64 = btoa(String.fromCharCode(...data));
+  const b64 = abToBase64(data);
       localStorage.setItem(DB_BLOB_KEY, b64);
     } catch {}
   } catch (e) {
@@ -165,7 +190,7 @@ export async function customMeshesGetAll() {
     res.push({
       id: row.id,
       name: row.name,
-      glbData: row.data_b64 ? Uint8Array.from(atob(row.data_b64), c => c.charCodeAt(0)).buffer : null,
+    glbData: row.data_b64 ? base64ToUint8(row.data_b64).buffer : null,
       thumbnail: row.thumbnail_b64 || null,
       createdAt: row.created_at
     });
@@ -178,7 +203,7 @@ export async function customMeshesUpsert(mesh) {
   const database = await getDB();
   const { id, name, data, glbData, thumbnail } = mesh;
   const bin = data || glbData || null;
-  const data_b64 = bin ? btoa(String.fromCharCode(...new Uint8Array(bin))) : null;
+  const data_b64 = bin ? abToBase64(bin instanceof Uint8Array ? bin : new Uint8Array(bin)) : null;
   const thumbnail_b64 = typeof thumbnail === 'string' ? thumbnail : null;
   const created_at = Date.now();
   const stmt = database.prepare('INSERT INTO custom_meshes(id, name, data_b64, thumbnail_b64, created_at) VALUES(?, ?, ?, ?, ?)\nON CONFLICT(id) DO UPDATE SET name=excluded.name, data_b64=excluded.data_b64, thumbnail_b64=excluded.thumbnail_b64');

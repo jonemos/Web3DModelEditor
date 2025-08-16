@@ -715,16 +715,63 @@ function EditorPage() {
       const name = prompt('메쉬 이름을 입력하세요:', object.name || '커스텀 메쉬');
       if (!name) return;
 
-      // 변환 값 유지 여부 확인
-      const preserveTransform = confirm(
-        '현재 객체의 크기, 회전, 위치 변경사항을 GLB에 적용하시겠습니까?\n\n' +
-        '- "확인": 현재 변환 상태가 적용된 메쉬로 저장\n' +
-        '- "취소": 원본 상태로 저장 (변환 값 초기화)'
-      );
+      // 항상 현재 변환 상태를 지오메트리에 굽고 루트는 항등으로 저장
+      const preserveTransform = true;
 
       setToast({ message: '라이브러리에 추가 중...', type: 'info' });
 
-      const meshData = await glbMeshManager.current.addCustomMesh(object, name, { preserveTransform });
+      // 실제 Three.js 객체로 해석
+      const ec = editorControlsRef.current;
+      let exportTarget = null;
+
+      // 다중 선택이면 그룹으로 내보내기 준비
+      const selectedList = ec?.selectedObjects && ec.selectedObjects.length > 0 ? [...ec.selectedObjects] : [];
+      if (selectedList.length > 1) {
+        // 멀티 선택: 그룹 피벗을 (0,0,0)/(0,0,0)/(1,1,1)로 고정하고,
+        // 각 자식을 자신의 월드 변환 그대로 배치하여 시각적 동일성 보장
+        const group = new THREE.Group();
+        group.name = name;
+        group.position.set(0, 0, 0);
+        group.rotation.set(0, 0, 0);
+        group.scale.set(1, 1, 1);
+        group.updateMatrixWorld(true);
+
+        selectedList.forEach((obj) => {
+          try {
+            obj.updateMatrixWorld(true);
+            const clone = obj.clone(true);
+            const rel = new THREE.Matrix4().copy(obj.matrixWorld);
+            const pos = new THREE.Vector3();
+            const quat = new THREE.Quaternion();
+            const scl = new THREE.Vector3(1, 1, 1);
+            rel.decompose(pos, quat, scl);
+            clone.position.copy(pos);
+            clone.quaternion.copy(quat);
+            clone.scale.copy(scl);
+            clone.updateMatrix();
+            clone.updateMatrixWorld(true);
+            group.add(clone);
+          } catch {}
+        });
+        group.updateMatrixWorld(true);
+        exportTarget = group;
+      } else {
+        // 단일 선택: 그대로 Object3D를 넘기고, 베이크는 GLBMeshManager 쪽에서 단 1회 수행
+        const targetId = (object && typeof object === 'object') ? (object.id ?? object.userData?.ownerId ?? object) : object;
+        exportTarget = (object && typeof object === 'object' && object.isObject3D)
+          ? object
+          : (ec ? (ec.findObjectById?.(targetId) || (ec.selectedObjects?.[0] || null)) : null);
+      }
+
+      if (!exportTarget) {
+        setToast({ message: '내보낼 Three.js 객체를 찾지 못했습니다.', type: 'error' });
+        setTimeout(() => setToast(null), 4000);
+        return;
+      }
+
+  const meshData = await glbMeshManager.current.addCustomMesh(exportTarget, name, { preserveTransform, compressToSingleMesh: true });
+  // 생성된 GLB 파일 즉시 다운로드
+  try { glbMeshManager.current.downloadCustomMesh(meshData); } catch {}
       // 중복 방지 및 덮어쓰기 정책
       const exists = (useEditorStore.getState().customMeshes || []).some(m => m.id === meshData.id)
       if (exists) {
@@ -747,14 +794,16 @@ function EditorPage() {
       // 강제로 LibraryPanel 새로고침을 위한 이벤트 발생
       window.dispatchEvent(new CustomEvent('customMeshAdded', { detail: meshData }));
 
-      const transformMessage = preserveTransform ? ' (변환 상태 적용됨)' : ' (원본 상태로 저장됨)';
-      setToast({ message: `"${name}"이(가) 라이브러리에 추가되었습니다!${transformMessage}`, type: 'success' });
+  setToast({ message: `"${name}" GLB가 내보내지고 라이브러리에 추가되었습니다! (그룹 피벗 항등/자식 월드 변환 유지)`, type: 'success' });
       
       // 5초 후 토스트 자동 닫기
   setTimeout(() => setToast(null), 5000);
     } catch (error) {
       console.error('라이브러리 추가 실패:', error);
-  setToast({ message: '라이브러리 추가에 실패했습니다.', type: 'error' });
+      const msg = (error && (error.message === 'NO_MESH_FOUND'))
+        ? '선택한 오브젝트에서 내보낼 메시를 찾지 못했습니다. (스키닝/인스턴스/비메시 제외)'
+        : '라이브러리 추가에 실패했습니다.';
+      setToast({ message: msg, type: 'error' });
       
       // 5초 후 토스트 자동 닫기
       setTimeout(() => setToast(null), 5000);

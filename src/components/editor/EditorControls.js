@@ -590,15 +590,37 @@ export class EditorControls {
   
   // ID로 오브젝트를 찾는 메서드
   findObjectById(id) {
-    // 씬에서 해당 ID를 가진 오브젝트 찾기
-    let foundObject = null;
+    if (id == null) return null;
+    let exact = null;
+    let ownedChild = null;
+    // 1) 먼저 userData.id === id 인 정확한 루트 후보를 찾음
     this.scene.traverse((child) => {
+      if (exact) return; // 이미 찾았으면 중단
       if (!child || !child.userData) return;
-      if (child.userData.id === id || child.userData.ownerId === id) {
-        foundObject = child;
+      if (child.userData.id === id) {
+        exact = child;
       }
     });
-    return foundObject;
+    if (exact) return exact;
+
+    // 2) 없으면 ownerId === id 인 아무 자식이라도 찾음
+    this.scene.traverse((child) => {
+      if (ownedChild) return;
+      if (!child || !child.userData) return;
+      if (child.userData.ownerId === id) {
+        ownedChild = child;
+      }
+    });
+    if (!ownedChild) return null;
+
+    // 3) 해당 자식에서 위로 올라가며 userData.id === id 인 조상을 반환
+    let cur = ownedChild;
+    while (cur) {
+      if (cur.userData && cur.userData.id === id) return cur;
+      cur = cur.parent;
+    }
+    // 안전장치: 루트를 못 찾으면 ownedChild 반환 (최악의 폴백)
+    return ownedChild;
   }
   
   deselectAllObjects() {

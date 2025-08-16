@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { getGLTFLoader, setKTX2Renderer } from './gltfLoaderFactory.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { idbGetAllCustomMeshes, idbAddCustomMesh, idbDeleteCustomMesh, migrateLocalStorageCustomMeshesToIDB } from './idb.js';
 
 /**
@@ -15,6 +16,21 @@ export class GLBMeshManager {
     this.initThumbnailRenderer();
   // 초기 1회: localStorage → IndexedDB 마이그레이션 시도
   migrateLocalStorageCustomMeshesToIDB();
+  }
+
+  /**
+   * 대상 객체가 렌더링 가능한 Mesh(geometry 포함)를 갖는지 검사
+   */
+  _hasRenderableMesh(object) {
+    let found = false;
+    if (!object) return false;
+    object.traverse?.((n) => {
+      if (found) return;
+      if (n?.isMesh && n.geometry && n.geometry.isBufferGeometry && n.geometry.getAttribute('position')) {
+        found = true;
+      }
+    });
+    return found;
   }
 
   /**
@@ -204,15 +220,6 @@ export class GLBMeshManager {
         const clonedMaterial = object.material ? this.cloneMaterial(object.material) : null;
         
         const clonedMesh = new THREE.Mesh(clonedGeometry, clonedMaterial);
-        // 현재 전역 와이어프레임 상태 반영 (복제/절차형 등에도 일관 적용)
-        try {
-          const isWire = !!(typeof window !== 'undefined' && window.__editorControls && window.__editorControls.editorStore?.getState?.().isWireframe);
-          if (Array.isArray(clonedMesh.material)) {
-            clonedMesh.material.forEach((m) => { if (m) m.wireframe = isWire; });
-          } else if (clonedMesh.material) {
-            clonedMesh.material.wireframe = isWire;
-          }
-        } catch {}
         clonedMesh.name = object.name || '';
         
         // 변환 정보 복사
@@ -336,8 +343,7 @@ export class GLBMeshManager {
             const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
             
-            // 모델을 중앙으로 이동
-            model.position.sub(center);
+            // 모델의 원점은 그대로 유지 (내보낸 피벗을 신뢰)
             
             // 카메라 위치 조정
             const maxDim = Math.max(size.x, size.y, size.z);
@@ -408,8 +414,7 @@ export class GLBMeshManager {
     const center = box.getCenter(new THREE.Vector3());
     const size3 = box.getSize(new THREE.Vector3());
 
-    // 모델을 중앙으로 이동
-    clonedObject.position.sub(center);
+  // 모델의 원점은 유지 (피벗 유지)
 
     // 카메라 위치 조정
     const maxDim = Math.max(size3.x, size3.y, size3.z);
@@ -432,6 +437,62 @@ export class GLBMeshManager {
   tempScene.clear();
 
     return dataURL;
+  }
+
+  /**
+   * 가능하면 하나의 Mesh로 병합하여 반환
+   * - 정적 Mesh만 지원(스키닝/인스턴스/멀티머티리얼 혼합 시 실패)
+   * - 머티리얼은 입력 순서로 배열을 구성하고, mergeBufferGeometries(useGroups=true)로 그룹 매칭
+   */
+  _buildSingleMesh(object, { preserveTransform = true } = {}) {
+    try {
+      if (!object) return null;
+      const root = (typeof object.clone === 'function') ? object.clone(true) : this.createSafeClone(object);
+      root.updateMatrixWorld(true);
+
+      const invRoot = new THREE.Matrix4();
+      invRoot.copy(root.matrixWorld).invert();
+
+      const geometries = [];
+      const materials = [];
+
+      const pushMesh = (mesh) => {
+        if (mesh.isSkinnedMesh || mesh.isInstancedMesh) return false;
+        if (Array.isArray(mesh.material)) return false; // 입력은 단일 재질만 허용
+        const src = mesh.geometry;
+        if (!src || !src.isBufferGeometry) return false;
+        const geo = src.clone();
+        const m = new THREE.Matrix4();
+        // 항상 루트 기준(local)으로 굽기: invRoot * mesh.matrixWorld
+        m.copy(mesh.matrixWorld);
+        m.premultiply(invRoot);
+        geo.applyMatrix4(m);
+        try { geo.clearGroups(); } catch {}
+        geometries.push(geo);
+        materials.push(mesh.material);
+        return true;
+      };
+
+      let ok = true;
+      root.traverse((n) => {
+        if (!ok) return;
+        const ud = n.userData || {};
+        const isSystem = !!(ud.isSystemObject || ud.isRayHelper || ud.isLightHelper || ud.isLightTarget || ud.isLightTargetHandle || ud.isHelper);
+        if (n.isMesh && !isSystem) ok = pushMesh(n);
+      });
+      if (!ok || geometries.length === 0) return null;
+
+  const merged = BufferGeometryUtils.mergeGeometries(geometries, true);
+      if (!merged || !merged.groups || merged.groups.length !== materials.length) return null;
+
+      const single = new THREE.Mesh(merged, materials);
+      single.name = object.name || 'MergedMesh';
+      single.position.set(0,0,0); single.rotation.set(0,0,0); single.scale.set(1,1,1);
+      return single;
+    } catch (e) {
+      console.warn('단일 메시 병합 실패:', e);
+      return null;
+    }
   }
 
   /**
@@ -468,9 +529,38 @@ export class GLBMeshManager {
       
       // 변환 값 처리 (안전한 방식)
       if (preserveTransform) {
-        // 변환 값을 유지 (현재 변환 상태를 GLB에 적용)
-        
-        // 변환 값은 그대로 유지
+        // 현재 월드 변환을 지오메트리에 굽고, 루트는 항등으로 초기화
+        try {
+          clonedObject.updateMatrixWorld?.(true);
+          const invRoot = new THREE.Matrix4().copy(clonedObject.matrixWorld).invert();
+          // 1) 각 Mesh의 월드변환을 지오메트리에 베이크
+          clonedObject.traverse?.((n) => {
+            if (!n || !n.isMesh || !n.geometry || !n.geometry.isBufferGeometry) return;
+            const mat = new THREE.Matrix4().copy(n.matrixWorld).premultiply(invRoot);
+            try {
+              const g = n.geometry;
+              const baked = g.clone();
+              baked.applyMatrix4(mat);
+              n.geometry = baked;
+            } catch {}
+          });
+          // 2) 베이크 후 모든 노드의 트랜스폼을 항등으로 리셋(이중 적용 방지)
+          clonedObject.traverse?.((n) => {
+            try {
+              if (n.position && typeof n.position.set === 'function') n.position.set(0, 0, 0);
+              if (n.rotation && typeof n.rotation.set === 'function') n.rotation.set(0, 0, 0, 'XYZ');
+              if (n.scale && typeof n.scale.set === 'function') n.scale.set(1, 1, 1);
+              n.updateMatrix?.();
+              n.updateMatrixWorld?.(false);
+            } catch {}
+          });
+        } catch {}
+        // 루트 변환은 항등으로
+        try {
+          clonedObject.position?.set(0, 0, 0);
+          clonedObject.rotation?.set(0, 0, 0, 'XYZ');
+          clonedObject.scale?.set(1, 1, 1);
+        } catch {}
       } else {
         // 기본 모드: 위치, 회전, 크기를 초기화 (안전하게)
         try {
@@ -488,34 +578,8 @@ export class GLBMeshManager {
           console.warn('변환 값 설정 실패:', transformError);
         }
       }
-      
-      // 머티리얼 복사를 위한 재귀 함수 (안전한 버전)
-      const cloneMaterials = (obj) => {
-        if (!obj || typeof obj !== 'object') return;
-        
-        if (obj.material) {
-          try {
-            obj.material = this.cloneMaterial(obj.material);
-          } catch (error) {
-            console.warn('머티리얼 복제 실패, 원본 유지:', error);
-            // 머티리얼 복제 실패 시 원본 유지
-          }
-        }
-        
-        // children 존재 여부 확인 후 재귀 호출
-        if (Array.isArray(obj.children)) {
-          obj.children.forEach(child => {
-            try {
-              cloneMaterials(child);
-            } catch (childError) {
-              console.warn('자식 객체 머티리얼 처리 실패:', childError);
-            }
-          });
-        }
-      };
-      
-      // 머티리얼 복사 적용
-      cloneMaterials(clonedObject);
+  // 머티리얼은 가능한 한 원본 레퍼런스를 유지하여
+  // GLTFExporter가 텍스처/확장(KHR_*) 정보를 그대로 직렬화하도록 둡니다.
       
       this.exporter.parse(
         clonedObject,
@@ -546,11 +610,23 @@ export class GLBMeshManager {
    * @returns {Promise<Object>} 저장된 메쉬 데이터
    */
   async addCustomMesh(object, name, options = {}) {
-    const { preserveTransform = true } = options;
+    const { preserveTransform = true, compressToSingleMesh = true } = options;
     
     try {
+      // 단일 메시 병합 우선 시도
+      let exportTarget = object;
+      if (compressToSingleMesh) {
+        const merged = this._buildSingleMesh(object, { preserveTransform });
+        if (merged) exportTarget = merged;
+      }
+
+      // 비어있는 대상 방지
+      if (!this._hasRenderableMesh(exportTarget)) {
+        throw new Error('NO_MESH_FOUND');
+      }
+
       // GLB 데이터 생성 (변환 값 유지 옵션 적용)
-      const glbData = await this.exportObjectToGLB(object, { preserveTransform });
+      const glbData = await this.exportObjectToGLB(exportTarget, { preserveTransform });
       
       // 썸네일 생성
       const thumbnail = this.generateThumbnailFromObject(object);
@@ -569,11 +645,11 @@ export class GLBMeshManager {
         glbData: glbData,
         createdAt: timestamp,
         // 변환 정보도 저장 (참고용)
-        transform: {
+        transform: (object && object.position && object.rotation && object.scale) ? {
           position: { x: object.position.x, y: object.position.y, z: object.position.z },
           rotation: { x: object.rotation.x, y: object.rotation.y, z: object.rotation.z },
           scale: { x: object.scale.x, y: object.scale.y, z: object.scale.z }
-        }
+        } : undefined
       };
 
   // IndexedDB에 저장 (완료 보장)
