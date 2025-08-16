@@ -77,8 +77,7 @@ export const useEditorStore = create((set, get) => {
   
   // Gizmo settings
   gizmoSpace: 'world', // 'world' or 'local'
-  isMagnetEnabled: false, // 자석 기능 활성화
-  showMagnetRays: false, // 자석 레이 표시
+  // 자석 기능 제거됨
 
   // HDRI settings - 패널이 닫혀도 유지되는 설정 (localStorage에서 초기값 로드)
   hdriSettings: {
@@ -99,6 +98,23 @@ export const useEditorStore = create((set, get) => {
   
   // HDRI 조명 ref - 씬에서 지속적으로 관리
   sunLightRef: null,
+
+  // 드롭 인디케이터 설정
+  dropIndicator: {
+    easing: 'easeInOutQuad',
+    inMs: 200,
+    outMs: 220,
+    maxOpacity: 0.6
+  },
+
+  // 렌더/포스트프로세싱 참조 및 세이프 모드
+  postProcessingManager: null,
+  safeMode: {
+    enabled: false,
+    pixelRatio: 1.0,
+    notes: 'Disables FXAA/SSAO and forces pixelRatio to 1.0 to reduce VRAM.'
+  },
+  vramEstimateMB: 0,
 
   // Assets
   savedObjects: new Map(),
@@ -125,8 +141,7 @@ export const useEditorStore = create((set, get) => {
   toggleGizmoSpace: () => set((state) => ({ 
     gizmoSpace: state.gizmoSpace === 'world' ? 'local' : 'world' 
   })),
-  toggleMagnet: () => set((state) => ({ isMagnetEnabled: !state.isMagnetEnabled })),
-  toggleMagnetRays: () => set((state) => ({ showMagnetRays: !state.showMagnetRays })),
+  // 자석 기능 제거됨
   
   // HDRI actions
   updateHDRISettings: (updates) => set((state) => ({
@@ -134,6 +149,66 @@ export const useEditorStore = create((set, get) => {
   })),
   
   setSunLightRef: (ref) => set({ sunLightRef: ref }),
+
+  // 드롭 인디케이터 설정 업데이트
+  updateDropIndicator: (updates) => set((state) => ({
+    dropIndicator: { ...state.dropIndicator, ...updates }
+  })),
+
+  // 포스트프로세싱 매니저 참조 저장
+  setPostProcessingManager: (ppm) => set({ postProcessingManager: ppm }),
+
+  // 세이프 모드 토글 및 픽셀 비율 설정
+  toggleSafeMode: (on) => {
+    const enabled = on !== undefined ? !!on : !get().safeMode.enabled;
+    const current = get().safeMode;
+    const next = { ...current, enabled };
+    set({ safeMode: next });
+    try {
+      const ppm = get().postProcessingManager;
+      if (ppm) {
+        ppm.setEffectEnabled('fxaa', !enabled);
+        ppm.setEffectEnabled('ssao', !enabled);
+        // 픽셀 비율 변경에 맞춰 버퍼 재설정
+        ppm.handleResize(window.innerWidth, window.innerHeight);
+      }
+    } catch {}
+    try {
+      const renderer = get().renderer;
+      if (renderer) {
+        const pr = enabled ? (get().safeMode.pixelRatio || 1.0) : Math.min(2, window.devicePixelRatio || 1);
+        renderer.setPixelRatio(pr);
+      }
+    } catch {}
+    try { get().estimateVRAMUsage(); } catch {}
+  },
+  setSafeModePixelRatio: (pr) => set((state) => ({ safeMode: { ...state.safeMode, pixelRatio: Math.max(0.5, Math.min(2, pr || 1)) } })),
+  // 대략적인 VRAM 사용량 추정 (MB)
+  estimateVRAMUsage: (opts = {}) => {
+    const width = opts.width || window.innerWidth;
+    const height = opts.height || window.innerHeight;
+    let pr = 1;
+    try { pr = get().renderer?.getPixelRatio?.() || window.devicePixelRatio || 1; } catch {}
+    const w = Math.max(1, Math.floor(width * pr));
+    const h = Math.max(1, Math.floor(height * pr));
+    const bppColor = 4; // RGBA8
+    const bppDepth = 4; // Depth/Stencil rough
+    let total = (w * h) * (bppColor + bppDepth); // default framebuffer
+    try {
+      const ppm = get().postProcessingManager;
+      if (ppm) {
+        // composer default target
+        total += (w * h) * (bppColor + bppDepth);
+        const eff = ppm.getSettings?.() || {};
+        if (eff.outline?.enabled) total += (w * h) * bppColor;
+        if (eff.ssao?.enabled) total += 2 * (w * h) * bppColor;
+        if (eff.fxaa?.enabled) total += (w * h) * bppColor;
+      }
+    } catch {}
+    const mb = Math.round(total / (1024 * 1024));
+    set({ vramEstimateMB: mb });
+    return mb;
+  },
   
   // HDRI 설정 초기화 (localStorage에서 로드)
   initializeHDRISettings: () => {

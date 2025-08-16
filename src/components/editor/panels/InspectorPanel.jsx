@@ -1,12 +1,16 @@
 import { useState, useEffect, memo } from 'react'
-import SceneHierarchyPanel from './SceneHierarchyPanel'
 import { PropertiesManager } from '../../../utils/PropertiesManager'
+import HierarchyTreePanel from './HierarchyTreePanel.jsx'
 import './InspectorPanel.css'
 
 const InspectorPanel = memo(function InspectorPanel({
   // SceneHierarchy 관련 props
   objects,
   walls,
+  selectedIds,
+  setSelectedIds,
+  setParent,
+  reorderSiblings,
   selectedObject,
   onObjectVisibilityToggle,
   onObjectFreezeToggle,
@@ -443,7 +447,28 @@ const InspectorPanel = memo(function InspectorPanel({
           </div>
         )}
 
-        {/* OutlinePass 간단 튜닝 */}
+        {/* OutlinePass 간단 튜닝 */
+        }
+        {/* 기본 포스트프로세싱 토글 */}
+        <div className="property-group" style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:'8px 12px'}}>
+          <div style={{gridColumn:'1 / span 2', fontWeight:600}}>포스트프로세싱</div>
+          <label>Bloom</label>
+          <input type="checkbox"
+            checked={!!postProcessingManager?.effectSettings?.bloom?.enabled}
+            onChange={(e)=>{ try { postProcessingManager?.setEffectEnabled?.('bloom', e.target.checked); } catch {} }} />
+          <label>AA (SMAA)</label>
+          <input type="checkbox"
+            checked={!!postProcessingManager?.effectSettings?.fxaa?.enabled}
+            onChange={(e)=>{ try { postProcessingManager?.setEffectEnabled?.('fxaa', e.target.checked); } catch {} }} />
+          <label>SSAO</label>
+          <input type="checkbox"
+            checked={!!postProcessingManager?.effectSettings?.ssao?.enabled}
+            onChange={(e)=>{ try { postProcessingManager?.setEffectEnabled?.('ssao', e.target.checked); } catch {} }} />
+          <label>Outline</label>
+          <input type="checkbox"
+            checked={!!postProcessingManager?.effectSettings?.outline?.enabled}
+            onChange={(e)=>{ try { postProcessingManager?.setEffectEnabled?.('outline', e.target.checked); editorControls?._updatePartOutline?.(); } catch {} }} />
+        </div>
         {partEnabled && (
           <div className="property-group" style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:'8px 12px'}}>
             <div style={{gridColumn:'1 / span 2', fontWeight:600}}>아웃라인</div>
@@ -473,6 +498,15 @@ const InspectorPanel = memo(function InspectorPanel({
                 try { editorControls?._updatePartOutline?.(); } catch {}
               }}
             />
+            <label>Glow</label>
+            <input type="range" min="0" max="1" step="0.01"
+              value={postProcessingManager?.effectSettings?.outline?.edgeGlow ?? 0}
+              onChange={(e)=>{
+                const v = parseFloat(e.target.value);
+                try { postProcessingManager?.updateEffectSettings?.('outline', { edgeGlow: v }); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
             <label>펄스 주기</label>
             <input type="range" min="0" max="10" step="0.1"
               value={postProcessingManager?.effectSettings?.outline?.pulsePeriod ?? 0}
@@ -492,6 +526,28 @@ const InspectorPanel = memo(function InspectorPanel({
               onChange={(e)=>{
                 const hex = parseInt(e.target.value.replace('#',''), 16);
                 try { postProcessingManager?.updateEffectSettings?.('outline', { visibleEdgeColor: hex }); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
+            <label>숨김 색상</label>
+            <input type="color"
+              value={(()=>{
+                const hex = postProcessingManager?.effectSettings?.outline?.hiddenEdgeColor ?? 0x190a05;
+                const s = (hex >>> 0).toString(16).padStart(6,'0');
+                return `#${s}`;
+              })()}
+              onChange={(e)=>{
+                const hex = parseInt(e.target.value.replace('#',''), 16);
+                try { postProcessingManager?.updateEffectSettings?.('outline', { hiddenEdgeColor: hex }); } catch {}
+                try { editorControls?._updatePartOutline?.(); } catch {}
+              }}
+            />
+            <label>숨김 알파</label>
+            <input type="range" min="0" max="1" step="0.01"
+              value={postProcessingManager?.effectSettings?.outline?.hiddenEdgeAlpha ?? 1}
+              onChange={(e)=>{
+                const v = parseFloat(e.target.value);
+                try { postProcessingManager?.updateEffectSettings?.('outline', { hiddenEdgeAlpha: v }); } catch {}
                 try { editorControls?._updatePartOutline?.(); } catch {}
               }}
             />
@@ -524,6 +580,28 @@ const InspectorPanel = memo(function InspectorPanel({
             ) : (
               <div style={{color:'#aaa'}}>선택된 파트가 없습니다.</div>
             )}
+            {/* 멀티 파트 선택/도구 */}
+            <div style={{marginTop:10, display:'flex', gap:8, flexWrap:'wrap'}}>
+              <button onClick={()=>editorControls?.selectAllChildParts?.()} disabled={!editorControls?.getSelectedPart?.()}>자식 파트 전체 선택</button>
+              <button onClick={()=>editorControls?.clearAllPartSelections?.()} disabled={!editorControls?.getSelectedPart?.()}>모든 파트 선택 해제</button>
+              <label style={{display:'inline-flex', alignItems:'center', gap:6}}>
+                <input type="checkbox"
+                  checked={!!editorControls?.isPartGroupGizmoEnabled?.()}
+                  onChange={(e)=>editorControls?.setPartGroupGizmoEnabled?.(e.target.checked)}
+                /> 그룹 기즈모(일괄 변형)
+              </label>
+              <label style={{display:'inline-flex', alignItems:'center', gap:6}}>
+                피벗
+                <select
+                  value={editorControls?.getPartGroupPivot?.() || 'center'}
+                  onChange={(e)=>editorControls?.setPartGroupPivot?.(e.target.value)}
+                >
+                  <option value="center">선택 중심</option>
+                  <option value="first">첫 파트</option>
+                  <option value="last">마지막 파트</option>
+                </select>
+              </label>
+            </div>
           </div>
         )}
       </div>
@@ -737,24 +815,26 @@ const InspectorPanel = memo(function InspectorPanel({
       </div>
       
       <div className="inspector-content">
-        {/* 계층구조 섹션 */}
+        {/* 계층 트리 (좌측 패널을 대체) */}
         <div className="hierarchy-section">
           <div className="section-header">
             <h4>씬 계층구조</h4>
           </div>
           <div className="hierarchy-container">
-            <SceneHierarchyPanel
+            <HierarchyTreePanel
               objects={objects}
-              walls={walls}
-              selectedObject={selectedObject}
-              onObjectVisibilityToggle={onObjectVisibilityToggle}
-              onObjectFreezeToggle={onObjectFreezeToggle}
-              onObjectSelect={onObjectSelect}
-              onObjectRemove={onObjectRemove}
-              onObjectFocus={onObjectFocus}
-              onObjectRename={onObjectRename}
-              onContextMenu={onContextMenu}
-              editorControls={editorControls}
+              selectedIds={selectedIds || []}
+              onSelect={(id) => {
+                setSelectedIds?.([id]);
+                const obj = editorControls?.findObjectById?.(id);
+                if (obj) editorControls?.selectObject?.(obj);
+              }}
+              onReparent={(childId, newParentId) => {
+                setParent?.(childId, newParentId);
+              }}
+              onReorder={(parentId, orderedIds) => {
+                reorderSiblings?.(parentId, orderedIds);
+              }}
             />
           </div>
         </div>

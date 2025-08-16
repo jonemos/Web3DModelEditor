@@ -12,6 +12,7 @@ export class EditorControls {
     this.scene = scene;
     this.renderer = renderer;
     this.editorStore = editorStore;
+  this.gizmoScene = null; // gizmo 전용 씬
     
     // 입력 관리 시스템 초기화
     this.inputManager = new InputManager();
@@ -21,6 +22,7 @@ export class EditorControls {
     // 모듈 초기화
     this.cameraController = new CameraController(camera, renderer, onCameraChange);
     this.objectSelector = new ObjectSelector(scene, camera, renderer, editorStore);
+  this.objectSelector.setGizmoScene?.(null);
     
     // MouseController에 ObjectSelector 설정 (기즈모 상호작용 감지용)
     this.mouseController.setObjectSelector(this.objectSelector);
@@ -57,11 +59,15 @@ export class EditorControls {
     // Part Inspection state
     this.partInspector = {
       enabled: false,
-      selectedPart: null,
+    selectedPart: null,
+    selectedParts: new Set(),
       solo: false,
       clipping: false,
       savedVisibility: new Map(),
-      clippingPlanes: []
+    clippingPlanes: [],
+    group: null,
+    groupPivot: 'center', // 'center'|'first'|'last'
+    groupEnabled: false
     };
     this._partRaycaster = new THREE.Raycaster();
 
@@ -87,7 +93,19 @@ export class EditorControls {
       // 파트 인스펙션 모드: 서브메시 직접 선택 (상위로 승격하지 않음)
       if (this.partInspector.enabled) {
         const hit = this.raycastMeshAtNDC(this.mousePosition);
-        this.selectPart(hit?.object || null, hit?.point || null);
+        if (isMultiSelect) {
+          if (hit?.object?.isMesh) {
+            if (this.partInspector.selectedParts.has(hit.object)) {
+              this.partInspector.selectedParts.delete(hit.object);
+            } else {
+              this.partInspector.selectedParts.add(hit.object);
+              this.partInspector.selectedPart = hit.object; // 기준 파트 업데이트
+            }
+            this._updatePartOutline();
+          }
+        } else {
+          this.selectPart(hit?.object || null, hit?.point || null);
+        }
         return;
       }
 
@@ -114,7 +132,7 @@ export class EditorControls {
     });
 
     // 드래그 선택
-    this.mouseController.onDragSelect((data) => {
+  this.mouseController.onDragSelect((data) => {
       const { left, top, width, height } = data;
       this.objectSelector.showSelectionBox(left, top, width, height);
     });
@@ -122,6 +140,11 @@ export class EditorControls {
     // 드래그 선택 완료
     this.mouseController.onDragSelectEnd((data) => {
       const { startX, startY, endX, endY, isMultiSelect } = data;
+      // 파트 모드인 경우: 서브메시 박스 선택
+      if (this.partInspector.enabled) {
+        this.selectPartsInRect(startX, startY, endX, endY, isMultiSelect);
+        return;
+      }
       this.finishDragSelection(startX, startY, endX, endY, isMultiSelect);
     });
 
@@ -158,59 +181,98 @@ export class EditorControls {
       this._partTransformControls.visible = false;
       this._partTransformControls.enabled = false;
       this._partTransformControls.setSize(0.9);
+      // TransformControls 자체는 Object3D가 아니므로, 헬퍼(Object3D)를 씬에 추가해야 함
+      try {
+        const helper = this._partTransformControls.getHelper?.();
+        if (helper && helper.isObject3D) {
+          const hideHelper = () => {
+            try {
+              const helperGroup = helper.children?.find?.((c) => c.name === 'helper');
+              if (helperGroup) helperGroup.visible = false;
+              // 라인류 객체 영구 제거
+              const toRemove = [];
+              helper.traverse?.((n) => {
+                const isLineType = n.type === 'Line' || n.type === 'Line2' || n.type === 'LineSegments' || n.type === 'LineSegments2' || n.isLine;
+                const isLineMat = n.material && (n.material.isLineBasicMaterial || n.material.isLineDashedMaterial);
+                if (isLineType || isLineMat) toRemove.push(n);
+              });
+              toRemove.forEach((n) => {
+                try {
+                  if (n.parent) n.parent.remove(n);
+                  if (n.geometry?.dispose) n.geometry.dispose();
+                  const mat = n.material;
+                  if (Array.isArray(mat)) mat.forEach(m => m?.dispose && m.dispose()); else if (mat?.dispose) mat.dispose();
+                } catch {}
+              });
+            } catch {}
+          };
+          hideHelper();
+          helper.onBeforeRender = () => { try { hideHelper(); } catch {} };
+          helper.renderOrder = 999;
+          const targetScene = this.gizmoScene || this.scene;
+          targetScene.add(helper);
+          this._partTransformControls.addEventListener('change', hideHelper);
+          this._partTransformControls.addEventListener('dragging-changed', hideHelper);
+          this._partTransformControls.addEventListener('mouseDown', hideHelper);
+          this._partTransformControls.addEventListener('mouseUp', hideHelper);
+          this._partTransformControls.addEventListener('objectChange', hideHelper);
+        }
+      } catch {}
       // 파트 기즈모 드래그 상태에 따라 히스토리 기록용 before/after 저장
       this._partGizmoInitial = null;
       this._partTransformControls.addEventListener('dragging-changed', (e) => {
         const dragging = e.value;
-        const mesh = this.partInspector?.selectedPart;
-        if (!mesh) return;
+        const parts = this.getActivePartSet();
+        if (parts.length === 0) return;
         if (dragging) {
-          this._partGizmoInitial = {
-            position: mesh.position.clone(),
-            rotation: mesh.rotation.clone(),
-            scale: mesh.scale.clone()
-          };
+          // 시작 스냅샷
+          this._partGizmoInitial = parts.map(m => ({
+            uuid: m.uuid,
+            position: m.position.clone(),
+            rotation: m.rotation.clone(),
+            scale: m.scale.clone(),
+            parentId: m.parent?.userData?.id ?? null
+          }));
         } else {
           if (!this._partGizmoInitial) return;
-          // after
-          const after = {
-            position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
-            rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
-            scale: { x: mesh.scale.x, y: mesh.scale.y, z: mesh.scale.z }
-          };
-          const before = {
-            position: { x: this._partGizmoInitial.position.x, y: this._partGizmoInitial.position.y, z: this._partGizmoInitial.position.z },
-            rotation: { x: this._partGizmoInitial.rotation.x, y: this._partGizmoInitial.rotation.y, z: this._partGizmoInitial.rotation.z },
-            scale: { x: this._partGizmoInitial.scale.x, y: this._partGizmoInitial.scale.y, z: this._partGizmoInitial.scale.z }
-          };
-          // 변경이 있는 경우에만 히스토리 푸시
-          const changed = (
-            before.position.x !== after.position.x || before.position.y !== after.position.y || before.position.z !== after.position.z ||
-            before.rotation.x !== after.rotation.x || before.rotation.y !== after.rotation.y || before.rotation.z !== after.rotation.z ||
-            before.scale.x !== after.scale.x || before.scale.y !== after.scale.y || before.scale.z !== after.scale.z
-          );
-          if (changed) {
+          // 종료 스냅샷 및 히스토리
+          const afterParts = parts.map(m => ({
+            uuid: m.uuid,
+            parentId: m.parent?.userData?.id ?? null,
+            after: {
+              position: { x: m.position.x, y: m.position.y, z: m.position.z },
+              rotation: { x: m.rotation.x, y: m.rotation.y, z: m.rotation.z },
+              scale: { x: m.scale.x, y: m.scale.y, z: m.scale.z }
+            }
+          }));
+          const beforeMap = new Map(this._partGizmoInitial.map(b => [b.uuid, b]));
+          const partsEntries = [];
+          for (const ap of afterParts) {
+            const b = beforeMap.get(ap.uuid);
+            if (!b) continue;
+            const before = {
+              position: { x: b.position.x, y: b.position.y, z: b.position.z },
+              rotation: { x: b.rotation.x, y: b.rotation.y, z: b.rotation.z },
+              scale: { x: b.scale.x, y: b.scale.y, z: b.scale.z }
+            };
+            const a = ap.after;
+            const changed = (
+              before.position.x !== a.position.x || before.position.y !== a.position.y || before.position.z !== a.position.z ||
+              before.rotation.x !== a.rotation.x || before.rotation.y !== a.rotation.y || before.rotation.z !== a.rotation.z ||
+              before.scale.x !== a.scale.x || before.scale.y !== a.scale.y || before.scale.z !== a.scale.z
+            );
+            if (changed) partsEntries.push({ uuid: ap.uuid, parentId: ap.parentId, before, after: a });
+          }
+          if (partsEntries.length > 0) {
             try {
               const api = this.editorStore?.getState?.();
-              // 멀티 선택 확장 대비: parts 배열 구조를 기본으로 기록
-              const entry = {
-                type: 'part-transform',
-                parts: [
-                  {
-                    uuid: mesh.uuid,
-                    parentId: mesh.parent?.userData?.id ?? null,
-                    before,
-                    after
-                  }
-                ]
-              };
-              api?._pushHistory && api._pushHistory(entry);
+              api?._pushHistory && api._pushHistory({ type: 'part-transform', parts: partsEntries });
             } catch {}
           }
           this._partGizmoInitial = null;
         }
       });
-      this.scene.add(this._partTransformControls);
+  // 주: controls 인스턴스 자체를 씬에 add하지 않습니다.
     } catch (e) {
       console.error('Failed to initialize part TransformControls', e);
       this._partTransformControls = null;
@@ -222,7 +284,7 @@ export class EditorControls {
   }
 
   setPartGizmoEnabled(enabled) {
-    const mesh = this.partInspector.selectedPart;
+  const mesh = this.partInspector.selectedPart;
     if (!this._partTransformControls) return false;
     if (!enabled) {
       this.partInspector.gizmo = false;
@@ -232,10 +294,16 @@ export class EditorControls {
   // 객체 기즈모는 사용자가 직접 재활성화하도록 유지
       return true;
     }
-    if (!mesh) return false;
+    if (!mesh && !this.partInspector.groupEnabled) return false;
     // ObjectSelector 기즈모는 숨김/분리 (동시 표시는 혼란 야기)
     try { this.objectSelector?.transformControls?.detach?.(); } catch {}
-    this._partTransformControls.attach(mesh);
+    // 그룹 기즈모 사용 여부
+    if (this.partInspector.groupEnabled) {
+      this._ensurePartGroup();
+      if (this.partInspector.group) this._partTransformControls.attach(this.partInspector.group);
+    } else {
+      this._partTransformControls.attach(mesh);
+    }
     // 현재 Transform 모드/좌표계와 동기화(가능한 경우)
     try {
       const currentMode = this.transformManager?.getState?.().mode || this.objectSelector?.transformControls?.getMode?.() || 'translate';
@@ -277,7 +345,12 @@ export class EditorControls {
     // Outline 효과 활성화
     try { this.postProcessingManager.setEffectEnabled('outline', true); } catch {}
     const mesh = this.partInspector?.selectedPart;
-    const list = mesh ? [mesh] : [];
+    let list = [];
+    if (this.partInspector.groupEnabled) {
+      list = this.getActivePartSet();
+    } else if (mesh) {
+      list = [mesh];
+    }
     try { this.postProcessingManager.setOutlineSelectedObjects(list); } catch {}
   }
 
@@ -434,9 +507,6 @@ export class EditorControls {
     return this.transformManager.setGridSize(size);
   }
   
-  toggleMagnet() {
-    return this.transformManager.toggleMagnet();
-  }
   
   duplicateSelectedObjects() {
     return this.transformManager.duplicateSelected();
@@ -561,15 +631,7 @@ export class EditorControls {
     this.objectSelector.updateGizmoSpace();
   }
 
-  // 자석 기능 업데이트
-  updateMagnet() {
-    this.objectSelector.updateMagnet();
-  }
-
-  // 자석 레이 표시 업데이트
-  updateMagnetRays() {
-    this.objectSelector.updateMagnetRays();
-  }
+  // 자석 기능 제거됨
 
   // 그리드 헬퍼 초기화
   initializeGrid() {
@@ -767,10 +829,49 @@ export class EditorControls {
     return hit || intersects[0];
   }
 
+  selectPartsInRect(startX, startY, endX, endY, isMultiSelect) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const minX = Math.min(startX, endX);
+    const minY = Math.min(startY, endY);
+    const maxX = Math.max(startX, endX);
+    const maxY = Math.max(startY, endY);
+    const cam = this.cameraController.getCamera();
+    const ray = new THREE.Raycaster();
+    const candidates = [];
+    this.scene.traverse((c)=>{ if (c.isMesh && c.visible) candidates.push(c); });
+    // 샘플링 기반: 그리드 샘플로 사각형 내부 픽킹(간단/성능 절충)
+    const cols = 6, rows = 6;
+    const hitSet = new Set();
+    for (let i=0;i<cols;i++) {
+      for (let j=0;j<rows;j++) {
+        const sx = minX + ((i+0.5)/cols) * (maxX-minX);
+        const sy = minY + ((j+0.5)/rows) * (maxY-minY);
+        const ndc = new THREE.Vector2(
+          ((sx - rect.left) / rect.width) * 2 - 1,
+          -((sy - rect.top) / rect.height) * 2 + 1
+        );
+        ray.setFromCamera(ndc, cam);
+        const hits = ray.intersectObjects(candidates, true);
+        if (hits && hits.length) {
+          const m = hits[0].object;
+          if (m?.isMesh) hitSet.add(m);
+        }
+      }
+    }
+    if (!isMultiSelect) this.partInspector.selectedParts.clear();
+    hitSet.forEach(m => this.partInspector.selectedParts.add(m));
+    // 한 개라도 있으면 기준 파트 갱신
+    this.partInspector.selectedPart = (this.partInspector.selectedParts.values().next().value) || null;
+    this._updatePartOutline();
+  }
+
   selectPart(mesh, point = null) {
     // 기존 강조 복원
     this._restorePartHighlight();
     this.partInspector.selectedPart = (mesh && mesh.isMesh) ? mesh : null;
+    if (this.partInspector.selectedPart) {
+      this.partInspector.selectedParts.add(this.partInspector.selectedPart);
+    }
 
     // 새 강조 적용 (가능한 경우 emissive 이용)
     if (this.partInspector.selectedPart) {
@@ -801,6 +902,7 @@ export class EditorControls {
       this.setPartSolo(false);
       this.setPartClipping(false);
       this.detachPartGizmo();
+      this.partInspector.selectedParts.clear();
     }
     // Outline 업데이트
     this._updatePartOutline();
@@ -809,6 +911,7 @@ export class EditorControls {
   clearPartSelection() {
     this._restorePartHighlight();
     this.partInspector.selectedPart = null;
+  this.partInspector.selectedParts.clear();
   }
 
   _restorePartHighlight() {
@@ -821,6 +924,92 @@ export class EditorControls {
       delete m.userData._origEmissive;
       delete m.userData._origEmissiveIntensity;
       m.needsUpdate = true;
+    }
+  }
+
+  // ===== 멀티 파트 유틸/그룹 기즈모 =====
+  getActivePartSet() {
+    if (this.partInspector.groupEnabled && this.partInspector.selectedParts.size > 0) {
+      return Array.from(this.partInspector.selectedParts);
+    }
+    return this.partInspector.selectedPart ? [this.partInspector.selectedPart] : [];
+  }
+
+  selectAllChildParts() {
+    const base = this.partInspector.selectedPart;
+    if (!base) return 0;
+    const set = this.partInspector.selectedParts;
+    const added = [];
+    const root = base.parent || base;
+    root.traverse((child) => {
+      if (child.isMesh) { set.add(child); added.push(child); }
+    });
+    // 아웃라인 갱신
+    this._updatePartOutline();
+    return added.length;
+  }
+
+  clearAllPartSelections() {
+    this.partInspector.selectedParts.clear();
+    this._updatePartOutline();
+  }
+
+  isPartGroupGizmoEnabled() { return !!this.partInspector.groupEnabled; }
+  setPartGroupGizmoEnabled(enabled) {
+    this.partInspector.groupEnabled = !!enabled;
+    if (!enabled) {
+      this._detachPartGroup();
+      if (this.partInspector.selectedPart) this.setPartGizmoEnabled(true);
+    } else {
+      this._ensurePartGroup();
+      this.setPartGizmoEnabled(true);
+    }
+    this._updatePartOutline();
+  }
+
+  getPartGroupPivot() { return this.partInspector.groupPivot; }
+  setPartGroupPivot(mode) {
+    if (!['center','first','last'].includes(mode)) return;
+    this.partInspector.groupPivot = mode;
+    if (this.partInspector.groupEnabled) this._ensurePartGroup(true);
+  }
+
+  _ensurePartGroup(recenter = false) {
+    const parts = this.getActivePartSet();
+    if (parts.length === 0) return;
+    // 그룹 생성/갱신
+    if (!this.partInspector.group) {
+      this.partInspector.group = new THREE.Group();
+      this.partInspector.group.name = 'PartGroupPivot';
+      this.partInspector.group.userData.isSystemObject = true;
+      this.scene.add(this.partInspector.group);
+    }
+    const g = this.partInspector.group;
+    // 피벗 위치 계산
+    let pivot = new THREE.Vector3();
+    if (this.partInspector.groupPivot === 'first') {
+      pivot.copy(parts[0].getWorldPosition(new THREE.Vector3()));
+    } else if (this.partInspector.groupPivot === 'last') {
+      pivot.copy(parts[parts.length-1].getWorldPosition(new THREE.Vector3()));
+    } else {
+      // center of selection bounds
+      const box = new THREE.Box3();
+      for (const m of parts) box.expandByObject(m);
+      box.getCenter(pivot);
+    }
+    // 그룹을 피벗 위치로 이동
+    g.position.copy(pivot);
+    // 그룹에 파트들을 부모 유지한 채로 기즈모만 그룹에 붙이기 위해
+    // TransformControls는 대상 Object의 transform을 직접 변경함 → 그룹에 attach 시 그룹의 transform이 변경
+    // 여기서는 그룹을 기즈모 타겟으로만 사용하고, 드래그 시 파트들에 델타를 분배하는 접근이 이상적이지만
+    // 간단화를 위해 그룹 위치만 피벗으로 두고, 실제 드래그로 인한 변경은 파트 자체에서 발생(Three의 기본 동작)하게 둡니다.
+  }
+
+  _detachPartGroup() {
+    if (this.partInspector.group) {
+      try { this._partTransformControls?.detach?.(); } catch {}
+      try { this.scene.remove(this.partInspector.group); } catch {}
+      this.partInspector.group = null;
     }
   }
 

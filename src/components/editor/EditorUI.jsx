@@ -18,6 +18,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     objects,
     walls,
     savedObjects,
+  selectedIds,
+  setSelectedIds,
+  setParent,
+  reorderSiblings,
     setTransformMode,
     addWall,
     addObject,
@@ -662,6 +666,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
           // SceneHierarchy 관련 props
           objects={objects}
           walls={walls}
+          selectedIds={selectedIds}
+          setSelectedIds={setSelectedIds}
+          setParent={setParent}
+          reorderSiblings={reorderSiblings}
           selectedObject={selectedObject}
           onObjectVisibilityToggle={handleObjectVisibilityToggle}
           onObjectFreezeToggle={handleObjectFreezeToggle}

@@ -21,14 +21,14 @@ export class GLBMeshManager {
    * 썸네일 생성용 렌더러 초기화
    */
   initThumbnailRenderer() {
+    // 기존 렌더러가 있다면 재사용 또는 정리
+    if (this.thumbnailRenderer && this.thumbnailRenderer.renderer) {
+      try { this.thumbnailRenderer.renderer.dispose(); } catch {}
+    }
     this.thumbnailRenderer = {
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(75, 1, 0.1, 1000),
-      renderer: new THREE.WebGLRenderer({ 
-        antialias: true, 
-        alpha: true,
-        preserveDrawingBuffer: true 
-      })
+      renderer: new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: 'low-power' })
     };
     
     const { scene, camera, renderer } = this.thumbnailRenderer;
@@ -319,28 +319,13 @@ export class GLBMeshManager {
    * @returns {string} 썸네일 데이터 URL
    */
   generateThumbnailFromObject(object, size = 128) {
-    // 임시 씬과 카메라 생성
-    const tempScene = new THREE.Scene();
-    const tempCamera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-    const tempRenderer = new THREE.WebGLRenderer({ 
-      antialias: true, 
-      alpha: true,
-      preserveDrawingBuffer: true 
-    });
-    
-    tempRenderer.setSize(size, size);
-    tempRenderer.setClearColor(0x2a2a2a, 1); // 어두운 배경
-    
-    // 임시 컨테이너에 렌더러 추가 (보이지 않게)
-    const tempContainer = document.createElement('div');
-    tempContainer.style.position = 'absolute';
-    tempContainer.style.left = '-9999px';
-    tempContainer.style.top = '-9999px';
-    document.body.appendChild(tempContainer);
-    tempContainer.appendChild(tempRenderer.domElement);
-
-    // 조명 설정
-    this.setupLighting(tempScene);
+  // 썸네일 전용 리소스 재사용
+  const { scene: tempScene, camera: tempCamera, renderer: tempRenderer } = this.thumbnailRenderer;
+  tempRenderer.setSize(size, size);
+  tempRenderer.setClearColor(0x2a2a2a, 1);
+  // 씬 초기화
+  while (tempScene.children.length) tempScene.remove(tempScene.children[0]);
+  this.setupLighting(tempScene);
 
     // 오브젝트 안전하게 복제 및 씬에 추가
     let clonedObject;
@@ -381,10 +366,8 @@ export class GLBMeshManager {
     // 데이터 URL로 변환
     const dataURL = tempRenderer.domElement.toDataURL('image/png');
 
-    // 정리
-    document.body.removeChild(tempContainer);
-    tempRenderer.dispose();
-    tempScene.clear();
+  // 정리: 씬 비우지만 컨텍스트는 유지 (재사용)
+  tempScene.clear();
 
     return dataURL;
   }

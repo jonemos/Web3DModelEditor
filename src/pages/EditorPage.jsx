@@ -2,7 +2,6 @@ import { useNavigate } from 'react-router-dom'
 import { useState, useRef, useEffect } from 'react'
 import PlainEditorCanvas from '../components/editor/PlainEditorCanvas'
 import EditorUI from '../components/editor/EditorUI'
-import HierarchyTreePanel from '../components/editor/panels/HierarchyTreePanel.jsx'
 import MenuBar from '../components/editor/MenuBar'
 import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
@@ -590,29 +589,7 @@ function EditorPage() {
     <div className="editor-page">
       <MenuBar onMenuAction={handleMenuAction} />
       <div className="editor-container">
-        {/* 좌측 트리 패널 */}
-        <div style={{ width: 280, flexShrink: 0, borderRight: '1px solid #333', overflow: 'auto' }}>
-          <HierarchyTreePanel
-            objects={objects}
-            selectedIds={selectedIds}
-            onSelect={(id) => {
-              setSelectedIds([id]);
-              // Three 씬의 객체도 선택
-              const obj = editorControlsRef.current?.findObjectById(id);
-              if (obj) editorControlsRef.current?.selectObject?.(obj);
-            }}
-            onReparent={(childId, newParentId) => {
-              // 배치로 묶고 리패런트
-              const api = useEditorStore.getState();
-              api.beginBatch?.();
-              setParent(childId, newParentId);
-              api.endBatch?.();
-            }}
-            onReorder={(parentId, orderedIds) => {
-              reorderSiblings(parentId, orderedIds);
-            }}
-          />
-        </div>
+  {/* 좌측 트리 패널 제거: 인스펙터 상단으로 이동됨 */}
         <PlainEditorCanvas 
           onEditorControlsReady={setEditorControls}
           onPostProcessingReady={setPostProcessingManager}

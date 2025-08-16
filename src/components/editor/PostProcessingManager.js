@@ -73,7 +73,8 @@ export class PostProcessingManager {
         edgeThickness: 1.0,
         pulsePeriod: 0,
         visibleEdgeColor: 0xffffff,
-        hiddenEdgeColor: 0x190a05
+  hiddenEdgeColor: 0x190a05,
+  hiddenEdgeAlpha: 1.0 // 0..1, 배경색과의 혼합 비율로 의사 알파 구현
       },
       colorCorrection: {
         enabled: false,
@@ -123,7 +124,17 @@ export class PostProcessingManager {
    * 이펙트 컴포저 초기화
    */
   initializeComposer() {
-    // 컴포저 생성
+    // 기존 컴포저가 있으면 정리
+    if (this.composer) {
+      try {
+        // 기존 패스들 dispose
+        for (const p of this.composer.passes || []) {
+          try { p.dispose && p.dispose(); } catch {}
+        }
+        this.composer.dispose();
+      } catch {}
+    }
+    // 새 컴포저 생성
     this.composer = new EffectComposer(this.renderer);
     
     // 기본 렌더 패스
@@ -141,7 +152,14 @@ export class PostProcessingManager {
    * 컴포저 업데이트 (활성 효과들로 재구성)
    */
   updateComposer() {
-    // 기존 패스들 제거 (렌더 패스 제외)
+    // 기존 패스들 제거 전 dispose (렌더 패스 제외)
+    try {
+      const toDispose = (this.composer.passes || []).filter(p => p !== this.renderPass);
+      for (const p of toDispose) {
+        try { p.dispose && p.dispose(); } catch {}
+      }
+    } catch {}
+    // 렌더 패스만 유지
     this.composer.passes = [this.renderPass];
     this.activeEffects.clear();
     
@@ -258,12 +276,26 @@ export class PostProcessingManager {
    * FXAA 안티앨리어싱 추가
    */
   addFXAAEffect() {
+    // Windows/ANGLE 환경에서 FXAA 셰이더가 경고를 발생시키는 것을 방지하기 위해
+    // 동일 토글로 SMAA를 적용합니다. (품질도 대체로 더 우수)
+    // 필요 시 진짜 FXAA로 강제 전환할 수 있게 분기 지점만 남겨둡니다.
+    const forceFXAA = false; // true로 바꾸면 순정 FXAA 사용
+    if (!forceFXAA) {
+      const pixelRatio = this.renderer.getPixelRatio();
+      const smaaPass = new SMAAPass(
+        Math.max(1, Math.floor(window.innerWidth * pixelRatio)),
+        Math.max(1, Math.floor(window.innerHeight * pixelRatio))
+      );
+      this.composer.addPass(smaaPass);
+      this.activeEffects.set('fxaa', smaaPass);
+      return;
+    }
+
+    // 순정 FXAA 경로 (경고가 발생할 수 있음)
     const fxaaPass = new ShaderPass(FXAAShader);
     const pixelRatio = this.renderer.getPixelRatio();
-    
     fxaaPass.material.uniforms['resolution'].value.x = 1 / (window.innerWidth * pixelRatio);
     fxaaPass.material.uniforms['resolution'].value.y = 1 / (window.innerHeight * pixelRatio);
-    
     this.composer.addPass(fxaaPass);
     this.activeEffects.set('fxaa', fxaaPass);
   }
@@ -296,7 +328,15 @@ export class PostProcessingManager {
     outlinePass.edgeThickness = settings.edgeThickness;
     outlinePass.pulsePeriod = settings.pulsePeriod;
     outlinePass.visibleEdgeColor.setHex(settings.visibleEdgeColor);
-    outlinePass.hiddenEdgeColor.setHex(settings.hiddenEdgeColor);
+    // 숨김 색상은 배경색과 혼합하여 의사 알파 적용
+    try {
+      const bg = this.scene.background instanceof THREE.Color ? this.scene.background : new THREE.Color(0x000000);
+      const c = new THREE.Color(settings.hiddenEdgeColor);
+      const mixed = c.clone().lerp(bg, Math.max(0, Math.min(1, 1 - (settings.hiddenEdgeAlpha ?? 1.0))));
+      outlinePass.hiddenEdgeColor.copy(mixed);
+    } catch {
+      outlinePass.hiddenEdgeColor.setHex(settings.hiddenEdgeColor);
+    }
     
     this.composer.addPass(outlinePass);
     this.activeEffects.set('outline', outlinePass);
@@ -425,10 +465,9 @@ export class PostProcessingManager {
    * 효과 활성화/비활성화
    */
   setEffectEnabled(effectName, enabled) {
-    if (this.effectSettings[effectName]) {
-      this.effectSettings[effectName].enabled = enabled;
-      this.updateComposer();
-    }
+  if (!(effectName in this.effectSettings)) return;
+  this.effectSettings[effectName].enabled = enabled;
+  this.updateComposer();
   }
 
   /**
@@ -458,12 +497,22 @@ export class PostProcessingManager {
   handleResize(width, height) {
     this.composer.setSize(width, height);
     
-    // FXAA 해상도 업데이트
-    const fxaaPass = this.activeEffects.get('fxaa');
-    if (fxaaPass) {
+    // AA 패스 해상도 업데이트 (SMAA 또는 FXAA 모두 지원)
+    const aaPass = this.activeEffects.get('fxaa');
+    if (aaPass) {
       const pixelRatio = this.renderer.getPixelRatio();
-      fxaaPass.material.uniforms['resolution'].value.x = 1 / (width * pixelRatio);
-      fxaaPass.material.uniforms['resolution'].value.y = 1 / (height * pixelRatio);
+      // SMAA 경로: setSize 제공
+      if (typeof aaPass.setSize === 'function') {
+        aaPass.setSize(
+          Math.max(1, Math.floor(width * pixelRatio)),
+          Math.max(1, Math.floor(height * pixelRatio))
+        );
+      }
+      // FXAA 경로: resolution 유니폼 갱신
+      else if (aaPass.material?.uniforms?.resolution) {
+        aaPass.material.uniforms['resolution'].value.x = 1 / (width * pixelRatio);
+        aaPass.material.uniforms['resolution'].value.y = 1 / (height * pixelRatio);
+      }
     }
   }
 
@@ -496,11 +545,19 @@ export class PostProcessingManager {
    * 정리
    */
   dispose() {
-    if (this.composer) {
-      this.composer.dispose();
-    }
-    
-    this.activeEffects.clear();
+    try {
+      // 활성 효과 dispose
+      for (const p of this.activeEffects.values()) {
+        try { p.dispose && p.dispose(); } catch {}
+      }
+      this.activeEffects.clear();
+      if (this.composer) {
+        for (const p of this.composer.passes || []) {
+          try { p.dispose && p.dispose(); } catch {}
+        }
+        this.composer.dispose();
+      }
+    } catch {}
     this.composer = null;
     this.renderPass = null;
     this.outputPass = null;

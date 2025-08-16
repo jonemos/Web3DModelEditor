@@ -13,7 +13,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
   const dropIndicatorRef = useRef(null); // 드롭 위치 인디케이터(링)
-  const dropFadeRef = useRef({ animId: null, t: 0, target: 0, start: 0, startTime: 0, duration: 220 });
+  const dropFadeRef = useRef({ animId: null, t: 0, target: 0, start: 0, startTime: 0, duration: 220, easing: 'easeInOutQuad', maxOpacity: 0.6 });
   
   const { 
     objects,
@@ -26,7 +26,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     if (!mountRef.current) return;
 
     // Scene setup
-    const scene = new THREE.Scene();
+  const scene = new THREE.Scene();
+  // gizmo용 오버레이 씬 (postprocess 비적용)
+  const gizmoScene = new THREE.Scene();
     scene.background = new THREE.Color(0x2a2a2a); // 기본 배경 (회색)
 
     // Camera setup
@@ -40,8 +42,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     camera.lookAt(0, 0, 0);
 
     // Renderer setup
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     
@@ -51,6 +54,27 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     
     // Mount the renderer
     mountRef.current.appendChild(renderer.domElement);
+
+    // WebGL context lost/restore 처리
+    const onContextLost = (e) => {
+      e.preventDefault();
+      // 렌더 루프는 requestAnimationFrame이 재귀라 자동 중단되지 않음 → 플래그로 스킵 가능
+      console.warn('WebGL context lost');
+    };
+    const onContextRestored = () => {
+      try {
+        console.warn('WebGL context restored');
+        // 렌더러 상태 재설정
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        // 포스트프로세싱 재초기화
+        if (postProcessingRef.current) {
+          postProcessingRef.current.initializeComposer();
+          postProcessingRef.current.handleResize(window.innerWidth, window.innerHeight);
+        }
+      } catch {}
+    };
+    renderer.domElement.addEventListener('webglcontextlost', onContextLost, false);
+    renderer.domElement.addEventListener('webglcontextrestored', onContextRestored, false);
 
     // 캔버스 우클릭 이벤트 리스너 추가
     const handleCanvasContextMenu = (e) => {
@@ -72,7 +96,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     };
 
     // 에디터 컨트롤 초기화
-    const editorControls = new EditorControls(scene, camera, renderer, useEditorStore, handleCameraChange);
+  const editorControls = new EditorControls(scene, camera, renderer, useEditorStore, handleCameraChange);
+  editorControls.gizmoScene = gizmoScene;
     editorControlsRef.current = editorControls;
     
     // 포스트프로세싱 매니저 초기화
@@ -80,8 +105,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     postProcessingRef.current = postProcessingManager;
   // 파트 아웃라인 동기화를 위해 EditorControls에 주입
   try { editorControls.setPostProcessingManager(postProcessingManager); } catch {}
+  try { useEditorStore.getState().setPostProcessingManager(postProcessingManager); } catch {}
+  try { useEditorStore.getState().estimateVRAMUsage(); } catch {}
     
-    // EditorControls가 준비되었음을 부모 컴포넌트에 알림
+  // EditorControls가 준비되었음을 부모 컴포넌트에 알림
     if (onEditorControlsReady) {
       onEditorControlsReady(editorControls);
     }
@@ -91,7 +118,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       onPostProcessingReady(postProcessingManager);
     }
 
-    // Add lights
+  // gizmo 씬은 라이트 불필요(기즈모는 기본재질)
+  editorControls.objectSelector.setGizmoScene?.(gizmoScene);
+
+  // Add lights
     const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     scene.add(ambientLight);
 
@@ -161,8 +191,22 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         if (f && f.duration > 0 && (f.t < 1 || ring.material.opacity !== f.target)) {
           const now = performance.now();
           const elapsed = Math.min(1, (now - f.startTime) / f.duration);
-          // 이징: easeInOutQuad
-          const ease = elapsed < 0.5 ? 2 * elapsed * elapsed : -1 + (4 - 2 * elapsed) * elapsed;
+          // 이징 선택
+          let ease;
+          switch (f.easing) {
+            case 'linear':
+              ease = elapsed;
+              break;
+            case 'easeOutCubic':
+              ease = 1 - Math.pow(1 - elapsed, 3);
+              break;
+            case 'easeInCubic':
+              ease = Math.pow(elapsed, 3);
+              break;
+            case 'easeInOutQuad':
+            default:
+              ease = elapsed < 0.5 ? 2 * elapsed * elapsed : -1 + (4 - 2 * elapsed) * elapsed;
+          }
           const nextOpacity = f.start + (f.target - f.start) * ease;
           if (ring.material) ring.material.opacity = Math.max(0, Math.min(1, nextOpacity));
           f.t = elapsed;
@@ -183,6 +227,12 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       } else {
         renderer.render(scene, currentCamera);
       }
+  // 렌더 전후로도 기즈모 라인 강제 숨김 (안전망)
+  try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
+      // postprocess 이후 gizmo 오버레이 씬 렌더 (깊이 무시, 색상만 덮어씀)
+      renderer.clearDepth();
+      renderer.render(gizmoScene, currentCamera);
+  try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
     };
     animate();
 
@@ -194,9 +244,12 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       if (!ring) return;
       const f = dropFadeRef.current;
       f.start = ring.material?.opacity ?? 0;
-      f.target = to;
+      const { dropIndicator } = useEditorStore.getState();
+      f.target = Math.min(to, dropIndicator?.maxOpacity ?? 0.6);
       f.t = 0;
       f.duration = duration;
+      f.easing = dropIndicator?.easing ?? 'easeInOutQuad';
+      f.maxOpacity = dropIndicator?.maxOpacity ?? 0.6;
       f.startTime = performance.now();
       if (to > 0) ring.visible = true;
     };
@@ -250,8 +303,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
           const dist = camPos.distanceTo(point);
           const scale = Math.max(0.5, Math.min(4, dist * 0.06));
           dropIndicatorRef.current.scale.setScalar(scale);
-          // 페이드 인 목표
-          setDropFade(0.6, 200);
+          // 페이드 인 목표 (스토어 설정 사용)
+          const di = useEditorStore.getState().dropIndicator;
+          setDropFade(di?.maxOpacity ?? 0.6, di?.inMs ?? 200);
         } else {
           // 바닥 평면으로 대체
           const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
@@ -275,7 +329,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             const dist = camPos.distanceTo(intersection);
             const scale = Math.max(0.5, Math.min(4, dist * 0.06));
             dropIndicatorRef.current.scale.setScalar(scale);
-    setDropFade(0.6, 200);
+            const di = useEditorStore.getState().dropIndicator;
+            setDropFade(di?.maxOpacity ?? 0.6, di?.inMs ?? 200);
           }
         }
       } catch {}
@@ -284,7 +339,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     canvas.addEventListener('drop', (event) => {
       event.preventDefault();
       // 드롭 시 인디케이터 숨김
-  if (dropIndicatorRef.current) setDropFade(0.0, 180);
+      if (dropIndicatorRef.current) {
+        const di = useEditorStore.getState().dropIndicator;
+        setDropFade(0.0, di?.outMs ?? 180);
+      }
       
       try {
         const data = event.dataTransfer.getData('text/plain');
@@ -788,24 +846,35 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     });
 
     canvas.addEventListener('dragleave', () => {
-      if (dropIndicatorRef.current) setDropFade(0.0, 220);
+      if (dropIndicatorRef.current) {
+        const di = useEditorStore.getState().dropIndicator;
+        setDropFade(0.0, di?.outMs ?? 220);
+      }
     });
 
     // Handle resize
     const handleResize = () => {
+      // Safe mode 픽셀 비율 적용
+      try {
+        const st = useEditorStore.getState();
+        const pr = st.safeMode?.enabled ? (st.safeMode.pixelRatio || 1.0) : Math.min(2, window.devicePixelRatio || 1);
+        renderer.setPixelRatio(pr);
+      } catch {}
       // EditorControls의 리사이즈 함수 사용 (카메라 타입에 따른 적절한 처리)
       if (editorControlsRef.current) {
         editorControlsRef.current.onWindowResize();
       } else {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
+        renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
         renderer.setSize(window.innerWidth, window.innerHeight);
       }
       
-      // 포스트프로세싱 리사이즈
+  // 포스트프로세싱 리사이즈
       if (postProcessingRef.current) {
         postProcessingRef.current.handleResize(window.innerWidth, window.innerHeight);
       }
+      try { useEditorStore.getState().estimateVRAMUsage(); } catch {}
     };
     window.addEventListener('resize', handleResize);
 
@@ -814,6 +883,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       window.removeEventListener('resize', handleResize);
       if (renderer.domElement) {
         renderer.domElement.removeEventListener('contextmenu', handleCanvasContextMenu);
+        renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
+        renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
       }
       if (editorControlsRef.current) {
         editorControlsRef.current.dispose();

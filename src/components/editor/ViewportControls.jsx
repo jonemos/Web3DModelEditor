@@ -7,14 +7,10 @@ function ViewportControls({ editorControls }) {
     isGridSnap,
     isGridVisible,
     gizmoSpace,
-    isMagnetEnabled,
-    showMagnetRays,
     toggleWireframe, 
     toggleGridSnap,
     toggleGridVisible,
     toggleGizmoSpace,
-    toggleMagnet,
-    toggleMagnetRays
   } = useEditorStore()
 
   const handleWireframeToggle = () => {
@@ -53,23 +49,7 @@ function ViewportControls({ editorControls }) {
     }
   }
 
-  const handleMagnetToggle = () => {
-    toggleMagnet()
-    
-    // EditorControls를 통해 자석 기능 업데이트
-    if (editorControls) {
-      editorControls.updateMagnet();
-    }
-  }
-
-  const handleMagnetRaysToggle = () => {
-    toggleMagnetRays()
-    
-    // EditorControls를 통해 레이 표시 업데이트
-    if (editorControls) {
-      editorControls.updateMagnetRays();
-    }
-  }
+  // 자석 기능 제거됨
 
   return (
     <div className="viewport-controls">
@@ -143,36 +123,7 @@ function ViewportControls({ editorControls }) {
         </svg>
       </button>
 
-      <button 
-        className={`viewport-control-btn ${isMagnetEnabled ? 'active' : ''}`}
-        onClick={handleMagnetToggle}
-        title="자석 모드 (메쉬 표면에 스냅)"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M6 15l6-6 6 6"/>
-          <path d="M6 8h12"/>
-          <circle cx="12" cy="17" r="2"/>
-          <path d="M8 12L12 8l4 4"/>
-        </svg>
-      </button>
-
-      <button 
-        className={`viewport-control-btn ${showMagnetRays ? 'active' : ''}`}
-        onClick={handleMagnetRaysToggle}
-        title="자석 레이 표시"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M12 1v6"/>
-          <path d="M12 17v6"/>
-          <path d="M4.22 4.22l4.24 4.24"/>
-          <path d="M15.54 15.54l4.24 4.24"/>
-          <path d="M1 12h6"/>
-          <path d="M17 12h6"/>
-          <path d="M4.22 19.78l4.24-4.24"/>
-          <path d="M15.54 8.46l4.24-4.24"/>
-        </svg>
-      </button>
+  {/* 자석 기능 UI 제거됨 */}
     </div>
   )
 }

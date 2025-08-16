@@ -67,19 +67,7 @@ export class KeyboardController {
       category: 'transform'
     });
 
-    this.actions.transform.set('KeyV', {
-      name: 'Toggle Magnet',
-      description: '자석 기능 토글',
-      action: null,
-      category: 'transform'
-    });
-
-    this.actions.transform.set('KeyC', {
-      name: 'Toggle Magnet Rays',
-      description: '자석 레이 표시',
-      action: null,
-      category: 'transform'
-    });
+  // 자석 관련 단축키 제거됨
 
     // 쿼터니언 회전 관련 키
     this.actions.rotation.set('KeyJ', {
@@ -419,13 +407,7 @@ export class KeyboardController {
       this.actions.transform.get('KeyX').action = actions.toggleSnap;
     }
     
-    if (actions.toggleMagnet) {
-      this.actions.transform.get('KeyV').action = actions.toggleMagnet;
-    }
-    
-    if (actions.toggleMagnetRays) {
-      this.actions.transform.get('KeyC').action = actions.toggleMagnetRays;
-    }
+  // 자석 관련 단축키 제거됨
   }
 
   /**

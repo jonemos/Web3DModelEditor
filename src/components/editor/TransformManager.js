@@ -16,8 +16,7 @@ export class TransformManager {
       space: 'world',           // world, local
       snapEnabled: false,       // 그리드 스냅 활성화
       gridSize: 1.0,           // 그리드 크기
-      magnetEnabled: false,     // 자석 기능 활성화
-      magnetRaysVisible: false  // 자석 레이 표시
+  // 자석 기능 제거됨
     };
     
     // KeyboardController에 액션 등록
@@ -38,8 +37,7 @@ export class TransformManager {
       setMode: (mode) => this.setTransformMode(mode),
       toggleSpace: () => this.toggleSpace(),
       toggleSnap: () => this.toggleGridSnap(),
-      toggleMagnet: () => this.toggleMagnet(),
-      toggleMagnetRays: () => this.toggleMagnetRays()
+  // 자석 기능 제거됨
     });
 
     // 쿼터니언 회전 액션 등록
@@ -153,36 +151,7 @@ export class TransformManager {
   /**
    * 자석 기능 토글
    */
-  toggleMagnet() {
-    if (!this.objectSelector) {
-      return false;
-    }
-
-    this.state.magnetEnabled = !this.state.magnetEnabled;
-    this.objectSelector.isMagnetEnabled = this.state.magnetEnabled;
-    
-    this.logStateChange('Magnet', !this.state.magnetEnabled, this.state.magnetEnabled);
-    return true;
-  }
-
-  /**
-   * 자석 레이 표시 토글
-   */
-  toggleMagnetRays() {
-    if (!this.objectSelector) {
-      return false;
-    }
-
-    this.state.magnetRaysVisible = !this.state.magnetRaysVisible;
-    this.objectSelector.showMagnetRays = this.state.magnetRaysVisible;
-    
-    if (!this.state.magnetRaysVisible && this.objectSelector.clearRayHelpers) {
-      this.objectSelector.clearRayHelpers();
-    }
-
-    this.logStateChange('Magnet rays', !this.state.magnetRaysVisible, this.state.magnetRaysVisible);
-    return true;
-  }
+  // 자석 기능 제거됨
 
   /**
    * 모든 오브젝트 선택 해제
@@ -466,13 +435,7 @@ export class TransformManager {
       this.setGridSize(settings.gridSize);
     }
     
-    if (settings.magnetEnabled !== undefined && settings.magnetEnabled !== this.state.magnetEnabled) {
-      this.toggleMagnet();
-    }
-    
-    if (settings.magnetRaysVisible !== undefined && settings.magnetRaysVisible !== this.state.magnetRaysVisible) {
-      this.toggleMagnetRays();
-    }
+  // 자석 기능 제거됨
   }
 
   // ======================
