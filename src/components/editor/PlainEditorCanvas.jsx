@@ -4,12 +4,15 @@ import { getGLTFLoader, setKTX2Renderer } from '../../utils/gltfLoaderFactory.js
 import { useEditorStore } from '../../store/editorStore';
 import { runSmokeTest } from '../../utils/smokeTest';
 import { EditorControls } from './EditorControls.js';
+import { BlenderControls } from './BlenderControls.js';
 import { PostProcessingManager } from './PostProcessingManager.js';
 import { getGLBMeshManager } from '../../utils/GLBMeshManager';
+import { loadEnvironmentSettings } from '../../utils/viewGizmoConfig';
 
 function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onContextMenu }) {
   const mountRef = useRef(null);
   const editorControlsRef = useRef(null);
+  const blenderControlsRef = useRef(null);
   const postProcessingRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
@@ -26,8 +29,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const isPostProcessingEnabledRef = useRef(useEditorStore.getState().isPostProcessingEnabled);
   // 구독: 포스트프로세싱 토글 상태 변화 추적
   useEffect(() => {
-    const unsub = useEditorStore.subscribe((state) => state.isPostProcessingEnabled, (val) => {
-      isPostProcessingEnabledRef.current = val;
+    // subscribeWithSelector 미사용 환경에서도 동작하도록 전체 상태 구독 후 변경 시만 반영
+    const unsub = useEditorStore.subscribe((state, prev) => {
+      if (state.isPostProcessingEnabled !== prev.isPostProcessingEnabled) {
+        isPostProcessingEnabledRef.current = state.isPostProcessingEnabled;
+      }
     });
     return () => unsub();
   }, []);
@@ -53,7 +59,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
 
     // Renderer setup
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  try {
+    const st = useEditorStore.getState();
+    const initialPR = st.safeMode?.enabled ? (st.safeMode.pixelRatio || 1.0) : Math.min(2, window.devicePixelRatio || 1);
+    renderer.setPixelRatio(initialPR);
+  } catch {
+    renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  }
   renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -106,6 +118,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     const handleCameraChange = (newCamera) => {
       // Camera changed
       setScene(scene, newCamera, renderer);
+      try { postProcessingRef.current?.setCamera?.(newCamera); } catch {}
+      try { blenderControlsRef.current?.setCamera?.(newCamera); } catch {}
     };
 
     // 에디터 컨트롤 초기화
@@ -117,10 +131,55 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   window.runSmokeTest = () => runSmokeTest(editorControls, useEditorStore);
   // 저장된 설정값을 즉시 반영
   try { editorControls.applyInitialViewState?.() } catch {}
+    // BlenderControls 사용 시 초기화
+    try {
+      const useBlender = !!useEditorStore.getState().useBlenderControls;
+      if (useBlender) {
+        const bc = new BlenderControls(editorControls.camera, renderer.domElement);
+        bc.setScene(scene);
+        const st = useEditorStore.getState();
+        bc.setSpeeds({ rotate: st.cameraOrbitSpeed * 0.01, pan: st.cameraPanSpeed * 0.02, zoom: st.cameraZoomSpeed });
+        blenderControlsRef.current = bc;
+        try { window.__blenderControls = bc } catch {}
+        // 구독: 카메라 속도 설정 변경 시 즉시 반영
+        try {
+          const unsubSpeeds = useEditorStore.subscribe((state, prev) => {
+            if (
+              state.cameraPanSpeed !== prev.cameraPanSpeed ||
+              state.cameraOrbitSpeed !== prev.cameraOrbitSpeed ||
+              state.cameraZoomSpeed !== prev.cameraZoomSpeed
+            ) {
+              bc.setSpeeds({
+                rotate: state.cameraOrbitSpeed * 0.01,
+                pan: state.cameraPanSpeed * 0.02,
+                zoom: state.cameraZoomSpeed
+              });
+            }
+          });
+          // unmount 시 해제
+          const prevDispose = editorControls.dispose?.bind(editorControls);
+          editorControls.dispose = () => { try { unsubSpeeds?.(); } catch {} prevDispose?.(); };
+        } catch {}
+      }
+    } catch {}
     
     // 포스트프로세싱 매니저 초기화
     const postProcessingManager = new PostProcessingManager(scene, camera, renderer);
     postProcessingRef.current = postProcessingManager;
+  try { postProcessingManager.setCamera(camera); } catch {}
+  // 환경의 톤매핑/프리셋 초기값을 매니저에 반영
+  try {
+    const envCfg = loadEnvironmentSettings?.();
+    if (envCfg) {
+      if (envCfg.toneMapping) {
+        postProcessingManager.updateEffectSettings('toneMapping', { ...envCfg.toneMapping });
+        postProcessingManager.setEffectEnabled('toneMapping', envCfg.toneMapping.enabled !== false);
+      }
+      if (envCfg.postProcessing?.preset) {
+        postProcessingManager.applyPreset?.(envCfg.postProcessing.preset);
+      }
+    }
+  } catch {}
   // 파트 아웃라인 동기화를 위해 EditorControls에 주입
   try { editorControls.setPostProcessingManager(postProcessingManager); } catch {}
   try { useEditorStore.getState().setPostProcessingManager(postProcessingManager); } catch {}
@@ -143,12 +202,26 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
     scene.add(ambientLight);
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+  const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(50, 50, 50);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 1024;
     directionalLight.shadow.mapSize.height = 1024;
     scene.add(directionalLight);
+
+  // Bloom/SSAO 시각 확인을 위한 보조 광원과 바닥면
+  const point = new THREE.PointLight(0xffaa88, 1.0, 100);
+  point.position.set(0, 6, 6);
+  scene.add(point);
+  const groundMat = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.9, metalness: 0.0 });
+  const groundGeo = new THREE.PlaneGeometry(200, 200);
+  const ground = new THREE.Mesh(groundGeo, groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  ground.position.y = 0;
+  ground.name = 'Ground';
+  ground.userData.isSystemObject = true; // 사용자 삭제 방지
+  scene.add(ground);
 
     // Test cube
     const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
@@ -234,13 +307,18 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         }
       }
 
-      // 렌더링 (포스트프로세싱 사용 여부)
+  // BlenderControls 업데이트
+  try { blenderControlsRef.current?.update?.() } catch {}
+
+  // 렌더링 (포스트프로세싱 사용 여부)
       renderer.clear();
       // EditorControls의 현재 카메라 사용 (Perspective/Orthographic 토글 대응)
       const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
       
       const usePP = isPostProcessingEnabledRef.current && !!postProcessingRef.current;
       if (usePP) {
+        // EditorControls가 보유한 최신 카메라를 컴포저에 반영
+        try { postProcessingRef.current.setCamera(currentCamera); } catch {}
         postProcessingRef.current.render();
       } else {
         renderer.render(scene, currentCamera);
@@ -898,15 +976,14 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
 
     // Cleanup
     return () => {
-      window.removeEventListener('resize', handleResize);
+  window.removeEventListener('resize', handleResize);
       if (renderer.domElement) {
         renderer.domElement.removeEventListener('contextmenu', handleCanvasContextMenu);
         renderer.domElement.removeEventListener('webglcontextlost', onContextLost);
         renderer.domElement.removeEventListener('webglcontextrestored', onContextRestored);
       }
-      if (editorControlsRef.current) {
-        editorControlsRef.current.dispose();
-      }
+  if (editorControlsRef.current) { editorControlsRef.current.dispose(); }
+  if (blenderControlsRef.current) { try { blenderControlsRef.current.dispose(); } catch {} }
       if (postProcessingRef.current) {
         postProcessingRef.current.dispose();
       }

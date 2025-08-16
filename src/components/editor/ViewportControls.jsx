@@ -12,6 +12,9 @@ function ViewportControls({ editorControls }) {
   snapMove,
   snapRotateDeg,
   snapScale,
+  cameraPanSpeed,
+  cameraOrbitSpeed,
+  cameraZoomSpeed,
     toggleWireframe, 
     toggleGridSnap,
     toggleGridVisible,
@@ -20,6 +23,9 @@ function ViewportControls({ editorControls }) {
   setSnapMove,
   setSnapRotateDeg,
   setSnapScale,
+  setCameraPanSpeed,
+  setCameraOrbitSpeed,
+  setCameraZoomSpeed,
   } = useEditorStore()
 
   // 뷰/기즈모 설정 팝오버 열림 상태 (UI 섹션에 영구 저장)
@@ -28,6 +34,10 @@ function ViewportControls({ editorControls }) {
 
   const isPostProcessingEnabled = useEditorStore((s) => s.isPostProcessingEnabled)
   const togglePostProcessingEnabled = useEditorStore((s) => s.togglePostProcessingEnabled)
+  // Safe Mode
+  const safeMode = useEditorStore((s) => s.safeMode)
+  const toggleSafeMode = useEditorStore((s) => s.toggleSafeMode)
+  const setSafeModePixelRatio = useEditorStore((s) => s.setSafeModePixelRatio)
 
   // 미세 디바운스 유틸과 디바운스된 적용 함수들
   const debounce = (fn, ms = 80) => {
@@ -164,6 +174,22 @@ function ViewportControls({ editorControls }) {
             <input type="checkbox" checked={isPostProcessingEnabled} onChange={togglePostProcessingEnabled} />
           </div>
           <div className="row">
+            <label>안전모드</label>
+            <input type="checkbox" checked={!!safeMode?.enabled} onChange={() => toggleSafeMode()} />
+          </div>
+          <div className="row">
+            <label>픽셀 비율</label>
+            <input
+              type="number"
+              min="0.5"
+              max="2"
+              step="0.05"
+              value={Number(safeMode?.pixelRatio ?? 1).toFixed(2)}
+              disabled={!safeMode?.enabled}
+              onChange={(e) => setSafeModePixelRatio(parseFloat(e.target.value))}
+            />
+          </div>
+          <div className="row">
             <label>와이어프레임</label>
             <input type="checkbox" checked={isWireframe} onChange={handleWireframeToggle} />
           </div>
@@ -191,6 +217,18 @@ function ViewportControls({ editorControls }) {
             <label>크기 스냅</label>
             <input type="number" step="0.01" value={snapScale}
               onChange={(e)=> setSnapScale(e.target.value)} />
+          </div>
+          <div className="row"><label style={{opacity:.8}}>카메라 Pan</label>
+            <input type="number" step="1" value={cameraPanSpeed}
+              onChange={(e)=> setCameraPanSpeed(e.target.value)} />
+          </div>
+          <div className="row"><label style={{opacity:.8}}>카메라 Orbit</label>
+            <input type="number" step="1" value={cameraOrbitSpeed}
+              onChange={(e)=> setCameraOrbitSpeed(e.target.value)} />
+          </div>
+          <div className="row"><label style={{opacity:.8}}>카메라 Zoom</label>
+            <input type="number" step="0.05" value={cameraZoomSpeed}
+              onChange={(e)=> setCameraZoomSpeed(e.target.value)} />
           </div>
           <div className="hint">스냅은 그리드 스냅이 활성화되어야 적용됩니다.</div>
         </div>

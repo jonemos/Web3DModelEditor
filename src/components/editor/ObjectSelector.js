@@ -49,17 +49,8 @@ export class ObjectSelector {
     // ObjectSelector initialized
   }
 
-  // 포스트프로세싱 Outline을 쓰지 못할 때(전역 PP off 또는 Outline off) 대체 아웃라인 사용 여부
-  _shouldUseFallbackOutline() {
-    try {
-      const state = this.editorStore.getState();
-      const ppOn = !!state.isPostProcessingEnabled;
-      const outlineOn = !!this.postProcessingManager?.getSettings?.()?.outline?.enabled;
-      return !(ppOn && outlineOn);
-    } catch {
-      return true;
-    }
-  }
+  // Outline 효과 제거: 항상 로컬 대체 아웃라인 경로 사용
+  _shouldUseFallbackOutline() { return true; }
 
   // 매 프레임 강제 숨김: 헬퍼 라인/보조선 차단 + gizmoScene 재부착 보장
   forceHideGizmoLines() {

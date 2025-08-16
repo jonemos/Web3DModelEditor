@@ -1,23 +1,20 @@
 import { create } from 'zustand'
-import { loadViewGizmoConfig, startViewGizmoConfigAutoPersist, loadSettingsSection, startSettingsAutoPersist } from '../utils/viewGizmoConfig'
+import { loadViewGizmoConfig, startViewGizmoConfigAutoPersist, loadSettingsSection, startSettingsAutoPersist, loadEnvironmentSettings, startEnvironmentAutoPersist, saveEnvironmentSettings } from '../utils/viewGizmoConfig'
 import { idbAddCustomMesh, idbDeleteCustomMesh } from '../utils/idb'
 
 // localStorage에서 HDRI 설정 로드하는 헬퍼 함수
-const loadInitialHDRISettings = () => {
+const initialHDRISettings = (() => {
   try {
-    const savedSettings = localStorage.getItem('hdriSettings')
-    if (savedSettings) {
-      const settings = JSON.parse(savedSettings)
-  // restored initial HDRI settings
-      return settings
-    }
-  } catch (error) {
-    console.error('초기 HDRI 설정 로드 실패:', error)
-  }
+    const env = loadEnvironmentSettings()
+    if (env?.hdriSettings) return env.hdriSettings
+  } catch {}
+  // 레거시 폴백: 기존 로컬키 사용(한 번만)
+  try {
+    const saved = localStorage.getItem('hdriSettings')
+    if (saved) return JSON.parse(saved)
+  } catch {}
   return null
-}
-
-const initialHDRISettings = loadInitialHDRISettings()
+})()
 
 // 벡터 정규화 유틸: [x,y,z] 또는 {x,y,z} 또는 null 모두 안전 처리
 const normalizeVec3 = (v, def = { x: 0, y: 0, z: 0 }) => {
@@ -84,6 +81,10 @@ export const useEditorStore = create((set, get) => {
   snapMove: Number.isFinite(vg.snapMove) ? vg.snapMove : 1.0,
   snapRotateDeg: Number.isFinite(vg.snapRotateDeg) ? vg.snapRotateDeg : 15,
   snapScale: Number.isFinite(vg.snapScale) ? vg.snapScale : 0.1,
+  // Camera control sensitivities (hydrate from viewGizmo)
+  cameraPanSpeed: Number.isFinite(vg.cameraPanSpeed) ? vg.cameraPanSpeed : 50,
+  cameraOrbitSpeed: Number.isFinite(vg.cameraOrbitSpeed) ? vg.cameraOrbitSpeed : 100,
+  cameraZoomSpeed: Number.isFinite(vg.cameraZoomSpeed) ? vg.cameraZoomSpeed : 0.3,
   // 자석 기능 제거됨
 
   // HDRI settings - 패널이 닫혀도 유지되는 설정 (localStorage에서 초기값 로드)
@@ -117,12 +118,14 @@ export const useEditorStore = create((set, get) => {
   // 렌더/포스트프로세싱 참조 및 세이프 모드
   postProcessingManager: null,
   // 전역 포스트프로세싱 사용 여부 (기본 비활성)
-  isPostProcessingEnabled: !!vg.isPostProcessingEnabled,
-  safeMode: {
-    enabled: false,
-    pixelRatio: 1.0,
-    notes: 'Disables FXAA/SSAO and forces pixelRatio to 1.0 to reduce VRAM.'
-  },
+  isPostProcessingEnabled: (() => { try { return !!(loadEnvironmentSettings()?.postProcessing?.enabled) } catch {} return !!vg.isPostProcessingEnabled })(),
+  // 간단한 프리셋 키 (효과 조합 프리셋)
+  postProcessingPreset: (() => { try { return loadEnvironmentSettings()?.postProcessing?.preset || 'default' } catch {} return 'default' })(),
+  safeMode: (() => {
+    const env = loadEnvironmentSettings();
+    const base = { enabled: false, pixelRatio: 1.0, notes: 'Disables FXAA/SSAO and forces pixelRatio to 1.0 to reduce VRAM.' };
+    return { ...base, ...(env?.safeMode || {}) };
+  })(),
   vramEstimateMB: 0,
 
   // Assets
@@ -169,6 +172,9 @@ export const useEditorStore = create((set, get) => {
   setSnapMove: (val) => set({ snapMove: Math.max(0.001, Math.min(1000, Number(val) || 1)) }),
   setSnapRotateDeg: (deg) => set({ snapRotateDeg: Math.max(0.1, Math.min(360, Number(deg) || 15)) }),
   setSnapScale: (val) => set({ snapScale: Math.max(0.001, Math.min(100, Number(val) || 0.1)) }),
+  setCameraPanSpeed: (v) => set({ cameraPanSpeed: Math.max(1, Math.min(500, Number(v) || 50)) }),
+  setCameraOrbitSpeed: (v) => set({ cameraOrbitSpeed: Math.max(1, Math.min(1000, Number(v) || 100)) }),
+  setCameraZoomSpeed: (v) => set({ cameraZoomSpeed: Math.max(0.01, Math.min(5, Number(v) || 0.3)) }),
   rehydrateViewGizmoConfig: () => {
     const cfg = loadViewGizmoConfig()
     set({
@@ -180,10 +186,17 @@ export const useEditorStore = create((set, get) => {
       snapMove: Number.isFinite(cfg.snapMove) ? cfg.snapMove : 1,
       snapRotateDeg: Number.isFinite(cfg.snapRotateDeg) ? cfg.snapRotateDeg : 15,
       snapScale: Number.isFinite(cfg.snapScale) ? cfg.snapScale : 0.1,
-      isPostProcessingEnabled: !!cfg.isPostProcessingEnabled
+      isPostProcessingEnabled: !!cfg.isPostProcessingEnabled,
+      cameraPanSpeed: Number.isFinite(cfg.cameraPanSpeed) ? cfg.cameraPanSpeed : 50,
+      cameraOrbitSpeed: Number.isFinite(cfg.cameraOrbitSpeed) ? cfg.cameraOrbitSpeed : 100,
+      cameraZoomSpeed: Number.isFinite(cfg.cameraZoomSpeed) ? cfg.cameraZoomSpeed : 0.3
     })
   },
   // 자석 기능 제거됨
+
+  // Camera control mode: use BlenderControls instead of legacy
+  useBlenderControls: true,
+  setUseBlenderControls: (on) => set({ useBlenderControls: !!on }),
   
   // HDRI actions
   updateHDRISettings: (updates) => set((state) => ({
@@ -201,6 +214,7 @@ export const useEditorStore = create((set, get) => {
   setPostProcessingManager: (ppm) => set({ postProcessingManager: ppm }),
   // 포스트프로세싱 전체 온/오프
   togglePostProcessingEnabled: () => set((state) => ({ isPostProcessingEnabled: !state.isPostProcessingEnabled })),
+  setPostProcessingPreset: (key) => set({ postProcessingPreset: key || 'default' }),
 
   // 세이프 모드 토글 및 픽셀 비율 설정
   toggleSafeMode: (on) => {
@@ -225,8 +239,26 @@ export const useEditorStore = create((set, get) => {
       }
     } catch {}
     try { get().estimateVRAMUsage(); } catch {}
+  // persist to environment
+  try { saveEnvironmentSettings({ safeMode: { enabled: get().safeMode.enabled, pixelRatio: get().safeMode.pixelRatio } }) } catch {}
   },
-  setSafeModePixelRatio: (pr) => set((state) => ({ safeMode: { ...state.safeMode, pixelRatio: Math.max(0.5, Math.min(2, pr || 1)) } })),
+  setSafeModePixelRatio: (pr) => {
+    const clamped = Math.max(0.5, Math.min(2, Number(pr) || 1));
+    const next = { ...get().safeMode, pixelRatio: clamped };
+    set({ safeMode: next });
+    try {
+      const renderer = get().renderer;
+      if (renderer && get().safeMode.enabled) {
+        renderer.setPixelRatio(clamped);
+      }
+    } catch {}
+    try {
+      const ppm = get().postProcessingManager;
+      if (ppm) ppm.handleResize(window.innerWidth, window.innerHeight);
+    } catch {}
+    try { get().estimateVRAMUsage(); } catch {}
+    try { saveEnvironmentSettings({ safeMode: { enabled: get().safeMode.enabled, pixelRatio: clamped } }) } catch {}
+  },
   // 대략적인 VRAM 사용량 추정 (MB)
   estimateVRAMUsage: (opts = {}) => {
     const width = opts.width || window.innerWidth;
@@ -245,7 +277,7 @@ export const useEditorStore = create((set, get) => {
         // composer default target
         total += (w * h) * (bppColor + bppDepth);
         const eff = ppm.getSettings?.() || {};
-        if (eff.outline?.enabled) total += (w * h) * bppColor;
+  // Outline 제거됨
         if (eff.ssao?.enabled) total += 2 * (w * h) * bppColor;
         if (eff.fxaa?.enabled) total += (w * h) * bppColor;
       }
@@ -275,13 +307,9 @@ export const useEditorStore = create((set, get) => {
   
   // HDRI 설정 저장 (localStorage에)
   saveHDRISettings: () => {
-    const { hdriSettings } = get()
-    try {
-      localStorage.setItem('hdriSettings', JSON.stringify(hdriSettings))
-  // saved HDRI settings to localStorage
-    } catch (error) {
-      console.error('HDRI 설정 저장 실패:', error)
-    }
+  const { hdriSettings } = get()
+  try { saveEnvironmentOnce(hdriSettings) } catch {}
+  try { localStorage.setItem('hdriSettings', JSON.stringify(hdriSettings)) } catch {}
   },
   
   // Asset actions
@@ -805,6 +833,8 @@ export const useEditorStore = create((set, get) => {
 
 // 자동 저장 시작 (스토어 생성 후 1회)
 try { startViewGizmoConfigAutoPersist(useEditorStore) } catch {}
+// Persist environment (HDRI) automatically
+try { startEnvironmentAutoPersist(useEditorStore) } catch {}
 
 // Persist UI section automatically
 try {
@@ -856,6 +886,13 @@ function snapshotForUpdate(obj, updates) {
     }
   }
   return snap
+}
+
+// 환경 설정 저장 1회 호출 도우미
+function saveEnvironmentOnce(hdriSettings) {
+  try {
+    saveEnvironmentSettings({ hdriSettings: { ...(hdriSettings || {}) } })
+  } catch {}
 }
 
 function applyUndo(entry, set, get) {

@@ -24,6 +24,11 @@ export class CameraController {
     // Console output removed
     // Console output removed
     // Console output removed
+
+  // 속도 파라미터 (기본값은 기존 동작 유지)
+  this._panSpeed = 50;
+  this._orbitSpeed = 100;
+  this._zoomSpeed = 0.3; // EditorControls의 wheel 변환 계수와 호환
   }
   
   // 카메?��? 초기 ?�치�?리셋 (?�영 모드???��?)
@@ -144,7 +149,7 @@ export class CameraController {
   pan(deltaX, deltaY) {
     // Console output removed
     
-    const panSpeed = 50;
+  const panSpeed = this._panSpeed;
     
     // 카메?�의 로컬 좌표�?기�??�로 ?�동
     const right = new THREE.Vector3();
@@ -212,7 +217,7 @@ export class CameraController {
   orbit(deltaX, deltaY) {
     // Console output removed
     
-    const orbitSpeed = 100;
+  const orbitSpeed = this._orbitSpeed;
     
     // F?��? ?�한 ?�커?�에?�만 ?�전 중심??변경됨
     // ?�재 ?�정??cameraTarget??그�?�??�용 (?????�정???�전 중심?�나 기본 중심???��?)
@@ -240,8 +245,9 @@ export class CameraController {
   zoom(delta) {
     // Console output removed
     
-    const zoomSpeed = 1.2;
-    const factor = delta > 0 ? zoomSpeed : 1 / zoomSpeed;
+  // zoomSpeed는 휠 delta를 EditorControls에서 0.3 스케일로 전달 → 여기선 승수로 사용
+  const zoomSpeed = Math.max(0.01, this._zoomSpeed);
+  const factor = delta > 0 ? (1 + zoomSpeed) : 1 / (1 + zoomSpeed);
     
     if (this.camera.isPerspectiveCamera) {
       // Perspective 카메?? 거리 조정
@@ -278,6 +284,13 @@ export class CameraController {
       
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  // 속도 설정 API
+  setSpeeds({ pan, orbit, zoom } = {}) {
+    if (Number.isFinite(pan)) this._panSpeed = pan;
+    if (Number.isFinite(orbit)) this._orbitSpeed = orbit;
+    if (Number.isFinite(zoom)) this._zoomSpeed = zoom;
   }
   
   // ?�브?�트???�커??

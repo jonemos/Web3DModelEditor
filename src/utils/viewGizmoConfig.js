@@ -5,6 +5,7 @@
 
 // 구버전(개별 키) 호환을 위한 레거시 키
 const LEGACY_VIEW_GIZMO_KEY = 'viewGizmoConfig'
+const LEGACY_HDRI_KEY = 'hdriSettings'
 
 // 통합 설정 스토리지 키 (버전 포함)
 const APP_SETTINGS_KEY = 'web3dEditor.settings.v1'
@@ -43,7 +44,11 @@ export const defaultViewGizmoConfig = {
   snapMove: 1.0,
   snapRotateDeg: 15,
   snapScale: 0.1,
-  isPostProcessingEnabled: false
+  isPostProcessingEnabled: false,
+  // 카메라 컨트롤 민감도(뷰 기즈모 설정에 포함)
+  cameraPanSpeed: 50,   // EditorControls 기준값과 동일
+  cameraOrbitSpeed: 100, // EditorControls 기준값과 동일
+  cameraZoomSpeed: 0.3   // 휠 스크롤 당 전달되는 delta 스케일
 }
 
 export const defaultUISettings = {
@@ -63,12 +68,44 @@ export const defaultGameSettings = {
   // 예: 플레이어 감도, HUD 토글 등 추후 확장
 }
 
+// 환경(렌더) 관련 통합 설정 (HDRI 등)
+export const defaultEnvironmentSettings = {
+  hdriSettings: {
+    currentHDRI: {
+      name: '기본 배경',
+      type: 'none'
+    },
+    hdriIntensity: 1,
+    hdriRotation: 0,
+    sunLightEnabled: true,
+    sunIntensity: 1,
+    timeOfDay: 12,
+    sunAzimuth: 0,
+    sunElevation: 45,
+    sunColor: '#ffffff'
+  },
+  postProcessing: {
+    enabled: false,
+    preset: 'default'
+  },
+  toneMapping: {
+    enabled: true,
+    mapping: 'ACESFilmic',
+    exposure: 1.0
+  },
+  safeMode: {
+    enabled: false,
+    pixelRatio: 1.0
+  }
+}
+
 export const defaultAppSettings = {
   __version: 1,
   viewGizmo: { ...defaultViewGizmoConfig },
   ui: { ...defaultUISettings },
   editor: { ...defaultEditorSettings },
-  game: { ...defaultGameSettings }
+  game: { ...defaultGameSettings },
+  environment: { ...defaultEnvironmentSettings }
 }
 
 // 통합 저장소 로드 (레거시 마이그레이션 포함)
@@ -81,13 +118,17 @@ export function loadAppSettings() {
     }
     // 레거시 단일 키에서 마이그레이션
     const legacyRaw = localStorage.getItem(LEGACY_VIEW_GIZMO_KEY)
-    if (legacyRaw) {
-      const legacy = JSON.parse(legacyRaw)
-      const migrated = {
-        ...defaultAppSettings,
-        viewGizmo: shallowMerge(defaultViewGizmoConfig, legacy)
+    const legacyHdriRaw = localStorage.getItem(LEGACY_HDRI_KEY)
+    if (legacyRaw || legacyHdriRaw) {
+      const migrated = { ...defaultAppSettings }
+      if (legacyRaw) {
+        const legacy = JSON.parse(legacyRaw)
+        migrated.viewGizmo = shallowMerge(defaultViewGizmoConfig, legacy)
       }
-      // 즉시 통합 키로 저장하고, 레거시는 남겨두되 이후부터는 통합 키 사용
+      if (legacyHdriRaw) {
+        const legacyHdri = JSON.parse(legacyHdriRaw)
+        migrated.environment = shallowMerge(defaultEnvironmentSettings, { hdriSettings: shallowMerge(defaultEnvironmentSettings.hdriSettings, legacyHdri) })
+      }
       saveAppSettings(migrated)
       return migrated
     }
@@ -104,6 +145,7 @@ function normalizeAppSettings(raw) {
   root.ui = shallowMerge(defaultUISettings, root.ui)
   root.editor = shallowMerge(defaultEditorSettings, root.editor)
   root.game = shallowMerge(defaultGameSettings, root.game)
+  root.environment = shallowMerge(defaultEnvironmentSettings, root.environment)
   return root
 }
 
@@ -174,7 +216,33 @@ export function startViewGizmoConfigAutoPersist(store) {
     snapMove: Number.isFinite(s.snapMove) ? s.snapMove : 1,
     snapRotateDeg: Number.isFinite(s.snapRotateDeg) ? s.snapRotateDeg : 15,
     snapScale: Number.isFinite(s.snapScale) ? s.snapScale : 0.1,
-    isPostProcessingEnabled: !!s.isPostProcessingEnabled
+  isPostProcessingEnabled: !!s.isPostProcessingEnabled,
+  cameraPanSpeed: Number.isFinite(s.cameraPanSpeed) ? s.cameraPanSpeed : 50,
+  cameraOrbitSpeed: Number.isFinite(s.cameraOrbitSpeed) ? s.cameraOrbitSpeed : 100,
+  cameraZoomSpeed: Number.isFinite(s.cameraZoomSpeed) ? s.cameraZoomSpeed : 0.3
   })
   return startSettingsAutoPersist(store, 'viewGizmo', pick, 150)
+}
+
+// ------------------------------
+// 환경 설정(HDRI) 전용 API
+// ------------------------------
+
+export function loadEnvironmentSettings() {
+  const env = loadSettingsSection('environment')
+  return shallowMerge(defaultEnvironmentSettings, env || {})
+}
+
+export function saveEnvironmentSettings(cfg) {
+  return saveSettingsSection('environment', cfg)
+}
+
+export function startEnvironmentAutoPersist(store) {
+  const pick = (s) => ({
+  hdriSettings: { ...(s.hdriSettings || {}) },
+  postProcessing: { enabled: !!s.isPostProcessingEnabled, preset: s.postProcessingPreset || 'default' },
+  // safeMode는 스토어에서 직접 관리되므로 자동 저장에 포함
+  safeMode: { enabled: !!s.safeMode?.enabled, pixelRatio: Number(s.safeMode?.pixelRatio ?? 1) }
+  })
+  return startSettingsAutoPersist(store, 'environment', pick, 200)
 }

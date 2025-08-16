@@ -2,11 +2,16 @@
  * PostProcessingPanel - 포스트프로세싱 효과 제어 패널
  */
 import React, { useState, useEffect } from 'react';
+import { useEditorStore } from '../../../store/editorStore';
 import './PostProcessingPanel.css';
 
 const PostProcessingPanel = ({ postProcessingManager, onClose }) => {
   const [settings, setSettings] = useState({});
   const [activeTab, setActiveTab] = useState('basic');
+  const isPostProcessingEnabled = useEditorStore((s) => s.isPostProcessingEnabled);
+  const togglePostProcessingEnabled = useEditorStore((s) => s.togglePostProcessingEnabled);
+  const postProcessingPreset = useEditorStore((s) => s.postProcessingPreset);
+  const setPostProcessingPreset = useEditorStore((s) => s.setPostProcessingPreset);
 
   useEffect(() => {
     if (postProcessingManager) {
@@ -47,6 +52,25 @@ const PostProcessingPanel = ({ postProcessingManager, onClose }) => {
   const renderBasicEffects = () => (
     <div className="effect-group">
       <h3>기본 효과</h3>
+      {/* Preset */}
+      <div className="effect-item">
+        <div className="effect-header">
+          <label style={{ color: '#ccc', fontSize: 12, marginRight: 8 }}>프리셋</label>
+          <select
+            value={postProcessingPreset}
+            onChange={(e) => {
+              const v = e.target.value;
+              setPostProcessingPreset(v);
+              try { postProcessingManager?.applyPreset?.(v) } catch {}
+            }}
+          >
+            <option value="default">Default</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+      </div>
       
       {/* Bloom */}
       <div className="effect-item">
@@ -146,43 +170,44 @@ const PostProcessingPanel = ({ postProcessingManager, onClose }) => {
         )}
       </div>
 
-      {/* Outline */}
+      {/* Tone Mapping */}
       <div className="effect-item">
         <div className="effect-header">
           <label className="checkbox-label">
             <input
               type="checkbox"
-              checked={settings.outline?.enabled || false}
-              onChange={() => handleEffectToggle('outline')}
+              checked={settings.toneMapping?.enabled ?? true}
+              onChange={() => handleEffectToggle('toneMapping')}
             />
-            Outline (윤곽선)
+            Tone Mapping (톤 매핑)
           </label>
         </div>
-        {settings.outline?.enabled && (
+        {settings.toneMapping?.enabled !== false && (
           <div className="effect-controls">
             <div className="control-row">
-              <label>강도:</label>
-              <input
-                type="range"
-                min="0"
-                max="10"
-                step="0.1"
-                value={settings.outline?.edgeStrength || 3.0}
-                onChange={(e) => handleSettingChange('outline', 'edgeStrength', parseFloat(e.target.value))}
-              />
-              <span>{settings.outline?.edgeStrength || 3.0}</span>
+              <label>모드:</label>
+              <select
+                value={settings.toneMapping?.mapping || 'ACESFilmic'}
+                onChange={(e) => handleSettingChange('toneMapping', 'mapping', e.target.value)}
+              >
+                <option value="None">None</option>
+                <option value="Linear">Linear</option>
+                <option value="Reinhard">Reinhard</option>
+                <option value="Cineon">Cineon</option>
+                <option value="ACESFilmic">ACESFilmic</option>
+              </select>
             </div>
             <div className="control-row">
-              <label>두께:</label>
+              <label>노출:</label>
               <input
                 type="range"
-                min="0"
+                min="0.1"
                 max="4"
-                step="0.1"
-                value={settings.outline?.edgeThickness || 1.0}
-                onChange={(e) => handleSettingChange('outline', 'edgeThickness', parseFloat(e.target.value))}
+                step="0.05"
+                value={settings.toneMapping?.exposure ?? 1.0}
+                onChange={(e) => handleSettingChange('toneMapping', 'exposure', parseFloat(e.target.value))}
               />
-              <span>{settings.outline?.edgeThickness || 1.0}</span>
+              <span>{settings.toneMapping?.exposure ?? 1.0}</span>
             </div>
           </div>
         )}
@@ -537,8 +562,23 @@ const PostProcessingPanel = ({ postProcessingManager, onClose }) => {
     <div className="post-processing-panel">
       <div className="panel-header">
         <h2>포스트프로세싱 효과</h2>
+        <label className="checkbox-label" style={{ marginLeft: 'auto', marginRight: 8 }}>
+          <input type="checkbox" checked={isPostProcessingEnabled} onChange={togglePostProcessingEnabled} /> 전체 사용
+        </label>
         <button className="close-button" onClick={onClose}>×</button>
       </div>
+      {!isPostProcessingEnabled && (
+        <div style={{
+          background: 'rgba(255, 194, 61, 0.12)',
+          border: '1px solid rgba(255, 194, 61, 0.35)',
+          color: '#b78200',
+          padding: '8px 10px',
+          borderRadius: 6,
+          margin: '8px 12px'
+        }}>
+          포스트프로세싱이 꺼져 있어 효과가 화면에 보이지 않습니다. 상단의 "전체 사용"을 켜세요.
+        </div>
+      )}
       
       <div className="panel-tabs">
         <button 

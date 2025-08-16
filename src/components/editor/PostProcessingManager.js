@@ -14,7 +14,6 @@ import { FilmPass } from 'three/addons/postprocessing/FilmPass.js';
 import { DotScreenPass } from 'three/addons/postprocessing/DotScreenPass.js';
 import { GlitchPass } from 'three/addons/postprocessing/GlitchPass.js';
 import { RenderPixelatedPass } from 'three/addons/postprocessing/RenderPixelatedPass.js';
-import { OutlinePass } from 'three/addons/postprocessing/OutlinePass.js';
 import { SMAAPass } from 'three/addons/postprocessing/SMAAPass.js';
 import { SSAOPass } from 'three/addons/postprocessing/SSAOPass.js';
 
@@ -66,17 +65,11 @@ export class PostProcessingManager {
         minDistance: 0.005,
         maxDistance: 0.1
       },
-      outline: {
-        enabled: false,
-        edgeStrength: 3.0,
-        edgeGlow: 0.0,
-        edgeThickness: 1.0,
-        pulsePeriod: 0,
-  // 선택/활성 색상 구분
-  selectedColor: 0xff7a00, // 주황
-  activeColor: 0xffd400,   // 노랑
-  hiddenEdgeColor: 0x190a05,
-  hiddenEdgeAlpha: 1.0 // 0..1, 배경색과의 혼합 비율로 의사 알파 구현
+      // 톤매핑 설정 (포스트프로세싱 경로에서 최종 출력 톤)
+      toneMapping: {
+        enabled: true,
+        mapping: 'ACESFilmic', // 'None' | 'Linear' | 'Reinhard' | 'Cineon' | 'ACESFilmic'
+        exposure: 1.0
       },
       colorCorrection: {
         enabled: false,
@@ -151,6 +144,17 @@ export class PostProcessingManager {
   }
 
   /**
+   * 카메라 변경 시 컴포저와 패스들이 새 카메라를 참조하도록 갱신
+   */
+  setCamera(camera) {
+    if (!camera) return;
+    this.camera = camera;
+    if (this.renderPass) this.renderPass.camera = camera;
+    // 카메라 참조를 내부적으로 보관하는 패스들(SSAO/Outline 등)이 있으므로 재구성
+    this.updateComposer();
+  }
+
+  /**
    * 컴포저 업데이트 (활성 효과들로 재구성)
    */
   updateComposer() {
@@ -185,12 +189,7 @@ export class PostProcessingManager {
     if (this.effectSettings.bloom.enabled) {
       this.addBloomEffect();
     }
-    
-    // Outline (선택/활성 두 패스로 분리)
-    if (this.effectSettings.outline.enabled) {
-      this.addOutlineEffect('selected');
-      this.addOutlineEffect('active');
-    }
+  // Outline 제거됨
     
     // Color Correction
     if (this.effectSettings.colorCorrection.enabled) {
@@ -227,7 +226,7 @@ export class PostProcessingManager {
       this.addDotScreenEffect();
     }
     
-    // Glitch
+  // Glitch
     if (this.effectSettings.glitch.enabled) {
       this.addGlitchEffect();
     }
@@ -241,6 +240,9 @@ export class PostProcessingManager {
     if (this.effectSettings.fxaa.enabled) {
       this.addFXAAEffect();
     }
+
+  // Tone Mapping (항상 마지막 단계에서 렌더러/출력에 적용)
+  this.applyToneMapping();
   }
 
   // ======================
@@ -308,8 +310,13 @@ export class PostProcessingManager {
    */
   addSSAOEffect() {
     const settings = this.effectSettings.ssao;
-    
-    const ssaoPass = new SSAOPass(this.scene, this.camera, window.innerWidth, window.innerHeight);
+    const pr = Math.max(1, this.renderer.getPixelRatio?.() || window.devicePixelRatio || 1);
+    const ssaoPass = new SSAOPass(
+      this.scene,
+      this.camera,
+      Math.max(1, Math.floor(window.innerWidth * pr)),
+      Math.max(1, Math.floor(window.innerHeight * pr))
+    );
     ssaoPass.kernelRadius = settings.kernelRadius;
     ssaoPass.minDistance = settings.minDistance;
     ssaoPass.maxDistance = settings.maxDistance;
@@ -321,28 +328,28 @@ export class PostProcessingManager {
   /**
    * Outline 효과 추가
    */
-  addOutlineEffect(kind = 'selected') {
-    const settings = this.effectSettings.outline;
-    const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
-    const outlinePass = new OutlinePass(resolution, this.scene, this.camera);
-    outlinePass.edgeStrength = settings.edgeStrength;
-    outlinePass.edgeGlow = settings.edgeGlow;
-    outlinePass.edgeThickness = settings.edgeThickness;
-    outlinePass.pulsePeriod = settings.pulsePeriod;
-    const col = (kind === 'active') ? settings.activeColor : settings.selectedColor;
-    outlinePass.visibleEdgeColor.setHex(col);
-    // 숨김 색상은 배경색과 혼합하여 의사 알파 적용
+  // Outline 효과 제거됨
+
+  applyToneMapping() {
+    const tm = this.effectSettings.toneMapping || { enabled: true, mapping: 'ACESFilmic', exposure: 1.0 };
+    const mapConst = this._resolveToneMappingConst(tm.mapping);
     try {
-      const bg = this.scene.background instanceof THREE.Color ? this.scene.background : new THREE.Color(0x000000);
-      const c = new THREE.Color(settings.hiddenEdgeColor);
-      const mixed = c.clone().lerp(bg, Math.max(0, Math.min(1, 1 - (settings.hiddenEdgeAlpha ?? 1.0))));
-      outlinePass.hiddenEdgeColor.copy(mixed);
-    } catch {
-      outlinePass.hiddenEdgeColor.setHex(settings.hiddenEdgeColor);
+      // 렌더러에도 직접 적용 (OutputPass가 이를 반영)
+      this.renderer.toneMapping = tm.enabled ? mapConst : THREE.NoToneMapping;
+      this.renderer.toneMappingExposure = tm.exposure ?? 1.0;
+    } catch {}
+    // OutputPass가 렌더러 설정을 사용하므로 별도 패스 추가 불필요
+  }
+
+  _resolveToneMappingConst(name) {
+    switch ((name || '').toLowerCase()) {
+      case 'none': return THREE.NoToneMapping;
+      case 'linear': return THREE.LinearToneMapping;
+      case 'reinhard': return THREE.ReinhardToneMapping;
+      case 'cineon': return THREE.CineonToneMapping;
+      case 'acesfilmic':
+      default: return THREE.ACESFilmicToneMapping;
     }
-    this.composer.addPass(outlinePass);
-    const key = kind === 'active' ? 'outlineActive' : 'outlineSelected';
-    this.activeEffects.set(key, outlinePass);
   }
 
   /**
@@ -471,6 +478,14 @@ export class PostProcessingManager {
   if (!(effectName in this.effectSettings)) return;
   this.effectSettings[effectName].enabled = enabled;
   this.updateComposer();
+  // 환경 퍼시스트: 톤매핑 변경 시 저장
+  if (effectName === 'toneMapping') {
+    try {
+      import('../../utils/viewGizmoConfig.js').then(mod => {
+        try { mod.saveEnvironmentSettings({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
+      }).catch(() => {});
+    } catch {}
+  }
   }
 
   /**
@@ -483,6 +498,14 @@ export class PostProcessingManager {
       // 효과가 활성화되어 있으면 컴포저 업데이트
       if (this.effectSettings[effectName].enabled) {
         this.updateComposer();
+      }
+      // 환경 퍼시스트: 톤매핑 변경 시 저장
+      if (effectName === 'toneMapping') {
+        try {
+          import('../../utils/viewGizmoConfig.js').then(mod => {
+            try { mod.saveEnvironmentSettings({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
+          }).catch(() => {});
+        } catch {}
       }
     }
   }
@@ -498,7 +521,9 @@ export class PostProcessingManager {
    * 리사이즈 처리
    */
   handleResize(width, height) {
-    this.composer.setSize(width, height);
+  const pr = Math.max(1, this.renderer.getPixelRatio?.() || window.devicePixelRatio || 1);
+  if (typeof this.composer.setPixelRatio === 'function') this.composer.setPixelRatio(pr);
+  this.composer.setSize(width, height);
     
     // AA 패스 해상도 업데이트 (SMAA 또는 FXAA 모두 지원)
     const aaPass = this.activeEffects.get('fxaa');
@@ -518,33 +543,15 @@ export class PostProcessingManager {
       }
     }
 
-    // OutlinePass 해상도 업데이트
-    const oSel = this.activeEffects.get('outlineSelected');
-    if (oSel && oSel.resolution) {
-      try { oSel.resolution.set(width, height); } catch {}
-    }
-    const oAct = this.activeEffects.get('outlineActive');
-    if (oAct && oAct.resolution) {
-      try { oAct.resolution.set(width, height); } catch {}
-    }
+  // Outline 제거됨
   }
 
   /**
    * Outline 효과의 선택된 오브젝트 설정
    */
-  setOutlineSelectedObjects(objects) {
-    const outlinePass = this.activeEffects.get('outlineSelected');
-    if (outlinePass && Array.isArray(objects)) {
-      outlinePass.selectedObjects = objects;
-    }
-  }
-
-  setOutlineActiveObjects(objects) {
-    const outlinePass = this.activeEffects.get('outlineActive');
-    if (outlinePass && Array.isArray(objects)) {
-      outlinePass.selectedObjects = objects;
-    }
-  }
+  // 하위 호환: noop (Outline 제거됨)
+  setOutlineSelectedObjects() {}
+  setOutlineActiveObjects() {}
 
   /**
    * 현재 설정 반환
@@ -559,6 +566,51 @@ export class PostProcessingManager {
   loadSettings(settings) {
     Object.assign(this.effectSettings, settings);
     this.updateComposer();
+  }
+
+  /**
+   * 프리셋 적용: 'default' | 'low' | 'medium' | 'high'
+   * - default: FXAA on, SSAO off, Bloom off
+   * - low: FXAA on, SSAO off, Bloom off (동일, 확장 여지)
+   * - medium: FXAA on, SSAO on
+   * - high: FXAA on, SSAO on, Bloom on
+   */
+  applyPreset(preset = 'default') {
+    const p = String(preset || 'default').toLowerCase();
+    // 기본 비활성화 후 필요한 것만 활성화
+    const next = { ...this.effectSettings };
+    // 공통 기본값 보정
+    next.fxaa.enabled = true;
+    next.ssao.enabled = false;
+    next.bloom.enabled = false;
+    switch (p) {
+      case 'high':
+        next.ssao.enabled = true;
+        next.bloom.enabled = true;
+        // 하이 품질 기본값 살짝 상향
+        next.bloom.strength = next.bloom.strength ?? 1.5;
+        next.bloom.radius = next.bloom.radius ?? 0.4;
+        next.bloom.threshold = next.bloom.threshold ?? 0.85;
+        next.ssao.kernelRadius = next.ssao.kernelRadius ?? 12;
+        break;
+      case 'medium':
+        next.ssao.enabled = true;
+        next.ssao.kernelRadius = next.ssao.kernelRadius ?? 8;
+        break;
+      case 'low':
+      case 'default':
+      default:
+        // FXAA만 On
+        break;
+    }
+    this.effectSettings = next;
+    this.updateComposer();
+    // 환경에 프리셋 저장 (best-effort)
+    try {
+      import('../../utils/viewGizmoConfig.js').then(mod => {
+        try { mod.saveEnvironmentSettings({ postProcessing: { preset: preset } }) } catch {}
+      }).catch(() => {});
+    } catch {}
   }
 
   /**

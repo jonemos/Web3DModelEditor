@@ -1,4 +1,4 @@
-import { useState, useEffect, memo } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { PropertiesManager } from '../../../utils/PropertiesManager'
 import HierarchyTreePanel from './HierarchyTreePanel.jsx'
 import './InspectorPanel.css'
@@ -30,16 +30,23 @@ const InspectorPanel = memo(function InspectorPanel({
   const [activeTab, setActiveTab] = useState('transform')
   const [propertiesManager, setPropertiesManager] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0) // 강제 리렌더링용
-  const [lastUpdateTime, setLastUpdateTime] = useState(0) // 실시간 업데이트용
+  // rAF 기반 변화 감지 및 스로틀용 ref들
+  const lastSnapshotRef = useRef(null)
+  const lastUiUpdateRef = useRef(0)
+  const rafIdRef = useRef(0)
+  const isDraggingRef = useRef(false)
 
   // PropertiesManager 초기화
   useEffect(() => {
     const manager = new PropertiesManager(editorControls)
     
-    // 속성 변경 콜백 등록
+    // 속성 변경 콜백 등록: 국소 업데이트(스로틀)
     manager.onPropertyChange((changeData) => {
-      if (onObjectUpdate) {
-        onObjectUpdate(changeData)
+      try { onObjectUpdate && onObjectUpdate(changeData) } catch {}
+      const now = Date.now()
+      if (now - (lastUiUpdateRef.current || 0) >= 50) {
+        lastUiUpdateRef.current = now
+        setRefreshKey(prev => prev + 1)
       }
     })
     
@@ -60,23 +67,89 @@ const InspectorPanel = memo(function InspectorPanel({
     }
   }, [propertiesManager, selectedObject])
 
-  // 실시간 트랜스폼 업데이트
+  // TransformControls 이벤트와 연동하여, 드래그 중에만 rAF로 동기화
   useEffect(() => {
-    if (!selectedObject || !propertiesManager) return
+    if (!selectedObject || !propertiesManager || !editorControls) return
 
-    const updateInterval = setInterval(() => {
-      // 선택된 객체의 트랜스폼이 변경되었는지 확인
-      if (propertiesManager.threeObject) {
-        const currentTime = Date.now()
-        if (currentTime - lastUpdateTime > 100) { // 100ms 간격으로 체크
-          setLastUpdateTime(currentTime)
-          setRefreshKey(prev => prev + 1)
-        }
+    const epsilon = 1e-4
+    const readSnapshot = () => {
+      const o = propertiesManager.threeObject
+      if (!o) return null
+      return {
+        p: [o.position.x, o.position.y, o.position.z],
+        r: [o.rotation.x, o.rotation.y, o.rotation.z],
+        s: [o.scale.x, o.scale.y, o.scale.z]
       }
-    }, 100)
+    }
+    const changed = (a, b) => {
+      if (!a || !b) return true
+      for (let i = 0; i < 3; i++) {
+        if (Math.abs(a.p[i] - b.p[i]) > epsilon) return true
+        if (Math.abs(a.r[i] - b.r[i]) > epsilon) return true
+        if (Math.abs(a.s[i] - b.s[i]) > epsilon) return true
+      }
+      return false
+    }
 
-    return () => clearInterval(updateInterval)
-  }, [selectedObject, propertiesManager]) // lastUpdateTime 의존성 제거
+    const startRAF = () => {
+      try { if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current) } catch {}
+      lastSnapshotRef.current = readSnapshot()
+      setRefreshKey(prev => prev + 1)
+      const tick = () => {
+        if (!isDraggingRef.current) { rafIdRef.current = 0; return }
+        const cur = readSnapshot()
+        const now = Date.now()
+        if (cur && changed(cur, lastSnapshotRef.current)) {
+          if (now - (lastUiUpdateRef.current || 0) >= 80) {
+            lastSnapshotRef.current = cur
+            lastUiUpdateRef.current = now
+            setRefreshKey(prev => prev + 1)
+          }
+        }
+        rafIdRef.current = requestAnimationFrame(tick)
+      }
+      rafIdRef.current = requestAnimationFrame(tick)
+    }
+    const stopRAF = () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = 0
+      setRefreshKey(prev => prev + 1) // 최종 스냅샷 적용
+    }
+
+    const throttledBump = () => {
+      const now = Date.now()
+      if (now - (lastUiUpdateRef.current || 0) >= 100) {
+        lastUiUpdateRef.current = now
+        setRefreshKey(prev => prev + 1)
+      }
+    }
+
+    const objTc = editorControls?.objectSelector?.transformControls
+    const partTc = editorControls?._partTransformControls
+
+    const onDragChanged = (e) => {
+      isDraggingRef.current = !!e?.value
+      if (isDraggingRef.current) startRAF(); else stopRAF()
+    }
+    const onObjectChange = () => {
+      if (!isDraggingRef.current) throttledBump()
+    }
+
+    objTc?.addEventListener?.('dragging-changed', onDragChanged)
+    objTc?.addEventListener?.('objectChange', onObjectChange)
+    partTc?.addEventListener?.('dragging-changed', onDragChanged)
+    partTc?.addEventListener?.('objectChange', onObjectChange)
+
+    return () => {
+      try { objTc?.removeEventListener?.('dragging-changed', onDragChanged) } catch {}
+      try { objTc?.removeEventListener?.('objectChange', onObjectChange) } catch {}
+      try { partTc?.removeEventListener?.('dragging-changed', onDragChanged) } catch {}
+      try { partTc?.removeEventListener?.('objectChange', onObjectChange) } catch {}
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current)
+      rafIdRef.current = 0
+      isDraggingRef.current = false
+    }
+  }, [selectedObject, propertiesManager, editorControls])
 
   const objectType = propertiesManager?.getObjectType() || 'unknown'
   const objectInfo = propertiesManager?.getObjectInfo()
@@ -464,95 +537,31 @@ const InspectorPanel = memo(function InspectorPanel({
           <input type="checkbox"
             checked={!!postProcessingManager?.effectSettings?.ssao?.enabled}
             onChange={(e)=>{ try { postProcessingManager?.setEffectEnabled?.('ssao', e.target.checked); } catch {} }} />
-          <label>Outline</label>
+          <label>Tone Mapping</label>
           <input type="checkbox"
-            checked={!!postProcessingManager?.effectSettings?.outline?.enabled}
-            onChange={(e)=>{ try { postProcessingManager?.setEffectEnabled?.('outline', e.target.checked); editorControls?._updatePartOutline?.(); } catch {} }} />
+            checked={postProcessingManager?.effectSettings?.toneMapping?.enabled !== false}
+            onChange={(e)=>{ try { postProcessingManager?.setEffectEnabled?.('toneMapping', e.target.checked); } catch {} }} />
         </div>
-        {partEnabled && (
-          <div className="property-group" style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:'8px 12px'}}>
-            <div style={{gridColumn:'1 / span 2', fontWeight:600}}>아웃라인</div>
-            <label>사용</label>
-            <input type="checkbox"
-              checked={!!postProcessingManager?.effectSettings?.outline?.enabled}
-              onChange={(e)=>{
-                try { postProcessingManager?.setEffectEnabled?.('outline', e.target.checked); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-            <label>두께</label>
-            <input type="range" min="0" max="4" step="0.1"
-              value={postProcessingManager?.effectSettings?.outline?.edgeThickness ?? 1}
-              onChange={(e)=>{
-                const v = parseFloat(e.target.value);
-                try { postProcessingManager?.updateEffectSettings?.('outline', { edgeThickness: v }); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-            <label>강도</label>
-            <input type="range" min="0" max="10" step="0.1"
-              value={postProcessingManager?.effectSettings?.outline?.edgeStrength ?? 3}
-              onChange={(e)=>{
-                const v = parseFloat(e.target.value);
-                try { postProcessingManager?.updateEffectSettings?.('outline', { edgeStrength: v }); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-            <label>Glow</label>
-            <input type="range" min="0" max="1" step="0.01"
-              value={postProcessingManager?.effectSettings?.outline?.edgeGlow ?? 0}
-              onChange={(e)=>{
-                const v = parseFloat(e.target.value);
-                try { postProcessingManager?.updateEffectSettings?.('outline', { edgeGlow: v }); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-            <label>펄스 주기</label>
-            <input type="range" min="0" max="10" step="0.1"
-              value={postProcessingManager?.effectSettings?.outline?.pulsePeriod ?? 0}
-              onChange={(e)=>{
-                const v = parseFloat(e.target.value);
-                try { postProcessingManager?.updateEffectSettings?.('outline', { pulsePeriod: v }); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-            <label>색상</label>
-            <input type="color"
-              value={(()=>{
-                const hex = postProcessingManager?.effectSettings?.outline?.visibleEdgeColor ?? 0xffffff;
-                const s = (hex >>> 0).toString(16).padStart(6,'0');
-                return `#${s}`;
-              })()}
-              onChange={(e)=>{
-                const hex = parseInt(e.target.value.replace('#',''), 16);
-                try { postProcessingManager?.updateEffectSettings?.('outline', { visibleEdgeColor: hex }); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-            <label>숨김 색상</label>
-            <input type="color"
-              value={(()=>{
-                const hex = postProcessingManager?.effectSettings?.outline?.hiddenEdgeColor ?? 0x190a05;
-                const s = (hex >>> 0).toString(16).padStart(6,'0');
-                return `#${s}`;
-              })()}
-              onChange={(e)=>{
-                const hex = parseInt(e.target.value.replace('#',''), 16);
-                try { postProcessingManager?.updateEffectSettings?.('outline', { hiddenEdgeColor: hex }); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-            <label>숨김 알파</label>
-            <input type="range" min="0" max="1" step="0.01"
-              value={postProcessingManager?.effectSettings?.outline?.hiddenEdgeAlpha ?? 1}
-              onChange={(e)=>{
-                const v = parseFloat(e.target.value);
-                try { postProcessingManager?.updateEffectSettings?.('outline', { hiddenEdgeAlpha: v }); } catch {}
-                try { editorControls?._updatePartOutline?.(); } catch {}
-              }}
-            />
-          </div>
-        )}
+        {/* Tone Mapping 상세 */}
+        <div className="property-group" style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:'8px 12px'}}>
+          <div style={{gridColumn:'1 / span 2', fontWeight:600}}>톤 매핑</div>
+          <label>모드</label>
+          <select
+            value={postProcessingManager?.effectSettings?.toneMapping?.mapping || 'ACESFilmic'}
+            onChange={(e)=>{ try { postProcessingManager?.updateEffectSettings?.('toneMapping', { mapping: e.target.value }); } catch {} }}
+          >
+            <option value="None">None</option>
+            <option value="Linear">Linear</option>
+            <option value="Reinhard">Reinhard</option>
+            <option value="Cineon">Cineon</option>
+            <option value="ACESFilmic">ACESFilmic</option>
+          </select>
+          <label>노출</label>
+          <input type="range" min="0.1" max="4" step="0.05"
+            value={postProcessingManager?.effectSettings?.toneMapping?.exposure ?? 1}
+            onChange={(e)=>{ const v = parseFloat(e.target.value); try { postProcessingManager?.updateEffectSettings?.('toneMapping', { exposure: v }); } catch {} }}
+          />
+        </div>
 
         {partEnabled && (
           <div className="property-group">

@@ -21,6 +21,29 @@ export class EditorControls {
     
     // 모듈 초기화
     this.cameraController = new CameraController(camera, renderer, onCameraChange);
+    // 초기 카메라 감도 적용
+    try {
+      const st = this.editorStore.getState();
+      this.cameraController.setSpeeds?.({
+        pan: st.cameraPanSpeed,
+        orbit: st.cameraOrbitSpeed,
+        zoom: st.cameraZoomSpeed,
+      });
+      // 스토어 변경 반영 (필요 시)
+      this._unsubCamSpeeds = this.editorStore.subscribe((state, prev) => {
+        if (
+          state.cameraPanSpeed !== prev.cameraPanSpeed ||
+          state.cameraOrbitSpeed !== prev.cameraOrbitSpeed ||
+          state.cameraZoomSpeed !== prev.cameraZoomSpeed
+        ) {
+          this.cameraController.setSpeeds?.({
+            pan: state.cameraPanSpeed,
+            orbit: state.cameraOrbitSpeed,
+            zoom: state.cameraZoomSpeed,
+          });
+        }
+      });
+    } catch {}
     this.objectSelector = new ObjectSelector(scene, camera, renderer, editorStore);
   this.objectSelector.setGizmoScene?.(null);
     
@@ -146,6 +169,8 @@ export class EditorControls {
 
     // 중간 클릭: 팬/궤도 회전
     this.mouseController.onMiddleClick((data) => {
+  // BlenderControls 사용 시 카메라 입력은 BlenderControls가 담당
+  try { if (this.editorStore?.getState?.().useBlenderControls) return; } catch {}
       const { isOrbiting, isPanning } = data;
       this.isOrbiting = isOrbiting;
       this.isPanning = isPanning;
@@ -153,6 +178,8 @@ export class EditorControls {
 
     // 중간 드래그: 카메라 제어
     this.mouseController.onMiddleDrag((data) => {
+  // BlenderControls 사용 시 무시
+  try { if (this.editorStore?.getState?.().useBlenderControls) return; } catch {}
       const { type, delta } = data;
       
       if (type === 'pan') {
@@ -181,6 +208,8 @@ export class EditorControls {
 
     // 휠: 줌
     this.mouseController.onWheel((wheelInfo) => {
+  // BlenderControls 사용 시 무시
+  try { if (this.editorStore?.getState?.().useBlenderControls) return; } catch {}
       if (this.objectSelector.isDraggingGizmo()) return;
       
       const zoomSpeed = 0.3;
@@ -190,6 +219,8 @@ export class EditorControls {
 
     // 드래그 종료: 회전 중심 업데이트
     this.mouseController.onDragEnd((data) => {
+  // BlenderControls 사용 시 회전 중심 자동 업데이트는 BlenderControls 전략에 맡김
+  try { if (this.editorStore?.getState?.().useBlenderControls) return; } catch {}
       if (data.type === 'pan') {
         this.cameraController.updateRotationCenterAfterPan(this.scene, this.objectSelector.getSelectableObjects());
       }
@@ -364,7 +395,7 @@ export class EditorControls {
   }
 
   // =====================
-  // PostProcessing (Outline) 연동
+  // PostProcessing (Outline) 연동 - 제거됨 (하위 호환용 noop)
   // =====================
   setPostProcessingManager(manager) {
     this.postProcessingManager = manager;
@@ -372,20 +403,8 @@ export class EditorControls {
   }
 
   _updatePartOutline() {
-    if (!this.postProcessingManager) return;
-    const mesh = this.partInspector?.selectedPart;
-    let list = [];
-    if (this.partInspector.groupEnabled) {
-      list = this.getActivePartSet();
-    } else if (mesh) {
-      list = [mesh];
-    }
-    try {
-      // 선택 집합은 전체 선택, 활성 집합은 마지막(또는 파트 선택)으로 분리 전달
-      const sel = Array.isArray(list) ? list : [];
-      this.postProcessingManager.setOutlineSelectedObjects(sel);
-      this.postProcessingManager.setOutlineActiveObjects(sel.length > 0 ? [sel[sel.length - 1]] : []);
-    } catch {}
+    // Outline 제거됨: noop 유지
+    return;
   }
 
   /**
@@ -394,11 +413,49 @@ export class EditorControls {
   setupViewportActions() {
     this.keyboardController.registerViewportActions({
       focusOnSelected: () => {
-        const selected = this.editorStore.getState().selectedObject;
-        // selected가 ID이거나 객체일 수 있음 → Three.js 객체로 해석
-        const threeObject = this.resolveToThreeObject(selected);
-        if (threeObject) {
-          this.cameraController.focusOnObject(threeObject);
+        // 다중 선택 고려: ObjectSelector의 현재 선택 목록 사용
+        const selectedObjs = this.objectSelector.getSelectedObjects?.() || [];
+        const toThree = (o) => this.resolveToThreeObject(o);
+        const threeList = selectedObjs
+          .map(o => (o?.isObject3D ? o : toThree(o?.id || o)))
+          .filter(Boolean);
+        // nothing selected → 단일 selectedObject 폴백
+        if (threeList.length === 0) {
+          const sel = this.editorStore.getState().selectedObject;
+          const one = this.resolveToThreeObject(sel);
+          if (one) threeList.push(one);
+        }
+        if (threeList.length === 0) return;
+
+        // BlenderControls 경로
+        try {
+          if (this.editorStore?.getState?.().useBlenderControls && typeof window !== 'undefined' && window.__blenderControls) {
+            if (threeList.length === 1) window.__blenderControls.focusOnObject(threeList[0]);
+            else window.__blenderControls.focusOnObjects(threeList);
+            return;
+          }
+        } catch {}
+        // 기존 CameraController 경로: 바운딩 박스 합산으로 포커스
+        if (threeList.length === 1) this.cameraController.focusOnObject(threeList[0]);
+        else {
+          const box = new THREE.Box3();
+          threeList.forEach(o => { try { box.expandByObject(o); } catch {} });
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          let distance;
+          const cam = this.cameraController.getCamera();
+          if (cam.isPerspectiveCamera) {
+            const fov = cam.fov * (Math.PI / 180);
+            distance = Math.abs(maxDim / Math.sin(fov / 2)) * 1.5;
+          } else {
+            distance = maxDim * 2;
+          }
+          const dir = new THREE.Vector3().subVectors(cam.position, center).normalize();
+          this.cameraController.setTarget(center);
+          cam.position.copy(center).add(dir.multiplyScalar(distance));
+          cam.lookAt(center);
+          cam.updateMatrixWorld();
         }
       },
       toggleProjection: () => {
