@@ -44,8 +44,7 @@ export class InputManager {
       resize: this.handleResize.bind(this)
     };
 
-    this.setupEventListeners();
-    console.log('InputManager initialized');
+  this.setupEventListeners();
   }
 
   /**
@@ -378,7 +377,7 @@ export class InputManager {
    */
   setEnabled(enabled) {
     this.isEnabled = enabled;
-    console.log(`InputManager ${enabled ? 'enabled' : 'disabled'}`);
+    
   }
 
   /**
@@ -443,7 +442,7 @@ export class InputManager {
     this.boundHandlers = null;
     this.pressedKeys.clear();
 
-    console.log('InputManager disposed');
+    
   }
 }
 

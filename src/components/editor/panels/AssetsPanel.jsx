@@ -31,14 +31,12 @@ const AssetsPanel = ({ onAssetDrop, onClose }) => {
   ];
 
   const handleAssetClick = (asset) => {
-    console.log('에셋 클릭:', asset.name);
     if (onAssetDrop) {
       onAssetDrop(asset, { x: 0, y: 0, z: 0 });
     }
   };
 
   const handleDragStart = (e, asset) => {
-    console.log('에셋 드래그 시작:', asset.name);
     
     // 드래그 이미지를 위한 캔버스 생성
     const canvas = document.createElement('canvas');

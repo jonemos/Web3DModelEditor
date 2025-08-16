@@ -45,7 +45,7 @@ export class MouseController {
     // InputManager에 핸들러 등록
     this.registerInputHandlers();
 
-    console.log('MouseController initialized');
+    
   }
 
   /**
@@ -80,8 +80,7 @@ export class MouseController {
     if (!this.transformControls) return;
 
     this.transformControls.addEventListener('dragging-changed', (event) => {
-      this.state.isGizmoInteracting = event.value;
-      console.log('Gizmo interaction:', event.value);
+  this.state.isGizmoInteracting = event.value;
     });
   }
 
@@ -101,7 +100,7 @@ export class MouseController {
     
     // 기즈모와 상호작용 중이면 일반 마우스 이벤트 무시
     if (this.isGizmoInteracting()) {
-      console.log('Ignoring mouse down - gizmo is interacting');
+      
       return;
     }
     
@@ -585,7 +584,7 @@ export class MouseController {
     this.transformControls = null;
     this.objectSelector = null;
 
-    console.log('MouseController disposed');
+    
   }
 }
 

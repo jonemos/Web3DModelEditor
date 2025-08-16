@@ -7,6 +7,7 @@ import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
 import { getGLBMeshManager } from '../utils/GLBMeshManager'
 import Toast from '../components/ui/Toast'
+import { idbAddCustomMesh } from '../utils/idb'
 import * as THREE from 'three'
 import './EditorPage.css'
 
@@ -62,8 +63,51 @@ function EditorPage() {
   
   // EditorControls 인스턴스를 관리하기 위한 ref
   const editorControlsRef = useRef(null)
+  const [editorControlsState, setEditorControlsState] = useState(null)
   const postProcessingRef = useRef(null)
   const glbMeshManager = useRef(getGLBMeshManager())
+  // 커스텀 메쉬 썸네일 blob:ObjectURL 추적 (초기 하이드레이션용)
+  const customThumbUrlsRef = useRef(new Set())
+
+  // 앱 시작 시 IndexedDB에서 커스텀 메쉬 하이드레이션 (LibraryPanel 미오픈 대비)
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const meshes = await glbMeshManager.current.getCustomMeshes()
+        if (!cancelled) {
+          // 기존 상태가 비어있을 때만 주입 (불필요한 덮어쓰기 방지)
+          if ((useEditorStore.getState().customMeshes || []).length === 0) {
+            // blob: URL 추적
+            const urls = meshes
+              .map(m => (typeof m.thumbnail === 'string' && m.thumbnail.startsWith('blob:')) ? m.thumbnail : null)
+              .filter(Boolean)
+            customThumbUrlsRef.current = new Set(urls)
+            useEditorStore.getState().loadCustomMeshes(meshes)
+          }
+        }
+      } catch {}
+    })()
+    return () => {
+      cancelled = true
+      for (const url of customThumbUrlsRef.current) {
+        try { URL.revokeObjectURL(url) } catch {}
+      }
+      customThumbUrlsRef.current.clear()
+    }
+  }, [])
+
+  // 전역 토스트 이벤트 리스너 (어디서든 window.dispatchEvent로 토스트 띄우기)
+  useEffect(() => {
+    const handler = (e) => {
+      const { message, type = 'info', duration = 3000 } = e.detail || {}
+      if (!message) return
+      setToast({ message, type })
+      if (duration > 0) setTimeout(() => setToast(null), duration)
+    }
+    window.addEventListener('appToast', handler)
+    return () => window.removeEventListener('appToast', handler)
+  }, [])
 
   // HDRI 설정 지속 관리
   useEffect(() => {
@@ -82,7 +126,7 @@ function EditorPage() {
       // 기본 배경 적용
       scene.background = new THREE.Color(0x2a2a2a) // 회색 배경
       scene.environment = null
-      console.log('기본 HDRI 배경이 적용되었습니다')
+  // 기본 HDRI 배경 적용됨
     }
   }, [scene, hdriSettings.currentHDRI])
 
@@ -100,13 +144,7 @@ function EditorPage() {
       // Ctrl+C - 복사
       if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault()
-        console.log('Ctrl+C 키 감지됨, 복사 실행')
-        console.log('현재 selectedObject:', selectedObject)
-        console.log('selectedObject.uuid:', selectedObject?.uuid)
-        console.log('selectedObject.name:', selectedObject?.name)
-        console.log('현재 objects 배열:', objects)
-        console.log('objects 첫 번째 항목:', objects[0])
-        console.log('objects 첫 번째 항목의 키들:', objects[0] ? Object.keys(objects[0]) : 'objects 배열이 비어있음')
+        
         
         if (selectedObject) {
           // EditorControls에서 실제 선택된 Three.js 객체 가져오기
@@ -123,10 +161,10 @@ function EditorPage() {
             }
           }
           
-          console.log('찾은 Three.js 객체:', threeObject);
+          
           
           if (threeObject) {
-            console.log('Three.js 객체를 copyObject에 전달');
+            
             copyObject(threeObject);
             setToast({ 
               message: `"${threeObject.name}"이(가) 복사되었습니다`, 
@@ -134,7 +172,7 @@ function EditorPage() {
             });
             setTimeout(() => setToast(null), 2000);
           } else {
-            console.log('Three.js 객체를 찾을 수 없음, 일반 객체로 복사 시도');
+            
             copyObject(selectedObject);
             setToast({ 
               message: `"${selectedObject.name}"이(가) 복사되었습니다`, 
@@ -143,7 +181,7 @@ function EditorPage() {
             setTimeout(() => setToast(null), 2000);
           }
         } else {
-          console.log('selectedObject가 null 또는 undefined')
+          
           setToast({ 
             message: '복사할 객체를 먼저 선택해주세요', 
             type: 'warning' 
@@ -155,13 +193,10 @@ function EditorPage() {
       // Ctrl+V - 붙여넣기
       if (e.ctrlKey && (e.key === 'v' || e.key === 'V')) {
         e.preventDefault()
-        console.log('Ctrl+V 키 감지됨, 붙여넣기 실행')
-        console.log('hasClipboardData():', hasClipboardData())
+        
         
         if (hasClipboardData()) {
-          console.log('pasteObject 함수 호출 전')
           const pastedObject = pasteObject();
-          console.log('pasteObject 함수 호출 후, 결과:', pastedObject)
           if (pastedObject) {
             setToast({ 
               message: `"${pastedObject.name}"이(가) 붙여넣기되었습니다`, 
@@ -169,7 +204,7 @@ function EditorPage() {
             });
             setTimeout(() => setToast(null), 2000);
           } else {
-            console.log('pastedObject가 null/undefined')
+            
             setToast({ 
               message: '붙여넣기에 실패했습니다', 
               type: 'error' 
@@ -188,7 +223,7 @@ function EditorPage() {
       // Delete 키 - 삭제
       if (e.key === 'Delete') {
         e.preventDefault()
-        console.log('Delete 키 감지됨, 삭제 실행')
+        
         
         if (selectedObject) {
           const objectToDelete = objects.find(obj => obj.id === selectedObject);
@@ -255,7 +290,7 @@ function EditorPage() {
     setSunLightRef(sunLight)
     scene.add(sunLight)
 
-    console.log('지속적인 태양 조명이 생성되었습니다')
+  // Sun light created
   }
 
   // 지속적인 태양 조명 제거 함수
@@ -268,7 +303,7 @@ function EditorPage() {
     }
     setSunLightRef(null)
 
-    console.log('지속적인 태양 조명이 제거되었습니다')
+  // Sun light removed
   }
 
   // HDRI 설정 자동 저장
@@ -281,13 +316,14 @@ function EditorPage() {
   // EditorControls 인스턴스를 설정하는 함수
   const setEditorControls = (controls) => {
     editorControlsRef.current = controls
+  setEditorControlsState(controls)
     // EditorControls instance received in EditorPage
   }
 
   // PostProcessingManager 인스턴스를 설정하는 함수
   const setPostProcessingManager = (manager) => {
     postProcessingRef.current = manager
-    console.log('PostProcessingManager instance received in EditorPage')
+  // PostProcessingManager linked
   }
 
   const handleFileImport = () => {
@@ -372,7 +408,7 @@ function EditorPage() {
         break
         
       case 'copy':
-        console.log('메뉴에서 복사 액션 실행됨')
+        
         if (selectedObject) {
           const objectToCopy = objects.find(obj => obj.id === selectedObject);
           if (objectToCopy) {
@@ -399,7 +435,7 @@ function EditorPage() {
         break
         
       case 'paste':
-        console.log('메뉴에서 붙여넣기 액션 실행됨')
+        
         if (hasClipboardData()) {
           const pastedObject = pasteObject();
           if (pastedObject) {
@@ -425,7 +461,7 @@ function EditorPage() {
         break
         
       case 'delete':
-        console.log('메뉴에서 삭제 액션 실행됨')
+        
         if (selectedObject) {
           const objectToDelete = objects.find(obj => obj.id === selectedObject);
           if (objectToDelete) {
@@ -470,7 +506,7 @@ function EditorPage() {
         break
         
       case 'toggle-grid':
-        console.log('Grid toggle menu action triggered');
+        
         toggleGridVisible();
         const currentState = useEditorStore.getState();
         const isVisible = currentState.isGridVisible;
@@ -563,10 +599,24 @@ function EditorPage() {
       setToast({ message: '라이브러리에 추가 중...', type: 'info' });
 
       const meshData = await glbMeshManager.current.addCustomMesh(object, name, { preserveTransform });
-      console.log('EditorPage: 생성된 메쉬 데이터:', meshData);
-      
-      // 스토어에 추가
-      addCustomMesh(meshData);
+      // 중복 방지 및 덮어쓰기 정책
+      const exists = (useEditorStore.getState().customMeshes || []).some(m => m.id === meshData.id)
+      if (exists) {
+        const overwrite = confirm(`동일 ID의 커스텀 메쉬가 이미 있습니다.\n\n- 기존 항목을 덮어쓸까요?`)
+        if (!overwrite) {
+          setToast({ message: '추가가 취소되었습니다(중복 ID).', type: 'warning' })
+          setTimeout(() => setToast(null), 2500)
+          return
+        }
+        // IDB 업서트 후 스토어 교체 반영
+        await idbAddCustomMesh(meshData)
+        const prev = useEditorStore.getState().customMeshes || []
+        const next = prev.map(m => m.id === meshData.id ? meshData : m)
+        useEditorStore.getState().loadCustomMeshes(next)
+      } else {
+        // 스토어 액션은 내부에서 IDB 저장도 처리
+        await addCustomMesh(meshData)
+      }
       
       // 강제로 LibraryPanel 새로고침을 위한 이벤트 발생
       window.dispatchEvent(new CustomEvent('customMeshAdded', { detail: meshData }));
@@ -575,10 +625,10 @@ function EditorPage() {
       setToast({ message: `"${name}"이(가) 라이브러리에 추가되었습니다!${transformMessage}`, type: 'success' });
       
       // 5초 후 토스트 자동 닫기
-      setTimeout(() => setToast(null), 5000);
+  setTimeout(() => setToast(null), 5000);
     } catch (error) {
       console.error('라이브러리 추가 실패:', error);
-      setToast({ message: '라이브러리 추가에 실패했습니다.', type: 'error' });
+  setToast({ message: '라이브러리 추가에 실패했습니다.', type: 'error' });
       
       // 5초 후 토스트 자동 닫기
       setTimeout(() => setToast(null), 5000);
@@ -601,9 +651,9 @@ function EditorPage() {
             window.dispatchEvent(contextMenuEvent);
           }}
         />
-        <ViewportControls editorControls={editorControlsRef.current} />
+  <ViewportControls editorControls={editorControlsState} />
         <EditorUI 
-          editorControls={editorControlsRef.current} 
+          editorControls={editorControlsState} 
           postProcessingManager={postProcessingRef.current}
           onAddToLibrary={handleAddToLibrary}
           showInspector={showInspector}

@@ -91,8 +91,7 @@ export const migrateLocalStorageCustomMeshesToIDB = async () => {
     for (const m of meshes) {
       await idbAddCustomMesh(m)
     }
-    localStorage.removeItem('customMeshes')
-    console.log('customMeshes: localStorage → IndexedDB 마이그레이션 완료:', meshes.length)
+  localStorage.removeItem('customMeshes')
     return true
   } catch (e) {
     console.warn('customMeshes 마이그레이션 실패(계속 진행):', e)

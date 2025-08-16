@@ -49,6 +49,18 @@ export class ObjectSelector {
     // ObjectSelector initialized
   }
 
+  // 포스트프로세싱 Outline을 쓰지 못할 때(전역 PP off 또는 Outline off) 대체 아웃라인 사용 여부
+  _shouldUseFallbackOutline() {
+    try {
+      const state = this.editorStore.getState();
+      const ppOn = !!state.isPostProcessingEnabled;
+      const outlineOn = !!this.postProcessingManager?.getSettings?.()?.outline?.enabled;
+      return !(ppOn && outlineOn);
+    } catch {
+      return true;
+    }
+  }
+
   // 매 프레임 강제 숨김: 헬퍼 라인/보조선 차단 + gizmoScene 재부착 보장
   forceHideGizmoLines() {
     try {
@@ -122,9 +134,12 @@ export class ObjectSelector {
 
   _syncOutlineWithSelection() {
     if (!this.postProcessingManager) return;
-    try { this.postProcessingManager.setEffectEnabled('outline', true); } catch {}
     const list = (this.selectedObjects && this.selectedObjects.length > 0) ? [...this.selectedObjects] : [];
-    try { this.postProcessingManager.setOutlineSelectedObjects(list); } catch {}
+    try {
+      this.postProcessingManager.setOutlineSelectedObjects(list);
+      const active = (this.lastSelectedObject && list.includes(this.lastSelectedObject)) ? [this.lastSelectedObject] : (list.length ? [list[list.length - 1]] : []);
+      this.postProcessingManager.setOutlineActiveObjects(active);
+    } catch {}
   }
 
   // 헬퍼: 오브젝트가 씬 그래프에 포함되어 있는지 검사
@@ -364,8 +379,29 @@ export class ObjectSelector {
     try {
       // Creating TransformControls
       
-      this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
+  this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
       
+      // 초기 기즈모 사이즈/스냅을 스토어에서 반영
+      try {
+        const s = this.editorStore.getState();
+        if (Number.isFinite(s?.gizmoSize)) this.transformControls.setSize(s.gizmoSize);
+        // 스냅 초기값
+        const enable = !!s?.isGridSnap;
+        const grid = Number.isFinite(s?.gridSize) ? s.gridSize : 1;
+        const move = Number.isFinite(s?.snapMove) ? s.snapMove : grid;
+        const rot = Number.isFinite(s?.snapRotateDeg) ? THREE.MathUtils.degToRad(s.snapRotateDeg) : THREE.MathUtils.degToRad(15);
+        const sca = Number.isFinite(s?.snapScale) ? s.snapScale : 0.1;
+        if (enable) {
+          this.transformControls.setTranslationSnap(move || grid || 1);
+          this.transformControls.setRotationSnap(rot);
+          this.transformControls.setScaleSnap(sca);
+        } else {
+          this.transformControls.setTranslationSnap(null);
+          this.transformControls.setRotationSnap(null);
+          this.transformControls.setScaleSnap(null);
+        }
+      } catch {}
+
       // ?�벤??리스??추�?
       this.transformControls.addEventListener('dragging-changed', (event) => {
         this.isDragging = event.value;
@@ -380,18 +416,7 @@ export class ObjectSelector {
           } catch {}
           // Transform drag started, saved initial states
         } else {
-          // ?�래�?종료 - 자석 기능 적용 후 초기 ?�태 ?�리??
-          if (this.transformControls.getMode() === 'translate') {
-            if (this.selectedObjects.length > 1) {
-              // 다중 선택시 모든 오브젝트에 자석 기능 적용
-              this.applyMagnetToSelectedObjects();
-            } else if (this.lastSelectedObject) {
-              // 단일 선택시 해당 오브젝트에만 적용
-              const currentPosition = this.lastSelectedObject.position.clone();
-              const snappedPosition = this.snapToMeshSurface(this.lastSelectedObject, currentPosition);
-              this.lastSelectedObject.position.copy(snappedPosition);
-            }
-          }
+          // 드래그 종료: 자석 기능 제거됨(아무 것도 수행하지 않음)
           // 드래그 동안 누적되지 못한 펜딩 업데이트를 먼저 플러시
           try { this.flushPendingTransformUpdates?.(); } catch {}
           this.initialTransformStates.clear();
@@ -557,8 +582,7 @@ export class ObjectSelector {
     const objectInStore = editorState.objects.find(obj => obj.id === object.userData.id) || 
                          editorState.walls.find(wall => wall.id === object.userData.id);
     
-    if (objectInStore && objectInStore.frozen) {
-      console.log('프리즈된 객체는 선택할 수 없습니다:', objectInStore.name);
+  if (objectInStore && objectInStore.frozen) {
       return false;
     }
     
@@ -616,8 +640,9 @@ export class ObjectSelector {
       }
     }
     
-  // PostProcessing Outline 동기화
+  // PostProcessing Outline 동기화 + 대체 아웃라인 즉시 적용
   this._syncOutlineWithSelection();
+  try { this.addSelectionOutline(object); this.updateSelectionOutline(object); } catch {}
     
     // Console output removed
   }
@@ -639,7 +664,7 @@ export class ObjectSelector {
       if (object && !this.selectedObjects.includes(object)) {
         this.selectedObjects.push(object);
         this.lastSelectedObject = object; // 마�?막으�?추�????�브?�트�?마�?�??�택?�로 ?�정
-        // 아웃라인 기능 비활성화로 인해 addSelectionOutline 호출 제거됨
+  try { this.addSelectionOutline(object); this.updateSelectionOutline(object); } catch {}
       }
     }
     
@@ -734,7 +759,7 @@ export class ObjectSelector {
       // ?�로???�브?�트 ?�택
       this.selectedObjects.push(object);
       this.lastSelectedObject = object; // ?�로 ?�택???�브?�트�?마�?�??�택?�로 ?�정
-      // 아웃라인 기능 비활성화로 인해 addSelectionOutline 호출 제거됨
+  try { this.addSelectionOutline(object); this.updateSelectionOutline(object); } catch {}
       
       // Transform controls 업데이트
       if (this.selectedObjects.length > 1) {
@@ -890,20 +915,91 @@ export class ObjectSelector {
   
   // ?�택 ?�웃?�인 추�?
   addSelectionOutline(object) {
-    // 아웃라인 기능 비활성화됨 - 선택 시 아웃라인 표시하지 않음
-    return;
+    if (!object) return;
+  if (object.userData?.isSelectionOutline) return; // 아웃라인 메쉬 자체는 무시
+    if (!this._shouldUseFallbackOutline()) return; // PP Outline이 활성인 경우 대기
+    if (object.isGroup || (object.children && object.children.length > 0)) {
+      this.addSelectionOutlineToGroup(object);
+      return;
+    }
+    this.addSelectionOutlineToSingleMesh(object);
   }
   
   // Group ?�는 복합 ?�브?�트???�웃?�인 추�?
   addSelectionOutlineToGroup(group) {
-    // 아웃라인 기능 비활성화됨
-    return;
+    if (!group || !group.traverse) return;
+    group.traverse((child) => {
+  if (child && child.isMesh && child !== group && !child.userData?.isSelectionOutline) {
+        this.addSelectionOutlineToSingleMesh(child);
+      }
+    });
   }
   
   // ?�일 메시???�웃?�인 추�? (Group???�식??
   addSelectionOutlineToSingleMesh(mesh) {
-    // 아웃라인 기능 비활성화됨
-    return;
+    try {
+      if (!mesh || !mesh.isMesh) return;
+  if (mesh.userData?.isSelectionOutline) return; // 이미 아웃라인 메쉬는 무시
+      if (!this._shouldUseFallbackOutline()) return;
+      if (!mesh.userData) mesh.userData = {};
+      if (mesh.userData.outlineObject) {
+        // 존재하면 부모가 mesh가 아니면 재부착만 시도
+        try {
+          const o = mesh.userData.outlineObject;
+          if (o && o.parent !== mesh) {
+            if (o.parent) o.parent.remove(o);
+            mesh.add(o);
+          }
+        } catch {}
+        return;
+      }
+
+      const outlineGeom = mesh.geometry?.clone?.() || null;
+      if (!outlineGeom) return;
+      try {
+        if (!outlineGeom.attributes || !outlineGeom.attributes.normal) {
+          outlineGeom.computeVertexNormals();
+        }
+      } catch {}
+      // 활성/선택 색 구분: 마지막 선택(활성) = 노랑, 그 외 선택 = 주황
+      const isActive = (this.lastSelectedObject === mesh) || (this.selectedObjects.length === 1 && this.selectedObjects[0] === mesh);
+      const color = isActive ? 0xffd400 : 0xff7a00;
+      const outlineMat = new THREE.MeshBasicMaterial({
+        color,
+        side: THREE.BackSide,
+        transparent: false,
+        depthTest: true,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1
+      });
+      // 두께를 메시 크기에 따라 산정 (월드 유닛 기준 대략 값)
+      try { outlineGeom.computeBoundingSphere(); } catch {}
+      const radius = outlineGeom.boundingSphere ? outlineGeom.boundingSphere.radius : 1.0;
+      const thickness = Math.max(0.002, radius * 0.005);
+      outlineMat.onBeforeCompile = (shader) => {
+        shader.uniforms.uOutlineThickness = { value: thickness };
+        // 유니폼만 주입하고, normal 속성은 geometry에 normals가 있을 때 이미 정의되어 있으므로 재선언하지 않음
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', `#include <common>\nuniform float uOutlineThickness;`)
+          .replace('#include <begin_vertex>', `#include <begin_vertex>\n  vec3 worldNormal = normalize(mat3(modelMatrix) * normal);\n  transformed += worldNormal * uOutlineThickness;`);
+        outlineMat.userData.shader = shader;
+      };
+      const outlineMesh = new THREE.Mesh(outlineGeom, outlineMat);
+      outlineMesh.name = 'SelectionOutline';
+  outlineMesh.userData = outlineMesh.userData || {};
+  outlineMesh.userData.isSelectionOutline = true;
+      outlineMesh.userData.isSystemObject = true;
+  // 스케일 팩터 사용 제거: 노멀 기반 외곽 확장으로 대체
+      // 레이어/가시성 상속 유사 처리
+      try { outlineMesh.layers.mask = mesh.layers.mask; } catch {}
+      // 렌더 순서 소폭 뒤로
+      try { outlineMesh.renderOrder = (mesh.renderOrder || 0) + 0.001; } catch {}
+      // 메시에 자식으로 부착 (부모/월드 변환 자동 추적)
+      mesh.add(outlineMesh);
+      mesh.userData.outlineObject = outlineMesh;
+    } catch {}
   }
   
   // ?�택 ?�웃?�인 ?�거
@@ -936,7 +1032,7 @@ export class ObjectSelector {
       // Group??모든 ?�식 메시?�서 ?�웃?�인 ?�거
       group.traverse((child) => {
         // child가 ?�효?��? ?�인
-        if (child && child.isMesh && child !== group) {
+  if (child && child.isMesh && child !== group && !child.userData?.isSelectionOutline) {
           this.removeSelectionOutlineFromMesh(child);
         }
       });
@@ -956,6 +1052,10 @@ export class ObjectSelector {
     // ?�전??검??
     if (!object || !object.userData) {
       // Console output removed
+      return;
+    }
+    if (object.userData.isSelectionOutline) {
+      // 아웃라인 메쉬 자체에 대해 호출된 경우는 상위 메쉬 경로에서만 정리
       return;
     }
     
@@ -988,26 +1088,65 @@ export class ObjectSelector {
   
   // ?�웃?�인 ?�치/?�전/?��????�데?�트
   updateSelectionOutline(object) {
-    // 아웃라인 기능 비활성화됨
-    return;
+    if (!object) return;
+  if (object.userData?.isSelectionOutline) return;
+    if (!this._shouldUseFallbackOutline()) return;
+    if (object.isGroup || (object.children && object.children.length > 0)) {
+      this.updateSelectionOutlineForGroup(object);
+      return;
+    }
+    this.updateSelectionOutlineForMesh(object);
   }
   
   // Group???�웃?�인 ?�데?�트
   updateSelectionOutlineForGroup(group) {
-    // 아웃라인 기능 비활성화됨
-    return;
+    if (!group || !group.traverse) return;
+    group.traverse((child) => {
+  if (child && child.isMesh && child !== group && !child.userData?.isSelectionOutline) {
+        this.updateSelectionOutlineForMesh(child);
+      }
+    });
   }
   
   // ?�일 메시???�웃?�인 ?�데?�트
   updateSelectionOutlineForMesh(object) {
-    // 아웃라인 기능 비활성화됨
-    return;
+    if (!object || !object.isMesh) return;
+  if (object.userData?.isSelectionOutline) return;
+    if (!this._shouldUseFallbackOutline()) return;
+    // 필요 시 스케일을 다시 보장 (부모 변경/스케일 변동 대비)
+    const outline = object.userData?.outlineObject;
+    if (outline) {
+  // 노멀 기반 확장으로 대체했으므로 스케일 보정 불필요
+      // 색상도 활성/선택 기준으로 최근 상태 반영
+      try {
+        const isActive = (this.lastSelectedObject === object) || (this.selectedObjects.length === 1 && this.selectedObjects[0] === object);
+        const target = isActive ? 0xffd400 : 0xff7a00;
+        if (outline.material && outline.material.color) outline.material.color.setHex(target);
+      } catch {}
+    }
   }
   
   // 모든 ?�택???�브?�트???�웃?�인 ?�데?�트 (?�니메이??중인 ?�브?�트??
   updateAllSelectionOutlines() {
-  this.cleanupSelectedObjects();
-  this._syncOutlineWithSelection();
+    this.cleanupSelectedObjects();
+    // PostProcessing Outline 동기화 (PP 켜진 경우에만 의미)
+    this._syncOutlineWithSelection();
+    // 대체 아웃라인 적용/정리
+    const useFallback = this._shouldUseFallbackOutline();
+    if (useFallback) {
+      // 선택된 오브젝트들에 아웃라인 보장
+      for (const obj of this.selectedObjects) {
+        if (!obj) continue;
+        try { this.addSelectionOutline(obj); } catch {}
+        try { this.updateSelectionOutline(obj); } catch {}
+      }
+    } else {
+      // 선택된 오브젝트들에서 대체 아웃라인 제거 (PP Outline 사용)
+      for (const obj of this.selectedObjects) {
+        if (!obj) continue;
+        try { this.removeSelectionOutline(obj); } catch {}
+      }
+    }
   }
   
   // 기즈�?모드 ?�정
@@ -1041,14 +1180,26 @@ export class ObjectSelector {
     if (!this.transformControls) return;
     
     if (enabled) {
-      this.transformControls.setTranslationSnap(gridSize);
-      this.transformControls.setRotationSnap(THREE.MathUtils.degToRad(15)); // 15도 단위
-      this.transformControls.setScaleSnap(0.1); // 0.1 단위
+      const s = this.editorStore.getState();
+      const move = Number.isFinite(s?.snapMove) ? s.snapMove : gridSize;
+      const rot = Number.isFinite(s?.snapRotateDeg) ? THREE.MathUtils.degToRad(s.snapRotateDeg) : THREE.MathUtils.degToRad(15);
+      const sca = Number.isFinite(s?.snapScale) ? s.snapScale : 0.1;
+      this.transformControls.setTranslationSnap(move || gridSize);
+      this.transformControls.setRotationSnap(rot);
+      this.transformControls.setScaleSnap(sca);
     } else {
       this.transformControls.setTranslationSnap(null);
       this.transformControls.setRotationSnap(null);
       this.transformControls.setScaleSnap(null);
     }
+  }
+
+  // 기즈모 크기 업데이트
+  updateGizmoSize() {
+    try {
+      const size = this.editorStore.getState()?.gizmoSize;
+      if (this.transformControls && Number.isFinite(size)) this.transformControls.setSize(size);
+    } catch {}
   }
   
   // 그리드 스냅 상태 업데이트

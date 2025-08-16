@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { getGLTFLoader, setKTX2Renderer } from '../../utils/gltfLoaderFactory.js';
 import { useEditorStore } from '../../store/editorStore';
+import { runSmokeTest } from '../../utils/smokeTest';
 import { EditorControls } from './EditorControls.js';
 import { PostProcessingManager } from './PostProcessingManager.js';
 import { getGLBMeshManager } from '../../utils/GLBMeshManager';
@@ -21,6 +22,15 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     setScene,
     setSelectedObject
   } = useEditorStore();
+
+  const isPostProcessingEnabledRef = useRef(useEditorStore.getState().isPostProcessingEnabled);
+  // 구독: 포스트프로세싱 토글 상태 변화 추적
+  useEffect(() => {
+    const unsub = useEditorStore.subscribe((state) => state.isPostProcessingEnabled, (val) => {
+      isPostProcessingEnabledRef.current = val;
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     if (!mountRef.current) return;
@@ -54,6 +64,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     
     // Mount the renderer
     mountRef.current.appendChild(renderer.domElement);
+
+  // KTX2 하드웨어 변환 지원 감지 (메인 렌더러 기준 1회)
+  try { setKTX2Renderer(renderer) } catch {}
 
     // WebGL context lost/restore 처리
     const onContextLost = (e) => {
@@ -99,6 +112,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const editorControls = new EditorControls(scene, camera, renderer, useEditorStore, handleCameraChange);
   editorControls.gizmoScene = gizmoScene;
     editorControlsRef.current = editorControls;
+  // 디버그 접근을 위해 window에 노출 (개발용)
+  try { window.__editorControls = editorControls } catch {}
+  window.runSmokeTest = () => runSmokeTest(editorControls, useEditorStore);
+  // 저장된 설정값을 즉시 반영
+  try { editorControls.applyInitialViewState?.() } catch {}
     
     // 포스트프로세싱 매니저 초기화
     const postProcessingManager = new PostProcessingManager(scene, camera, renderer);
@@ -216,13 +234,13 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         }
       }
 
-      // 렌더링 (포스트프로세싱 사용)
+      // 렌더링 (포스트프로세싱 사용 여부)
       renderer.clear();
       // EditorControls의 현재 카메라 사용 (Perspective/Orthographic 토글 대응)
       const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
       
-      // 포스트프로세싱 매니저가 있으면 포스트프로세싱 렌더링, 없으면 기본 렌더링
-      if (postProcessingRef.current) {
+      const usePP = isPostProcessingEnabledRef.current && !!postProcessingRef.current;
+      if (usePP) {
         postProcessingRef.current.render();
       } else {
         renderer.render(scene, currentCamera);
@@ -535,7 +553,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             raycaster.ray.intersectPlane(plane, intersection);
             
             // GLB 로더로 메쉬 로드
-            const loader = new GLTFLoader();
+            const loader = getGLTFLoader();
             let modelUrl;
             
             if (objectData.type === 'custom') {
@@ -669,7 +687,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                   const url = glbMeshManager.createBlobURL(objectData.glbData);
                   
                   // GLB 파일 로드
-                  const loader = new GLTFLoader();
+                  const loader = getGLTFLoader();
                   loader.load(url, (gltf) => {
                   const model = gltf.scene;
                   model.position.copy(intersection);
@@ -736,7 +754,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             case 'LibraryMesh':
               // 라이브러리 메쉬 로드
               if (objectData.glbUrl) {
-                const loader = new GLTFLoader();
+                const loader = getGLTFLoader();
                 loader.load(objectData.glbUrl, (gltf) => {
                   const model = gltf.scene;
                   model.position.copy(intersection);
@@ -904,7 +922,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     if (!sceneRef.current || !editorControlsRef.current) return;
     
     const scene = sceneRef.current;
-    const loader = new GLTFLoader();
+  const loader = getGLTFLoader();
     
     // 새로 추가된 오브젝트들을 확인하고 GLB 파일 로드
     objects.forEach(obj => {
@@ -952,6 +970,18 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
               }
             });
             
+            // 현재 와이어프레임 상태 반영
+            try {
+              const s = useEditorStore.getState();
+              const wf = !!s.isWireframe;
+              model.traverse((child) => {
+                if (child.isMesh && child.material) {
+                  if (Array.isArray(child.material)) child.material.forEach((m)=> m.wireframe = wf)
+                  else child.material.wireframe = wf
+                }
+              })
+            } catch {}
+
             // 씬에 추가
             scene.add(model);
             // Model added to scene
@@ -964,6 +994,12 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
+
+            // 로드 직후 스냅/기즈모 상태 재적용 (안전망)
+            try { editorControlsRef.current.updateWireframe?.() } catch {}
+            try { editorControlsRef.current.updateGridSnap?.() } catch {}
+            try { editorControlsRef.current.updateGizmoSpace?.() } catch {}
+            try { editorControlsRef.current.objectSelector?.updateGizmoSize?.() } catch {}
             editorControlsRef.current.selectObject(model);
             
             // GLB file loading completed
@@ -1112,7 +1148,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         editorControlsRef.current.selectObject(mesh);
       } else if (obj.type === 'basic' || (obj.geometry && obj.params)) {
         // 기본 도형 처리 (라이브러리 패널에서 추가된 기본 도형들)
-        console.log('기본 도형 생성:', obj);
+        
         
         const material = new THREE.MeshStandardMaterial({
           color: 0x4CAF50,
@@ -1169,7 +1205,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         setSelectedObject(obj.id);
         editorControlsRef.current.selectObject(mesh);
         
-        console.log('기본 도형 씬에 추가 완료:', mesh);
+        
       }
     });
     

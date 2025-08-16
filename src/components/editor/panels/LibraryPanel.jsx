@@ -10,6 +10,8 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   const draggedObject = useRef(null);
   const { customMeshes, loadCustomMeshes } = useEditorStore();
   const glbMeshManager = useRef(getGLBMeshManager());
+  // 썸네일 blob:ObjectURL 메모리 누수 방지용 추적 셋
+  const activeBlobURLsRef = useRef(new Set());
 
   // 3D 객체 라이브러리 데이터
   const objectLibrary = [
@@ -59,20 +61,17 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
 
   // 컴포넌트 마운트 시 커스텀 메쉬 로드
   useEffect(() => {
-    let currentThumbnails = []
     ;(async () => {
       const meshes = await glbMeshManager.current.getCustomMeshes();
-      // 생성된 Object URL 추적
-      currentThumbnails = meshes
-        .map(m => typeof m.thumbnail === 'string' && m.thumbnail.startsWith('blob:') ? m.thumbnail : null)
-        .filter(Boolean)
       loadCustomMeshes(meshes);
     })();
+    // 언마운트 시 남아있는 blob: URL 전부 해제
     return () => {
-      // Object URL 해제
-      currentThumbnails.forEach(url => {
+      const setRef = activeBlobURLsRef.current;
+      for (const url of setRef) {
         try { URL.revokeObjectURL(url) } catch {}
-      })
+      }
+      setRef.clear();
     }
   }, [loadCustomMeshes]);
 
@@ -90,9 +89,22 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     };
   }, [loadCustomMeshes]);
 
-  // customMeshes 상태 변화 감지
+  // customMeshes 썸네일 blob: URL 정리 (차집합 해제)
   useEffect(() => {
-    // 상태 변화 감지용 (필요시 여기에 로직 추가)
+    const prev = activeBlobURLsRef.current;
+    const next = new Set(
+      (customMeshes || [])
+        .map(m => (typeof m.thumbnail === 'string' && m.thumbnail.startsWith('blob:')) ? m.thumbnail : null)
+        .filter(Boolean)
+    );
+    // 이전에 있었는데 현재는 없는 URL은 해제
+    for (const url of prev) {
+      if (!next.has(url)) {
+        try { URL.revokeObjectURL(url) } catch {}
+      }
+    }
+    // ref 교체
+    activeBlobURLsRef.current = next;
   }, [customMeshes]);
 
   // 사용자 정의 객체 로드 (기존 로직 유지)
@@ -237,12 +249,16 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     event.stopPropagation(); // 부모 클릭 이벤트 방지
     
     if (window.confirm(`"${meshToDelete.name}"을(를) 라이브러리에서 삭제하시겠습니까?`)) {
-      // GLBMeshManager를 사용하여 커스텀 메쉬 삭제
-      await glbMeshManager.current.deleteCustomMesh(meshToDelete.id);
-      
-      // 메쉬 목록 새로고침
-      const meshes = await glbMeshManager.current.getCustomMeshes();
-      loadCustomMeshes(meshes);
+      try {
+        // GLBMeshManager를 사용하여 커스텀 메쉬 삭제
+        await glbMeshManager.current.deleteCustomMesh(meshToDelete.id);
+        // 메쉬 목록 새로고침
+        const meshes = await glbMeshManager.current.getCustomMeshes();
+        loadCustomMeshes(meshes);
+        window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '삭제되었습니다.', type: 'success', duration: 2000 } }))
+      } catch (e) {
+        window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '삭제에 실패했습니다 (IndexedDB).', type: 'error', duration: 3000 } }))
+      }
     }
   };
 

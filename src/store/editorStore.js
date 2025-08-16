@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-
-console.log('🔥 에디터 스토어 파일 로드됨');
+import { loadViewGizmoConfig, startViewGizmoConfigAutoPersist, loadSettingsSection, startSettingsAutoPersist } from '../utils/viewGizmoConfig'
+import { idbAddCustomMesh, idbDeleteCustomMesh } from '../utils/idb'
 
 // localStorage에서 HDRI 설정 로드하는 헬퍼 함수
 const loadInitialHDRISettings = () => {
@@ -8,7 +8,7 @@ const loadInitialHDRISettings = () => {
     const savedSettings = localStorage.getItem('hdriSettings')
     if (savedSettings) {
       const settings = JSON.parse(savedSettings)
-      console.log('초기 HDRI 설정 로드됨:', settings)
+  // restored initial HDRI settings
       return settings
     }
   } catch (error) {
@@ -47,7 +47,9 @@ const normalizeTransformFields = (obj) => {
 }
 
 export const useEditorStore = create((set, get) => {
-  console.log('🔥 에디터 스토어 생성 시작');
+  // 설정 하이드레이션 (초기 1회)
+  const vg = loadViewGizmoConfig()
+  const uiInitial = loadSettingsSection('ui') || {}
   
   return {
   // Scene state
@@ -70,13 +72,18 @@ export const useEditorStore = create((set, get) => {
   transformMode: 'translate',
   
   // Viewport settings
-  isWireframe: false,
-  isGridSnap: false,
-  isGridVisible: true, // 그리드 가시성
+  isWireframe: !!vg.isWireframe,
+  isGridSnap: !!vg.isGridSnap,
+  isGridVisible: !!vg.isGridVisible, // 그리드 가시성
   gridSize: 1, // 그리드 크기 (단위: Three.js 유닛)
   
   // Gizmo settings
-  gizmoSpace: 'world', // 'world' or 'local'
+  gizmoSpace: vg.gizmoSpace || 'world', // 'world' or 'local'
+  gizmoSize: Number.isFinite(vg.gizmoSize) ? vg.gizmoSize : 1.0, // TransformControls size
+  // Snap increments
+  snapMove: Number.isFinite(vg.snapMove) ? vg.snapMove : 1.0,
+  snapRotateDeg: Number.isFinite(vg.snapRotateDeg) ? vg.snapRotateDeg : 15,
+  snapScale: Number.isFinite(vg.snapScale) ? vg.snapScale : 0.1,
   // 자석 기능 제거됨
 
   // HDRI settings - 패널이 닫혀도 유지되는 설정 (localStorage에서 초기값 로드)
@@ -109,6 +116,8 @@ export const useEditorStore = create((set, get) => {
 
   // 렌더/포스트프로세싱 참조 및 세이프 모드
   postProcessingManager: null,
+  // 전역 포스트프로세싱 사용 여부 (기본 비활성)
+  isPostProcessingEnabled: !!vg.isPostProcessingEnabled,
   safeMode: {
     enabled: false,
     pixelRatio: 1.0,
@@ -126,6 +135,21 @@ export const useEditorStore = create((set, get) => {
   // Clipboard for copy/paste functionality
   clipboard: null, // 복사된 객체를 저장하는 클립보드
   
+  // UI Panels (persisted via settings.ui)
+  showLibrary: !!uiInitial.showLibrary,
+  showAssets: !!uiInitial.showAssets,
+  isPostProcessingPanelOpen: !!uiInitial.isPostProcessingPanelOpen,
+  showHDRI: !!uiInitial.showHDRI,
+  // View/Gizmo 설정 팝오버 열림 상태
+  isViewGizmoSettingsOpen: !!uiInitial.isViewGizmoSettingsOpen,
+
+  // Actions for UI Panels
+  setShowLibrary: (v) => set({ showLibrary: !!v }),
+  setShowAssets: (v) => set({ showAssets: !!v }),
+  setIsPostProcessingPanelOpen: (v) => set({ isPostProcessingPanelOpen: !!v }),
+  setShowHDRI: (v) => set({ showHDRI: !!v }),
+  setIsViewGizmoSettingsOpen: (v) => set({ isViewGizmoSettingsOpen: !!v }),
+
   // Actions
   setSelectedObject: (object) => set({ selectedObject: object }),
   setSelectedIds: (ids) => set({ selectedIds: Array.isArray(ids) ? Array.from(new Set(ids)) : [] }),
@@ -141,6 +165,24 @@ export const useEditorStore = create((set, get) => {
   toggleGizmoSpace: () => set((state) => ({ 
     gizmoSpace: state.gizmoSpace === 'world' ? 'local' : 'world' 
   })),
+  setGizmoSize: (size) => set({ gizmoSize: Math.max(0.1, Math.min(5, Number(size) || 1)) }),
+  setSnapMove: (val) => set({ snapMove: Math.max(0.001, Math.min(1000, Number(val) || 1)) }),
+  setSnapRotateDeg: (deg) => set({ snapRotateDeg: Math.max(0.1, Math.min(360, Number(deg) || 15)) }),
+  setSnapScale: (val) => set({ snapScale: Math.max(0.001, Math.min(100, Number(val) || 0.1)) }),
+  rehydrateViewGizmoConfig: () => {
+    const cfg = loadViewGizmoConfig()
+    set({
+      isWireframe: !!cfg.isWireframe,
+      isGridSnap: !!cfg.isGridSnap,
+      isGridVisible: !!cfg.isGridVisible,
+      gizmoSpace: cfg.gizmoSpace || 'world',
+      gizmoSize: Number.isFinite(cfg.gizmoSize) ? cfg.gizmoSize : 1,
+      snapMove: Number.isFinite(cfg.snapMove) ? cfg.snapMove : 1,
+      snapRotateDeg: Number.isFinite(cfg.snapRotateDeg) ? cfg.snapRotateDeg : 15,
+      snapScale: Number.isFinite(cfg.snapScale) ? cfg.snapScale : 0.1,
+      isPostProcessingEnabled: !!cfg.isPostProcessingEnabled
+    })
+  },
   // 자석 기능 제거됨
   
   // HDRI actions
@@ -157,6 +199,8 @@ export const useEditorStore = create((set, get) => {
 
   // 포스트프로세싱 매니저 참조 저장
   setPostProcessingManager: (ppm) => set({ postProcessingManager: ppm }),
+  // 포스트프로세싱 전체 온/오프
+  togglePostProcessingEnabled: () => set((state) => ({ isPostProcessingEnabled: !state.isPostProcessingEnabled })),
 
   // 세이프 모드 토글 및 픽셀 비율 설정
   toggleSafeMode: (on) => {
@@ -196,7 +240,8 @@ export const useEditorStore = create((set, get) => {
     let total = (w * h) * (bppColor + bppDepth); // default framebuffer
     try {
       const ppm = get().postProcessingManager;
-      if (ppm) {
+      const ppOn = get().isPostProcessingEnabled;
+      if (ppm && ppOn) {
         // composer default target
         total += (w * h) * (bppColor + bppDepth);
         const eff = ppm.getSettings?.() || {};
@@ -216,7 +261,7 @@ export const useEditorStore = create((set, get) => {
       const savedSettings = localStorage.getItem('hdriSettings')
       if (savedSettings) {
         const settings = JSON.parse(savedSettings)
-        console.log('스토어에서 HDRI 설정 초기화:', settings)
+  // initialize HDRI settings from localStorage
         set((state) => ({
           hdriSettings: { ...state.hdriSettings, ...settings }
         }))
@@ -233,7 +278,7 @@ export const useEditorStore = create((set, get) => {
     const { hdriSettings } = get()
     try {
       localStorage.setItem('hdriSettings', JSON.stringify(hdriSettings))
-      console.log('스토어에서 HDRI 설정 저장:', hdriSettings)
+  // saved HDRI settings to localStorage
     } catch (error) {
       console.error('HDRI 설정 저장 실패:', error)
     }
@@ -246,24 +291,27 @@ export const useEditorStore = create((set, get) => {
     return { savedObjects: newMap }
   }),
 
-  addCustomMesh: (meshData) => set((state) => {
-    console.log('에디터 스토어: 커스텀 메쉬 추가', meshData.name, '기존 개수:', state.customMeshes.length);
-    const newCustomMeshes = [...state.customMeshes, meshData];
-    console.log('에디터 스토어: 업데이트 후 개수:', newCustomMeshes.length);
-    return { customMeshes: newCustomMeshes };
-  }),
+  addCustomMesh: async (meshData) => {
+    try {
+      await idbAddCustomMesh(meshData)
+      set((state) => ({ customMeshes: [...state.customMeshes, meshData] }))
+    } catch (e) {
+      try { window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '저장에 실패했습니다 (IndexedDB).', type: 'error', duration: 3000 } })) } catch {}
+    }
+  },
 
-  deleteCustomMesh: (meshId) => set((state) => {
-    console.log('에디터 스토어: 커스텀 메쉬 삭제', meshId);
-    const filteredMeshes = state.customMeshes.filter(mesh => mesh.id !== meshId);
-    console.log('에디터 스토어: 삭제 후 개수:', filteredMeshes.length);
-    return { customMeshes: filteredMeshes };
-  }),
+  deleteCustomMesh: async (meshId) => {
+    try {
+      await idbDeleteCustomMesh(meshId)
+      set((state) => ({ customMeshes: state.customMeshes.filter(mesh => mesh.id !== meshId) }))
+    } catch (e) {
+      try { window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '삭제에 실패했습니다 (IndexedDB).', type: 'error', duration: 3000 } })) } catch {}
+    }
+  },
 
-  loadCustomMeshes: (meshes) => set((state) => {
-    console.log('에디터 스토어: 커스텀 메쉬 로드', meshes.length, '개');
-    return { customMeshes: meshes };
-  }),
+  loadCustomMeshes: (meshes) => set(() => ({
+    customMeshes: meshes
+  })),
   
   // 객체의 transform 정보 업데이트
   updateObjectTransform: (objectId, transform) => set((state) => {
@@ -414,20 +462,13 @@ export const useEditorStore = create((set, get) => {
   
   // Clipboard actions
   copyObject: (object) => {
-    console.log('copyObject 함수 호출됨:', object);
     if (!object) {
       console.warn('copyObject: 객체가 null 또는 undefined입니다');
       return;
     }
     
     // Three.js 객체인지 확인
-    if (object.isObject3D) {
-      console.log('Three.js 객체가 감지됨, 필요한 정보 추출 중...');
-      console.log('복사할 객체의 transform:', {
-        position: object.position,
-        rotation: object.rotation,
-        scale: object.scale
-      });
+  if (object.isObject3D) {
       
       // 먼저 objects 배열을 Three.js 객체의 현재 transform으로 업데이트
       const state = get();
@@ -454,9 +495,8 @@ export const useEditorStore = create((set, get) => {
       }
       
       // 업데이트된 상태에서 객체 정보 다시 가져오기
-      const updatedState = get();
-      const objectData = updatedState.objects.find(obj => obj.id === objectId);
-      console.log('업데이트된 objects 배열에서 찾은 객체 정보:', objectData);
+  const updatedState = get();
+  const objectData = updatedState.objects.find(obj => obj.id === objectId);
       
       // Three.js 객체와 objects 배열 정보를 결합하여 클립보드용 객체 생성
       const objectCopy = {
@@ -497,9 +537,7 @@ export const useEditorStore = create((set, get) => {
         originalObject: object
       };
       
-      set({ clipboard: objectCopy });
-      console.log('Three.js 객체가 클립보드에 복사되었습니다:', object.name);
-      console.log('clipboard 설정됨:', objectCopy);
+  set({ clipboard: objectCopy });
       return;
     }
     
@@ -516,18 +554,14 @@ export const useEditorStore = create((set, get) => {
       name: `${object.name}_copy` // 복사본임을 나타내는 접미사 추가
     };
     
-    set({ clipboard: objectCopy });
-    console.log('객체가 클립보드에 복사되었습니다:', object.name);
+  set({ clipboard: objectCopy });
   },
   
   pasteObject: () => {
-    console.log('pasteObject 함수 호출됨');
     const state = get();
-    console.log('현재 클립보드 상태:', state.clipboard);
     
     if (!state.clipboard) {
       // 클립보드가 비어있을 때는 조용히 null 반환 (경고 메시지 제거)
-      console.log('클립보드가 비어있음');
       return null;
     }
     
@@ -552,39 +586,23 @@ export const useEditorStore = create((set, get) => {
       }
     };
     
-    console.log('새로 생성될 객체:', newObject);
-    
     // 새 객체를 씬에 추가
     const updatedObjects = [...state.objects, newObject];
     set({ 
       objects: updatedObjects,
       selectedObject: newObject.id // 새로 생성된 객체 선택
     });
-    
-    console.log('객체가 붙여넣기되었습니다:', newObject.name);
     return newObject;
   },
   
   // 클립보드 상태 확인 헬퍼 함수
-  hasClipboardData: () => {
-    const state = get();
-    console.log('hasClipboardData 호출됨, clipboard:', state.clipboard);
-    const result = state.clipboard !== null;
-    console.log('hasClipboardData 결과:', result);
-    return result;
-  },
+  hasClipboardData: () => get().clipboard !== null,
   
   // 클립보드 비우기 함수
-  clearClipboard: () => {
-    set({ clipboard: null });
-    console.log('클립보드가 비워졌습니다.');
-  },
+  clearClipboard: () => set({ clipboard: null }),
   
   deleteSelectedObject: () => {
-    console.log('deleteSelectedObject 함수 호출됨');
     const state = get();
-    console.log('현재 선택된 객체 ID:', state.selectedObject);
-    console.log('현재 객체 목록:', state.objects);
     
     if (!state.selectedObject) {
       console.warn('선택된 객체가 없습니다.');
@@ -592,8 +610,7 @@ export const useEditorStore = create((set, get) => {
     }
     
     // 선택된 객체 찾기
-    const objectToDelete = state.objects.find(obj => obj.id === state.selectedObject);
-    console.log('삭제할 객체:', objectToDelete);
+  const objectToDelete = state.objects.find(obj => obj.id === state.selectedObject);
     
     if (!objectToDelete) {
       console.warn('선택된 객체를 찾을 수 없습니다.');
@@ -612,14 +629,11 @@ export const useEditorStore = create((set, get) => {
   const entry = { type: 'remove', object: safeCloneForHistory(objectToDelete) }
   const { _pushHistory } = get();
   _pushHistory(entry)
-    console.log('삭제 후 객체 목록:', updatedObjects);
     
     set({ 
       objects: updatedObjects,
       selectedObject: null // 선택 해제
     });
-    
-    console.log('객체가 삭제되었습니다:', objectToDelete.name);
   },
   
   updateWall: (id, updates) => set((state) => ({
@@ -627,7 +641,7 @@ export const useEditorStore = create((set, get) => {
       wall.id === id ? { ...wall, ...updates } : wall
     )
   })),
-
+  
   toggleObjectVisibility: (object) => set((state) => {
     const newVisibleState = object.visible !== false ? false : true
     
@@ -788,6 +802,25 @@ export const useEditorStore = create((set, get) => {
   }
   };
 });
+
+// 자동 저장 시작 (스토어 생성 후 1회)
+try { startViewGizmoConfigAutoPersist(useEditorStore) } catch {}
+
+// Persist UI section automatically
+try {
+  startSettingsAutoPersist(
+    useEditorStore,
+    'ui',
+    (s) => ({
+      showLibrary: !!s.showLibrary,
+      showAssets: !!s.showAssets,
+      isPostProcessingPanelOpen: !!s.isPostProcessingPanelOpen,
+  showHDRI: !!s.showHDRI,
+  isViewGizmoSettingsOpen: !!s.isViewGizmoSettingsOpen,
+    }),
+    120
+  )
+} catch {}
 
 // =====================
 // 히스토리 헬퍼 함수들

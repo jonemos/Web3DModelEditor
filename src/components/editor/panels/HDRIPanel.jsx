@@ -53,7 +53,7 @@ function HDRIPanel({ scene, onClose }) {
           }, 100)
         }
         
-        console.log('HDRI 설정이 복원되었습니다')
+        
         return true
       }
     } catch (error) {
@@ -210,7 +210,7 @@ function HDRIPanel({ scene, onClose }) {
         }
       })
 
-      console.log(`HDRI "${name}" 로드 완료`)
+      
     } catch (error) {
       console.error('HDRI 로드 중 오류:', error)
       
@@ -222,7 +222,7 @@ function HDRIPanel({ scene, onClose }) {
       // 일반 텍스처 로더로 폴백 시도
       if (error.message.includes('Bad File Format')) {
         try {
-          console.log('RGBELoader 실패, TextureLoader로 폴백 시도...')
+          
           const fallbackTexture = await loadWithTextureLoader(url)
           
           fallbackTexture.mapping = THREE.EquirectangularReflectionMapping
@@ -243,7 +243,7 @@ function HDRIPanel({ scene, onClose }) {
             }
           })
           
-          console.log(`폴백 로더로 "${name}" 로드 완료`)
+          
           return
         } catch (fallbackError) {
           console.error('폴백 로더도 실패:', fallbackError)
@@ -490,7 +490,7 @@ function HDRIPanel({ scene, onClose }) {
     // 패널이 닫혀도 태양 조명은 유지됨
     return () => {
       // 컴포넌트 언마운트 시 특별한 정리 작업 없음
-      console.log('HDRI 패널이 닫혔지만 조명 설정은 유지됩니다')
+      
     }
   }, [scene])
 

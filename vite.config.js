@@ -8,7 +8,28 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,glb}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,glb,ktx2,wasm}'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.destination === 'model' || /\.(?:glb|gltf)$/i.test(request.url),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'models-glb',
+              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              matchOptions: { ignoreSearch: true }
+            }
+          },
+          {
+            urlPattern: ({ request }) => /\.(?:ktx2)$/i.test(request.url),
+            handler: 'CacheFirst',
+            options: { cacheName: 'textures-ktx2', expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 } }
+          },
+          {
+            urlPattern: ({ url }) => /\/libs\/(draco|basis)\//i.test(url.pathname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'decoders', expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 } }
+          }
+        ]
       },
       manifest: {
         name: 'ThirdPerson TreeJS Game',

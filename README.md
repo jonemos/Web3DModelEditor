@@ -144,3 +144,17 @@ MIT License
 ---
 
 **즐거운 게임하세요! 🎮**
+
+---
+
+## 설정과 자동 저장 (Editor)
+
+- 통합 설정 매니저: `src/utils/viewGizmoConfig.js`
+    - 섹션: `viewGizmo`, `ui`, `editor`, `game`
+    - 로컬 스토리지에 단일 키로 저장, 구버전 `viewGizmoConfig` 자동 마이그레이션
+- Zustand에서 `startSettingsAutoPersist`로 자동 저장 연결
+- 적용 타이밍: 초기화, 설정 변경, 모델 로드 후 자동 반영
+- UI 섹션에는 뷰/기즈모 설정 팝오버 열림 상태(`isViewGizmoSettingsOpen`)도 저장
+
+개발 중 빠른 확인을 위한 스모크 테스트 유틸: `src/utils/smokeTest.js`
+- 브라우저 콘솔에서 실행 예: `runSmokeTest(window.__editorControls, useEditorStore)`

@@ -38,11 +38,14 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
 
   const [mapName, setMapName] = useState('')
   const [assetName, setAssetName] = useState('')
-  const [showLibrary, setShowLibrary] = useState(false)
-  const [showAssets, setShowAssets] = useState(false)
-  const [showPostProcessing, setShowPostProcessing] = useState(false)
-  const [showHDRI, setShowHDRI] = useState(false)
-  const [isPostProcessingPanelOpen, setIsPostProcessingPanelOpen] = useState(false)
+  const showLibrary = useEditorStore((s) => s.showLibrary)
+  const showAssets = useEditorStore((s) => s.showAssets)
+  const showHDRI = useEditorStore((s) => s.showHDRI)
+  const isPostProcessingPanelOpen = useEditorStore((s) => s.isPostProcessingPanelOpen)
+  const setShowLibrary = useEditorStore((s) => s.setShowLibrary)
+  const setShowAssets = useEditorStore((s) => s.setShowAssets)
+  const setShowHDRI = useEditorStore((s) => s.setShowHDRI)
+  const setIsPostProcessingPanelOpen = useEditorStore((s) => s.setIsPostProcessingPanelOpen)
   const [contextMenu, setContextMenu] = useState({
     isVisible: false,
     x: 0,
@@ -81,7 +84,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     // 선택된 객체가 있을 때만 컨텍스트 메뉴 표시
     if (selectedObject) {
       e.preventDefault();
-      console.log('컨텍스트 메뉴 표시 - 선택된 객체:', selectedObject);
+      
       setContextMenu({
         isVisible: true,
         x: e.clientX,
@@ -261,7 +264,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
 
   const handleObjectUpdate = (updatedObject) => {
     // 오브젝트 속성 업데이트
-    console.log('오브젝트 업데이트:', updatedObject)
+    
     
     // EditorControls를 통해 3D 뷰의 오브젝트도 업데이트
     if (editorControls && updatedObject.id) {
@@ -363,36 +366,48 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
   }
 
   const handleLibraryToggle = () => {
-    setShowLibrary(!showLibrary)
-    if (showAssets) setShowAssets(false) // 다른 패널 닫기
-    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
-    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
+    const next = !showLibrary
+    setShowLibrary(next)
+    if (next) {
+      if (showAssets) setShowAssets(false)
+      if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false)
+      if (showHDRI) setShowHDRI(false)
+    }
   }
 
   const handleAssetsToggle = () => {
-    setShowAssets(!showAssets)
-    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
-    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
-    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
+    const next = !showAssets
+    setShowAssets(next)
+    if (next) {
+      if (showLibrary) setShowLibrary(false)
+      if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false)
+      if (showHDRI) setShowHDRI(false)
+    }
   }
 
   const handlePostProcessingToggle = () => {
-    setIsPostProcessingPanelOpen(!isPostProcessingPanelOpen)
-    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
-    if (showAssets) setShowAssets(false) // 다른 패널 닫기
-    if (showHDRI) setShowHDRI(false) // 다른 패널 닫기
+    const next = !isPostProcessingPanelOpen
+    setIsPostProcessingPanelOpen(next)
+    if (next) {
+      if (showLibrary) setShowLibrary(false)
+      if (showAssets) setShowAssets(false)
+      if (showHDRI) setShowHDRI(false)
+    }
   }
 
   const handleHDRIToggle = () => {
-    setShowHDRI(!showHDRI)
-    if (showLibrary) setShowLibrary(false) // 다른 패널 닫기
-    if (showAssets) setShowAssets(false) // 다른 패널 닫기
-    if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false) // 다른 패널 닫기
+    const next = !showHDRI
+    setShowHDRI(next)
+    if (next) {
+      if (showLibrary) setShowLibrary(false)
+      if (showAssets) setShowAssets(false)
+      if (isPostProcessingPanelOpen) setIsPostProcessingPanelOpen(false)
+    }
   }
 
   const handleAssetDrop = (assetData, position) => {
     // 기본 에셋을 씬에 추가
-    console.log('에셋 드롭 시작:', assetData);
+    
     let newObject;
 
     switch (assetData.type) {
@@ -499,7 +514,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
 
   const handleLibraryDrop = (objectData, position) => {
     // 라이브러리에서 드롭된 오브젝트를 씬에 추가
-    console.log('라이브러리 드롭 시작:', objectData);
+    
     let newObject;
 
     if (objectData.type === 'library') {
@@ -513,10 +528,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         scale: { x: 1, y: 1, z: 1 },
         name: objectData.name
       };
-      console.log('라이브러리 메쉬 객체 생성:', newObject);
+      
     } else if (objectData.type === 'custom') {
       // 사용자 정의 객체 (저장된 GLB 데이터)
-      console.log('커스텀 메쉬 처리 중:', objectData.name, 'GLB 데이터:', typeof objectData.glbData, objectData.glbData);
+      
       newObject = {
         id: Date.now(),
         type: 'glb',
@@ -526,7 +541,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         scale: { x: 1, y: 1, z: 1 },
         name: objectData.name
       };
-      console.log('생성된 커스텀 객체:', newObject);
+      
     } else {
       // 기본 도형
       newObject = {
@@ -626,13 +641,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         />
       )}
 
-      {/* 포스트프로세싱 패널 */}
-      {showPostProcessing && (
-        <PostProcessingPanel 
-          postProcessingManager={postProcessingManager}
-          isVisible={showPostProcessing}
-        />
-      )}
+  {/* 포스트프로세싱 패널 (툴바 인라인 렌더로 대체됨) */}
 
       {/* HDRI 패널 */}
       {showHDRI && (
@@ -679,7 +688,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
           onObjectRename={handleObjectRename}
           onContextMenu={(e, obj) => {
             e.preventDefault();
-            console.log('하이라키에서 컨텍스트 메뉴:', obj);
+            
             // 객체를 먼저 선택
             handleObjectSelect(obj);
             // 컨텍스트 메뉴 표시

@@ -30,7 +30,10 @@ export class EditorControls {
     // Transform Manager 초기화 (KeyboardController와 연동)
     this.transformManager = new TransformManager(this.objectSelector, editorStore, this.keyboardController);
     
-    // 그리드 헬퍼 초기화
+  // 씬에 Mesh가 추가될 때 와이어프레임 상태를 자동 반영하도록 scene.add를 감싸기
+  this._wrapSceneAddForWireframe(scene);
+
+  // 그리드 헬퍼 초기화
     this.initializeGrid();
     
     // 마우스 이벤트 설정
@@ -54,7 +57,7 @@ export class EditorControls {
     this.previousMousePosition = new THREE.Vector2();
     this.dragStartPosition = new THREE.Vector2();
     
-    console.log('EditorControls initialized with separated input system');
+  // EditorControls initialized
 
     // Part Inspection state
     this.partInspector = {
@@ -74,6 +77,34 @@ export class EditorControls {
   // Part TransformControls (서브메시 전용 기즈모)
   this._partTransformControls = null;
   this._initPartTransformControls(camera, renderer);
+  }
+
+  _wrapSceneAddForWireframe(scene) {
+    try {
+      if (!scene || !scene.add || scene.__addWrapped) return;
+      const originalAdd = scene.add.bind(scene);
+      const store = this.editorStore;
+      scene.add = (...objs) => {
+        const result = originalAdd(...objs);
+        try {
+          const isWire = !!store.getState().isWireframe;
+          // 새로 추가된 객체들에 대해 와이어프레임 적용
+          for (const obj of objs) {
+            obj?.traverse?.((n) => {
+              if (n && n.isMesh && n.material) {
+                if (Array.isArray(n.material)) {
+                  n.material.forEach((m) => { if (m) m.wireframe = isWire; });
+                } else {
+                  n.material.wireframe = isWire;
+                }
+              }
+            });
+          }
+        } catch {}
+        return result;
+      };
+      scene.__addWrapped = true;
+    } catch {}
   }
   
   /**
@@ -342,8 +373,6 @@ export class EditorControls {
 
   _updatePartOutline() {
     if (!this.postProcessingManager) return;
-    // Outline 효과 활성화
-    try { this.postProcessingManager.setEffectEnabled('outline', true); } catch {}
     const mesh = this.partInspector?.selectedPart;
     let list = [];
     if (this.partInspector.groupEnabled) {
@@ -351,7 +380,12 @@ export class EditorControls {
     } else if (mesh) {
       list = [mesh];
     }
-    try { this.postProcessingManager.setOutlineSelectedObjects(list); } catch {}
+    try {
+      // 선택 집합은 전체 선택, 활성 집합은 마지막(또는 파트 선택)으로 분리 전달
+      const sel = Array.isArray(list) ? list : [];
+      this.postProcessingManager.setOutlineSelectedObjects(sel);
+      this.postProcessingManager.setOutlineActiveObjects(sel.length > 0 ? [sel[sel.length - 1]] : []);
+    } catch {}
   }
 
   /**
@@ -590,7 +624,7 @@ export class EditorControls {
       this.gridHelper = null;
     }
     
-    console.log('EditorControls disposed');
+  // EditorControls disposed
   }
 
   // 내부 유틸: 입력을 Three.js Object3D로 해석
@@ -631,6 +665,15 @@ export class EditorControls {
     this.objectSelector.updateGizmoSpace();
   }
 
+  // 초기 설정값을 씬/컨트롤에 강제 반영
+  applyInitialViewState() {
+    try { this.updateWireframe?.() } catch {}
+    try { this.updateGridSnap?.() } catch {}
+    try { this.updateGizmoSpace?.() } catch {}
+    try { this.objectSelector?.updateGizmoSize?.() } catch {}
+    try { this.toggleGrid?.() } catch {}
+  }
+
   // 자석 기능 제거됨
 
   // 그리드 헬퍼 초기화
@@ -638,7 +681,7 @@ export class EditorControls {
     const size = 20; // 그리드 크기
     const divisions = 20; // 그리드 분할 수
     
-    console.log('Initializing grid helper...');
+  // Initializing grid helper
     
     // 더 밝은 색상으로 그리드 생성
     this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
@@ -656,24 +699,12 @@ export class EditorControls {
     this.gridHelper.visible = isGridVisible;
     this.scene.add(this.gridHelper);
     
-    console.log('Grid helper initialized:', {
-      size,
-      divisions,
-      visible: this.gridHelper.visible,
-      position: this.gridHelper.position,
-      name: this.gridHelper.name,
-      material: {
-        opacity: this.gridHelper.material.opacity,
-        transparent: this.gridHelper.material.transparent,
-        depthWrite: this.gridHelper.material.depthWrite
-      }
-    });
-    console.log('Grid helper added to scene. Scene children count:', this.scene.children.length);
+  // Grid helper added to scene
   }
 
   // 그리드 표시/숨기기 토글
   toggleGrid() {
-    console.log('toggleGrid called, gridHelper:', this.gridHelper);
+  // toggleGrid called
     
     if (!this.gridHelper) {
       console.error('Grid helper not initialized!');
@@ -690,9 +721,7 @@ export class EditorControls {
     // 강제로 씬 업데이트
     this.gridHelper.updateMatrixWorld(true);
     
-    console.log(`Grid ${isGridVisible ? 'shown' : 'hidden'}`);
-    console.log('Grid helper visible property:', this.gridHelper.visible);
-    console.log('Grid helper in scene:', this.scene.children.includes(this.gridHelper));
+  // grid visibility updated
     
     return isGridVisible;
   }
@@ -727,7 +756,7 @@ export class EditorControls {
     this.gridHelper.material.depthWrite = false;
     
     this.scene.add(this.gridHelper);
-    console.log(`Grid size updated: ${size}x${size}, divisions: ${divisions}`);
+  // grid size updated
   }
 
   // =====================

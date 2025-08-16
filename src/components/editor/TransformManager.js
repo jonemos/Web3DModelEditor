@@ -93,7 +93,7 @@ export class TransformManager {
       this.editorStore.getState().setTransformMode(mode);
     }
 
-    this.logStateChange('Transform mode', oldMode, mode);
+    
     return true;
   }
 
@@ -110,7 +110,7 @@ export class TransformManager {
     
     this.objectSelector.transformControls.setSpace(this.state.space);
     
-    this.logStateChange('Coordinate space', oldSpace, this.state.space);
+    
     return true;
   }
 
@@ -125,7 +125,7 @@ export class TransformManager {
     this.state.snapEnabled = !this.state.snapEnabled;
     this.objectSelector.setGridSnap(this.state.snapEnabled, this.state.gridSize);
     
-    this.logStateChange('Grid snap', !this.state.snapEnabled, this.state.snapEnabled);
+    
     return true;
   }
 
@@ -144,7 +144,7 @@ export class TransformManager {
       this.objectSelector.setGridSnap(this.state.snapEnabled, this.state.gridSize);
     }
 
-    this.logStateChange('Grid size', oldSize, size);
+    
     return true;
   }
 
@@ -392,7 +392,6 @@ export class TransformManager {
     // 회전 상태 로깅
     if (selectedObjects.length > 0) {
       const rotation = this.getSelectedObjectRotation(selectedObjects[0]);
-      console.log('Quaternion rotation applied:', rotation);
     }
   }
 
@@ -456,7 +455,7 @@ export class TransformManager {
       this.applyQuaternionRotation(object, quaternion);
     });
 
-    console.log(`Applied quaternion rotation to ${selectedObjects.length} objects`);
+    
     return true;
   }
 
@@ -557,7 +556,7 @@ export class TransformManager {
       object.updateMatrix();
     });
 
-    console.log(`Applied look-at rotation to ${selectedObjects.length} objects`);
+    
     return true;
   }
 
@@ -576,7 +575,7 @@ export class TransformManager {
       object.updateMatrix();
     });
 
-    console.log(`Reset rotation for ${selectedObjects.length} objects`);
+    
     return true;
   }
 
@@ -632,7 +631,7 @@ export class TransformManager {
       object.updateMatrix();
     });
 
-    console.log(`Applied world space rotation to ${selectedObjects.length} objects`);
+    
     return true;
   }
 
@@ -662,7 +661,7 @@ export class TransformManager {
       object.updateMatrix();
     });
 
-    console.log(`Rotated ${selectedObjects.length} objects around point`);
+    
     return true;
   }
 
@@ -888,9 +887,7 @@ export class TransformManager {
   /**
    * 상태 변경 로그
    */
-  logStateChange(property, oldValue, newValue) {
-    console.log(`${property} changed: ${oldValue} → ${newValue}`);
-  }
+  logStateChange(property, oldValue, newValue) {}
 
   /**
    * Undo 기능 (추후 구현)

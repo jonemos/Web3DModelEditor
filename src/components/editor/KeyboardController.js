@@ -24,7 +24,7 @@ export class KeyboardController {
     // InputManager에 핸들러 등록
     this.registerInputHandlers();
 
-    console.log('KeyboardController initialized');
+    
   }
 
   /**
@@ -357,8 +357,7 @@ export class KeyboardController {
   executeAction(action, keyInfo) {
     if (typeof action.action === 'function') {
       try {
-        action.action(keyInfo);
-        console.log(`Executed: ${action.name}`);
+  action.action(keyInfo);
       } catch (error) {
         console.error(`Error executing action ${action.name}:`, error);
       }
@@ -377,8 +376,7 @@ export class KeyboardController {
     const action = specialActions[actionName];
     if (typeof action === 'function') {
       try {
-        action(keyInfo);
-        console.log(`Executed special action: ${actionName}`);
+  action(keyInfo);
       } catch (error) {
         console.error(`Error executing special action ${actionName}:`, error);
       }
@@ -529,7 +527,7 @@ export class KeyboardController {
       requiresCtrl: requiresCtrl
     });
 
-    console.log(`Registered custom key: ${keyCode} -> ${actionName}`);
+    
   }
 
   /**
@@ -655,7 +653,7 @@ export class KeyboardController {
       actions.clear();
     }
 
-    console.log('KeyboardController disposed');
+    
   }
 }
 

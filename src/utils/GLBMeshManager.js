@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { getGLTFLoader, setKTX2Renderer } from './gltfLoaderFactory.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import { idbGetAllCustomMeshes, idbAddCustomMesh, idbDeleteCustomMesh, migrateLocalStorageCustomMeshesToIDB } from './idb.js';
 
@@ -9,7 +9,7 @@ import { idbGetAllCustomMeshes, idbAddCustomMesh, idbDeleteCustomMesh, migrateLo
  */
 export class GLBMeshManager {
   constructor() {
-    this.loader = new GLTFLoader();
+  this.loader = getGLTFLoader();
     this.exporter = new GLTFExporter();
     this.thumbnailRenderer = null;
     this.initThumbnailRenderer();
@@ -25,7 +25,7 @@ export class GLBMeshManager {
     if (this.thumbnailRenderer && this.thumbnailRenderer.renderer) {
       try { this.thumbnailRenderer.renderer.dispose(); } catch {}
     }
-    this.thumbnailRenderer = {
+  this.thumbnailRenderer = {
       scene: new THREE.Scene(),
       camera: new THREE.PerspectiveCamera(75, 1, 0.1, 1000),
       renderer: new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: 'low-power' })
@@ -33,13 +33,15 @@ export class GLBMeshManager {
     
     const { scene, camera, renderer } = this.thumbnailRenderer;
     
-    // 썸네일 크기 설정
+  // 썸네일 크기 설정
     const thumbnailSize = 128;
     renderer.setSize(thumbnailSize, thumbnailSize);
     renderer.setClearColor(0x2a2a2a, 1); // 어두운 배경
     
     // 조명 설정
     this.setupLighting(scene);
+  // KTX2 하드웨어 변환 지원 감지(1회)
+  try { setKTX2Renderer(renderer); } catch {}
   }
 
   /**
@@ -132,6 +134,15 @@ export class GLBMeshManager {
         const clonedMaterial = object.material ? this.cloneMaterial(object.material) : null;
         
         const clonedMesh = new THREE.Mesh(clonedGeometry, clonedMaterial);
+        // 현재 전역 와이어프레임 상태 반영 (복제/절차형 등에도 일관 적용)
+        try {
+          const isWire = !!(typeof window !== 'undefined' && window.__editorControls && window.__editorControls.editorStore?.getState?.().isWireframe);
+          if (Array.isArray(clonedMesh.material)) {
+            clonedMesh.material.forEach((m) => { if (m) m.wireframe = isWire; });
+          } else if (clonedMesh.material) {
+            clonedMesh.material.wireframe = isWire;
+          }
+        } catch {}
         clonedMesh.name = object.name || '';
         
         // 변환 정보 복사
@@ -250,7 +261,7 @@ export class GLBMeshManager {
    */
   async generateThumbnailFromURL(glbUrl) {
     return new Promise((resolve, reject) => {
-      this.loader.load(
+  this.loader.load(
         glbUrl,
         (gltf) => {
           try {
@@ -407,7 +418,7 @@ export class GLBMeshManager {
       // 변환 값 처리 (안전한 방식)
       if (preserveTransform) {
         // 변환 값을 유지 (현재 변환 상태를 GLB에 적용)
-        console.log('변환 값 유지 모드: 현재 변환 상태를 GLB에 적용');
+        
         // 변환 값은 그대로 유지
       } else {
         // 기본 모드: 위치, 회전, 크기를 초기화 (안전하게)
@@ -520,7 +531,7 @@ export class GLBMeshManager {
       return meshData;
     } catch (error) {
       console.error('커스텀 메쉬 추가 실패:', error);
-      throw error;
+      throw new Error('ADD_CUSTOM_MESH_FAILED');
     }
   }
 
@@ -530,8 +541,13 @@ export class GLBMeshManager {
    */
   async saveCustomMesh(meshData) {
     // IndexedDB에 저장 (ArrayBuffer 그대로 보관)
-    await idbAddCustomMesh(meshData);
-    console.log('커스텀 메쉬(IDB) 저장됨:', meshData.name);
+    try {
+      await idbAddCustomMesh(meshData);
+    } catch (e) {
+      console.error('IndexedDB 저장 실패:', e)
+      throw new Error('IDB_SAVE_FAILED')
+    }
+    
   }
 
   /**
@@ -550,7 +566,7 @@ export class GLBMeshManager {
       }
       return out;
     });
-    console.log('IndexedDB에서 커스텀 메쉬 로드:', processed.length, '개');
+    
     return processed;
   }
 
@@ -560,8 +576,13 @@ export class GLBMeshManager {
    * @returns {Array} 업데이트된 커스텀 메쉬 배열
    */
   async deleteCustomMesh(meshId) {
-    await idbDeleteCustomMesh(meshId);
-    console.log('커스텀 메쉬(IDB) 삭제됨:', meshId);
+    try {
+      await idbDeleteCustomMesh(meshId);
+    } catch (e) {
+      console.error('IndexedDB 삭제 실패:', e)
+      throw new Error('IDB_DELETE_FAILED')
+    }
+    
     // 호출자가 새 목록을 원하면 getCustomMeshes()를 다시 호출
     const meshes = await idbGetAllCustomMeshes();
     return meshes;
@@ -592,7 +613,7 @@ export class GLBMeshManager {
         throw new Error('GLB 데이터를 처리할 수 없습니다.');
       }
       
-      console.log('GLB 데이터 변환:', typeof glbData, '->', 'ArrayBuffer', binaryData.byteLength, 'bytes');
+      
       const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
       return URL.createObjectURL(blob);
     } catch (error) {

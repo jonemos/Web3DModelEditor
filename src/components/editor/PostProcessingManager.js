@@ -72,7 +72,9 @@ export class PostProcessingManager {
         edgeGlow: 0.0,
         edgeThickness: 1.0,
         pulsePeriod: 0,
-        visibleEdgeColor: 0xffffff,
+  // 선택/활성 색상 구분
+  selectedColor: 0xff7a00, // 주황
+  activeColor: 0xffd400,   // 노랑
   hiddenEdgeColor: 0x190a05,
   hiddenEdgeAlpha: 1.0 // 0..1, 배경색과의 혼합 비율로 의사 알파 구현
       },
@@ -184,9 +186,10 @@ export class PostProcessingManager {
       this.addBloomEffect();
     }
     
-    // Outline
+    // Outline (선택/활성 두 패스로 분리)
     if (this.effectSettings.outline.enabled) {
-      this.addOutlineEffect();
+      this.addOutlineEffect('selected');
+      this.addOutlineEffect('active');
     }
     
     // Color Correction
@@ -318,16 +321,16 @@ export class PostProcessingManager {
   /**
    * Outline 효과 추가
    */
-  addOutlineEffect() {
+  addOutlineEffect(kind = 'selected') {
     const settings = this.effectSettings.outline;
     const resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
-    
     const outlinePass = new OutlinePass(resolution, this.scene, this.camera);
     outlinePass.edgeStrength = settings.edgeStrength;
     outlinePass.edgeGlow = settings.edgeGlow;
     outlinePass.edgeThickness = settings.edgeThickness;
     outlinePass.pulsePeriod = settings.pulsePeriod;
-    outlinePass.visibleEdgeColor.setHex(settings.visibleEdgeColor);
+    const col = (kind === 'active') ? settings.activeColor : settings.selectedColor;
+    outlinePass.visibleEdgeColor.setHex(col);
     // 숨김 색상은 배경색과 혼합하여 의사 알파 적용
     try {
       const bg = this.scene.background instanceof THREE.Color ? this.scene.background : new THREE.Color(0x000000);
@@ -337,9 +340,9 @@ export class PostProcessingManager {
     } catch {
       outlinePass.hiddenEdgeColor.setHex(settings.hiddenEdgeColor);
     }
-    
     this.composer.addPass(outlinePass);
-    this.activeEffects.set('outline', outlinePass);
+    const key = kind === 'active' ? 'outlineActive' : 'outlineSelected';
+    this.activeEffects.set(key, outlinePass);
   }
 
   /**
@@ -514,13 +517,30 @@ export class PostProcessingManager {
         aaPass.material.uniforms['resolution'].value.y = 1 / (height * pixelRatio);
       }
     }
+
+    // OutlinePass 해상도 업데이트
+    const oSel = this.activeEffects.get('outlineSelected');
+    if (oSel && oSel.resolution) {
+      try { oSel.resolution.set(width, height); } catch {}
+    }
+    const oAct = this.activeEffects.get('outlineActive');
+    if (oAct && oAct.resolution) {
+      try { oAct.resolution.set(width, height); } catch {}
+    }
   }
 
   /**
    * Outline 효과의 선택된 오브젝트 설정
    */
   setOutlineSelectedObjects(objects) {
-    const outlinePass = this.activeEffects.get('outline');
+    const outlinePass = this.activeEffects.get('outlineSelected');
+    if (outlinePass && Array.isArray(objects)) {
+      outlinePass.selectedObjects = objects;
+    }
+  }
+
+  setOutlineActiveObjects(objects) {
+    const outlinePass = this.activeEffects.get('outlineActive');
     if (outlinePass && Array.isArray(objects)) {
       outlinePass.selectedObjects = objects;
     }
@@ -562,7 +582,7 @@ export class PostProcessingManager {
     this.renderPass = null;
     this.outputPass = null;
     
-    console.log('PostProcessingManager disposed');
+    
   }
 }
 
