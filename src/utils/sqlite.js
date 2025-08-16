@@ -204,11 +204,20 @@ async function migrateLegacyIndexedDB() {
     req.onerror = () => resolve(null);
     req.onsuccess = () => {
       const d = req.result;
-      const tx = d.transaction(LEGACY_IDB_STORE, 'readonly');
-      const st = tx.objectStore(LEGACY_IDB_STORE);
-      const gr = st.getAll();
-      gr.onsuccess = () => resolve(gr.result || []);
-      gr.onerror = () => resolve(null);
+      // 레거시 오브젝트 스토어 존재 여부 확인 후에만 마이그레이션
+      try {
+        if (!d.objectStoreNames || !d.objectStoreNames.contains(LEGACY_IDB_STORE)) {
+          return resolve([]);
+        }
+        const tx = d.transaction(LEGACY_IDB_STORE, 'readonly');
+        const st = tx.objectStore(LEGACY_IDB_STORE);
+        const gr = st.getAll();
+        gr.onsuccess = () => resolve(gr.result || []);
+        gr.onerror = () => resolve(null);
+      } catch (e) {
+        // 일부 브라우저에서 NotFoundError 등 발생 시 스킵
+        resolve([]);
+      }
     };
   });
   if (!legacy || !Array.isArray(legacy) || legacy.length === 0) return;

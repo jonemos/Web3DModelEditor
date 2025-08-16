@@ -859,6 +859,7 @@ const InspectorPanel = memo(function InspectorPanel({
             <HierarchyTreePanel
               objects={objects}
               selectedIds={selectedIds || []}
+              selectedObjectId={selectedObject?.id ?? selectedObject}
               dragUseSelectionForDnD={(() => { try { return useEditorStore.getState().dragUseSelectionForDnD } catch { return false } })()}
               onBatchStart={() => { try { useEditorStore.getState().beginBatch?.() } catch {} }}
               onBatchEnd={() => { try { useEditorStore.getState().endBatch?.() } catch {} }}
@@ -866,6 +867,11 @@ const InspectorPanel = memo(function InspectorPanel({
                 setSelectedIds?.([id]);
                 const obj = editorControls?.findObjectById?.(id);
                 if (obj) editorControls?.selectObject?.(obj);
+                // 상위로도 선택 이벤트 전달 (스토어 selectedObject 갱신)
+                try {
+                  const picked = (objects || []).find(o => o.id === id) || { id };
+                  onObjectSelect?.(picked);
+                } catch {}
               }}
               onReparent={(childId, newParentId) => {
                 // 단일 호출 기준. HierarchyTreePanel은 여러 번 호출 가능(멀티 드롭)

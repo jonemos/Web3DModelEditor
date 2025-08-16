@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { getGLTFLoader, setKTX2Renderer } from '../../utils/gltfLoaderFactory.js';
 import { useEditorStore } from '../../store/editorStore';
@@ -14,7 +14,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const blenderControlsRef = useRef(null);
   const postProcessingRef = useRef(null);
   const sceneRef = useRef(null);
+  const [sceneReady, setSceneReady] = useState(false);
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
+  const loadingIdsRef = useRef(new Set()); // GLB 로딩 중인 오브젝트 id 추적
   const statsRef = useRef({ lastT: 0, frames: 0, fps: 0, lastPush: 0, vert: 0, tri: 0, obj: 0 });
   const dropIndicatorRef = useRef(null); // 드롭 위치 인디케이터(링)
   const dropFadeRef = useRef({ animId: null, t: 0, target: 0, start: 0, startTime: 0, duration: 220, easing: 'easeInOutQuad', maxOpacity: 0.6 });
@@ -35,7 +37,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         isPostProcessingEnabledRef.current = state.isPostProcessingEnabled;
       }
     });
-    return () => unsub();
+    return () => { try { unsub?.(); } catch {} };
   }, []);
 
   useEffect(() => {
@@ -113,7 +115,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
 
     // Store scene reference
     sceneRef.current = scene;
-    setScene(scene, camera, renderer);
+  setScene(scene, camera, renderer);
 
     // 카메라 변경 콜백 함수
     const handleCameraChange = (newCamera) => {
@@ -123,7 +125,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       try { blenderControlsRef.current?.setCamera?.(newCamera); } catch {}
     };
 
-    // 에디터 컨트롤 초기화
+  // 에디터 컨트롤 초기화
   const editorControls = new EditorControls(scene, camera, renderer, useEditorStore, handleCameraChange);
   editorControls.gizmoScene = gizmoScene;
     editorControlsRef.current = editorControls;
@@ -167,6 +169,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   // 포스트프로세싱 매니저 초기화
     const postProcessingManager = new PostProcessingManager(scene, camera, renderer);
     postProcessingRef.current = postProcessingManager;
+  // 모든 주요 초기화(씬/카메라/렌더러/컨트롤/포스트프로세싱) 이후에 sceneReady 신호
+  try { setSceneReady(true); } catch {}
   try { postProcessingManager.setCamera(camera); } catch {}
   // 환경의 톤매핑/프리셋 초기값을 매니저에 반영
   try {
@@ -218,20 +222,11 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   directionalLight.userData.isSystemObject = true;
     scene.add(directionalLight);
 
-  // Bloom/SSAO 시각 확인을 위한 보조 광원과 바닥면
+  // Bloom/SSAO 시각 확인을 위한 보조 광원
   const point = new THREE.PointLight(0xffaa88, 1.0, 100);
   point.position.set(0, 6, 6);
   point.userData.isSystemObject = true;
   scene.add(point);
-  const groundMat = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.9, metalness: 0.0 });
-  const groundGeo = new THREE.PlaneGeometry(200, 200);
-  const ground = new THREE.Mesh(groundGeo, groundMat);
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  ground.position.y = 0;
-  ground.name = 'Ground';
-  ground.userData.isSystemObject = true; // 사용자 삭제 방지
-  scene.add(ground);
 
     // Test cube
     const cubeGeometry = new THREE.BoxGeometry(2, 2, 2);
@@ -842,20 +837,24 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                     }
                   });
                   
-                  scene.add(model);
-                  
-                  // 선택 가능한 오브젝트로 등록
-                  editorControls.addSelectableObject(model);
-                  
-                  // 고유 ID 생성
+                  // 고유 ID 생성 (씬 추가 이전에 설정)
                   const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                   model.name = uniqueId;
                   model.userData = {
                     id: uniqueId,
                     name: objectData.name,
                     type: objectData.type,
-                    originalData: objectData
+                    originalData: objectData,
+                    // 커스텀 메쉬의 경우 참조 id를 함께 보관해 일관성 유지
+                    ...(objectData.type === 'custom' ? { customMeshId: objectData.id } : {})
                   };
+                  // 서브메시에 소유자 id 주입(선택/정리 보존용)
+                  try { model.traverse((n)=>{ n.userData = n.userData || {}; if (!n.userData.ownerId) n.userData.ownerId = uniqueId; }); } catch {}
+                  
+                  scene.add(model);
+                  
+                  // 선택 가능한 오브젝트로 등록
+                  editorControls.addSelectableObject(model);
                   
                   // 로드된 오브젝트로 기록
                   loadedObjectsRef.current.set(uniqueId, model);
@@ -866,9 +865,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                     id: uniqueId,
                     name: objectData.name,
                     type: 'glb',
+                    // 첫 생성도 glbData를 저장하지 않고 참조 id(customMeshId)만 저장
                     ...(objectData.type === 'custom'
-                        ? { glbData: capturedGlbData }
-                        : { url: objectData.glbUrl }
+                      ? { customMeshId: objectData.id }
+                      : { url: objectData.glbUrl }
                     ),
                     position: { x: intersection.x, y: intersection.y, z: intersection.z },
                     rotation: { x: model.rotation.x, y: model.rotation.y, z: model.rotation.z },
@@ -1128,7 +1128,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             id: uniqueId,
             name: objectData.name,
             type: objectData.type || 'basic',
-            originalName: objectData.name
+            originalName: objectData.name,
+            geometry: objectData.geometry,
+            params: objectData.params,
+            ownerId: uniqueId
           };
           
           scene.add(mesh);
@@ -1144,7 +1147,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
           addObject({
             id: uniqueId,
             name: objectData.name,
-            type: 'mesh',
+            type: 'basic',
+            geometry: objectData.geometry,
+            params: objectData.params,
             position: { x: intersection.x, y: intersection.y, z: intersection.z },
             rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
             scale: { x: 1, y: 1, z: 1 },
@@ -1222,8 +1227,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     };
   }, [setScene]); // floorWidth, floorDepth 제거하여 씬 재초기화 방지
 
-  // GLB 파일 로드를 위한 별도 useEffect
+  // GLB/에셋 파일 로드를 위한 별도 useEffect (sceneReady 이후에도 실행)
   useEffect(() => {
+    // 씬 및 컨트롤이 완전히 준비된 이후에만 오브젝트 동기화 진행
+    if (!sceneReady) return;
     if (!sceneRef.current || !editorControlsRef.current) return;
     
     const scene = sceneRef.current;
@@ -1234,7 +1241,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       // 이미 로드된 오브젝트는 건너뛰기
       if (loadedObjectsRef.current.has(obj.id)) return;
       
-      if (obj.type === 'glb' && (obj.file || obj.url)) {
+  if (obj.type === 'glb' && (obj.file || obj.url)) {
+        // 중복 로드 방지
+        if (loadingIdsRef.current.has(obj.id) || loadedObjectsRef.current.has(obj.id)) return;
+        loadingIdsRef.current.add(obj.id);
         // GLB file loading started
         
         // GLB 파일 로드 (file 또는 url 사용)
@@ -1242,6 +1252,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         loader.load(
           glbSource,
           (gltf) => {
+            // 이중 콜백/중복 추가 가드
+            if (loadedObjectsRef.current.has(obj.id)) { try { loadingIdsRef.current.delete(obj.id); } catch {} return; }
             const model = gltf.scene;
             
             // 바운딩 박스 계산하여 모델 크기 확인
@@ -1261,7 +1273,18 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             // 메타데이터 설정
             model.name = obj.name;
-            model.userData = { id: obj.id, type: obj.type };
+            model.userData = {
+              ...(model.userData || {}),
+              id: obj.id,
+              type: obj.type,
+              // 커스텀 메쉬 식별 보강
+              customMeshId: obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id,
+              originalData: obj.userData?.originalData || (obj.customMeshId ? { id: obj.customMeshId } : undefined)
+            };
+            // 서브메시에 소유자 id 표시(선택/계층 매핑 보강)
+            try {
+              model.traverse((n) => { if (!n.userData) n.userData = {}; if (!n.userData.ownerId) n.userData.ownerId = obj.id; });
+            } catch {}
             
             // 가시성 설정
             model.visible = obj.visible !== false; // 기본값은 true, false면 숨김
@@ -1296,6 +1319,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             // 로드된 오브젝트로 기록
             loadedObjectsRef.current.set(obj.id, model);
+            try { loadingIdsRef.current.delete(obj.id); } catch {}
             
             // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
@@ -1341,97 +1365,190 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             scene.add(mesh);
             editorControlsRef.current.addSelectableObject(mesh);
             loadedObjectsRef.current.set(obj.id, mesh);
+            try { loadingIdsRef.current.delete(obj.id); } catch {}
             
             // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
             editorControlsRef.current.selectObject(mesh);
           }
         );
-      } else if (obj.type === 'glb' && obj.glbData) {
-        // GLB 데이터가 있는 경우 (사용자 정의 객체)
-        
-        // GLB 데이터를 올바른 형태로 변환
-        let binaryData;
-        if (obj.glbData instanceof ArrayBuffer) {
-          binaryData = obj.glbData;
-        } else if (obj.glbData instanceof Uint8Array) {
-          binaryData = obj.glbData.buffer;
-        } else if (Array.isArray(obj.glbData)) {
-          // 배열 형태로 저장된 경우
-          binaryData = new Uint8Array(obj.glbData).buffer;
-        } else if (typeof obj.glbData === 'object' && obj.glbData.type === 'Buffer') {
-          // Node.js Buffer 객체
-          binaryData = new Uint8Array(obj.glbData.data || obj.glbData).buffer;
-        } else {
-          console.error('지원되지 않는 GLB 데이터 형식:', typeof obj.glbData, obj.glbData);
-          return;
-        }
-        
-        // Blob에서 URL 생성
-        const blob = new Blob([binaryData], { type: 'model/gltf-binary' });
-        const url = URL.createObjectURL(blob);
-        
-        loader.load(
-          url,
-          (gltf) => {
-            const model = gltf.scene;
-            
-            // GLB data loaded successfully
-            
-            // 바운딩 박스 계산하여 모델 크기 확인
-            const box = new THREE.Box3().setFromObject(model);
-            const size = box.getSize(new THREE.Vector3());
-            const center = box.getCenter(new THREE.Vector3());
-            
-            // 모델을 원점 중심으로 이동
-            model.position.sub(center);
-            
-            // 모델 위치 설정
-            model.position.set(obj.position.x, obj.position.y, obj.position.z);
-            model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
-            model.scale.set(obj.scale.x, obj.scale.y, obj.scale.z); // 자동 스케일 조정 제거
-            
-            // 메타데이터 설정
-            model.name = obj.name;
-            model.userData = { id: obj.id, type: obj.type };
-            
-            // 가시성 설정
-            model.visible = obj.visible !== false;
-            
-            // 그림자 설정
-            model.traverse((child) => {
-              if (child.isMesh) {
-                child.castShadow = true;
-                child.receiveShadow = true;
-              }
-            });
-            
-            // 씬에 추가
-            scene.add(model);
-            
-            // 선택 가능한 오브젝트로 등록
-            editorControlsRef.current.addSelectableObject(model);
-            
-            // 로드된 오브젝트로 기록
-            loadedObjectsRef.current.set(obj.id, model);
-            
-            // 자동으로 선택 (스토어와 3D 뷰 모두)
-            setSelectedObject(obj.id);
-            editorControlsRef.current.selectObject(model);
-            
-            // URL 해제 (메모리 누수 방지)
-            URL.revokeObjectURL(url);
-            
-            // GLB data loading completed
-          },
-          (progress) => {
-            // GLB data loading progress
-          },
-          (error) => {
-            // GLB data loading error
-            URL.revokeObjectURL(url); // 에러 시에도 URL 해제
+      } else if (obj.type === 'glb' && (obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id || obj.glbData)) {
+        // 커스텀 메쉬: id 참조 또는 임시 glbData
+  const mgr = getGLBMeshManager();
+  // 중복 로드 방지
+  if (loadingIdsRef.current.has(obj.id) || loadedObjectsRef.current.has(obj.id)) return;
+  loadingIdsRef.current.add(obj.id);
+        const derivedId = obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id;
+        const isValidGLBData = (d) => {
+          if (!d) return false;
+          if (d instanceof ArrayBuffer) return true;
+          if (d instanceof Uint8Array) return true;
+          if (Array.isArray(d)) return true;
+          if (typeof d === 'object' && d.type === 'Buffer' && Array.isArray(d.data)) return true;
+          return false;
+        };
+
+    const loadFromUrl = (u) => {
+          loader.load(
+            u,
+            (gltf) => {
+      // 중복 가드
+      if (loadedObjectsRef.current.has(obj.id)) { try { URL.revokeObjectURL(u) } catch {}; try { loadingIdsRef.current.delete(obj.id) } catch {}; return; }
+              const model = gltf.scene;
+              // 바운딩 박스 계산하여 모델 크기 확인
+              const box = new THREE.Box3().setFromObject(model);
+              const size = box.getSize(new THREE.Vector3());
+              const center = box.getCenter(new THREE.Vector3());
+              // 모델을 원점 중심으로 이동
+              model.position.sub(center);
+              // 모델 위치 설정
+              model.position.set(obj.position.x, obj.position.y, obj.position.z);
+              model.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+              model.scale.set(obj.scale.x, obj.scale.y, obj.scale.z);
+              // 메타데이터 설정
+              model.name = obj.name;
+              model.userData = {
+                ...(model.userData || {}),
+                id: obj.id,
+                type: obj.type,
+                customMeshId: obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id,
+                originalData: obj.userData?.originalData || (obj.customMeshId ? { id: obj.customMeshId } : undefined)
+              };
+              try { model.traverse((n) => { if (!n.userData) n.userData = {}; if (!n.userData.ownerId) n.userData.ownerId = obj.id; }); } catch {}
+              // 가시성/그림자
+              model.visible = obj.visible !== false;
+              model.traverse((child) => { if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; } });
+              // 씬에 추가 및 선택 시스템 반영
+              scene.add(model);
+              editorControlsRef.current.addSelectableObject(model);
+              loadedObjectsRef.current.set(obj.id, model);
+              setSelectedObject(obj.id);
+              editorControlsRef.current.selectObject(model);
+              // URL 해제
+              try { URL.revokeObjectURL(u); } catch {}
+              try { loadingIdsRef.current.delete(obj.id); } catch {}
+            },
+            undefined,
+            () => { try { URL.revokeObjectURL(u); } catch {} try { loadingIdsRef.current.delete(obj.id); } catch {} }
+          );
+        };
+
+    if (derivedId) {
+          mgr.getCustomMeshes().then((list) => {
+      const found = (list || []).find(m => m.id === derivedId);
+            if (!found || !found.glbData) throw new Error('CUSTOM_MESH_NOT_FOUND');
+            const u = mgr.createBlobURL(found.glbData);
+            loadFromUrl(u);
+          }).catch((e) => {
+            console.error('커스텀 메쉬 로드 실패:', e);
+            try { loadingIdsRef.current.delete(obj.id); } catch {}
+          });
+    } else if (obj.glbData && isValidGLBData(obj.glbData)) {
+          try {
+            const u = mgr.createBlobURL(obj.glbData);
+            loadFromUrl(u);
+          } catch (e) {
+            console.error('커스텀 GLB URL 생성 실패:', e);
+            try { loadingIdsRef.current.delete(obj.id); } catch {}
           }
-        );
+        } else {
+          console.warn('유효하지 않은 glbData입니다. customMeshId 참조가 필요합니다:', obj);
+          try { loadingIdsRef.current.delete(obj.id); } catch {}
+        }
+      } else if (
+        obj.type === 'light' ||
+        ['directional_light','point_light','spot_light','ambient_light','grid_helper','axes_helper','audio_source'].includes(obj.type)
+      ) {
+        // 에셋(라이트/헬퍼/오디오) 복원
+        let assetObject = null;
+        const kind = obj.type === 'light'
+          ? obj.lightType
+          : (obj.type === 'directional_light' ? 'directional'
+            : obj.type === 'point_light' ? 'point'
+            : obj.type === 'spot_light' ? 'spot'
+            : obj.type);
+        switch (kind) {
+          case 'directional': {
+            const light = new THREE.DirectionalLight(0xffffff, obj.intensity ?? 1);
+            light.position.set(obj.position.x, obj.position.y, obj.position.z);
+            const ty = (obj.position?.y ?? 0) - 1;
+            light.target.position.set(obj.position.x, ty, obj.position.z);
+            light.castShadow = !!obj.castShadow;
+            scene.add(light.target);
+            assetObject = light;
+            try { editorControlsRef.current.addSelectableObject(light.target); } catch {}
+            // 헬퍼 부착(선택): 시각적 확인용
+            try { const helper = new THREE.DirectionalLightHelper(light, 1); light.userData = light.userData || {}; light.userData.lightHelper = helper; scene.add(helper); helper.update?.(); } catch {}
+            break;
+          }
+          case 'point': {
+            const light = new THREE.PointLight(0xffffff, obj.intensity ?? 1, obj.distance ?? 10, obj.decay ?? 2);
+            light.position.set(obj.position.x, obj.position.y, obj.position.z);
+            light.castShadow = !!obj.castShadow;
+            assetObject = light;
+            try { const helper = new THREE.PointLightHelper(light, 0.5); light.userData = light.userData || {}; light.userData.lightHelper = helper; scene.add(helper); helper.update?.(); } catch {}
+            break;
+          }
+          case 'spot': {
+            const light = new THREE.SpotLight(0xffffff, obj.intensity ?? 1, obj.distance ?? 10, obj.angle ?? Math.PI/6, obj.penumbra ?? 0.1, obj.decay ?? 2);
+            light.position.set(obj.position.x, obj.position.y, obj.position.z);
+            const ty = (obj.position?.y ?? 0) - 1;
+            light.target.position.set(obj.position.x, ty, obj.position.z);
+            light.castShadow = !!obj.castShadow;
+            scene.add(light.target);
+            assetObject = light;
+            try { editorControlsRef.current.addSelectableObject(light.target); } catch {}
+            try { const helper = new THREE.SpotLightHelper(light); light.userData = light.userData || {}; light.userData.lightHelper = helper; scene.add(helper); helper.update?.(); } catch {}
+            break;
+          }
+          case 'ambient_light': {
+            // 표시용 마커 + 실제 앰비언트 라이트
+            const amb = new THREE.AmbientLight(obj.color ?? 0x404040, obj.intensity ?? 0.3);
+            scene.add(amb);
+            const marker = new THREE.Mesh(
+              new THREE.SphereGeometry(0.5, 16, 16),
+              new THREE.MeshBasicMaterial({ color: 0x404040, wireframe: true, transparent: true, opacity: 0.5 })
+            );
+            marker.position.set(obj.position.x, obj.position.y, obj.position.z);
+            assetObject = marker;
+            break;
+          }
+          case 'grid_helper': {
+            const gh = new THREE.GridHelper(10, 10);
+            gh.position.set(obj.position.x, obj.position.y, obj.position.z);
+            assetObject = gh;
+            break;
+          }
+          case 'axes_helper': {
+            const ah = new THREE.AxesHelper(2);
+            ah.position.set(obj.position.x, obj.position.y, obj.position.z);
+            assetObject = ah;
+            break;
+          }
+          case 'audio_source': {
+            const marker = new THREE.Mesh(
+              new THREE.SphereGeometry(0.3, 16, 16),
+              new THREE.MeshStandardMaterial({ color: 0xff9900 })
+            );
+            marker.position.set(obj.position.x, obj.position.y, obj.position.z);
+            assetObject = marker;
+            break;
+          }
+          default:
+            break;
+        }
+
+        if (assetObject) {
+          assetObject.name = obj.name;
+          assetObject.userData = { ...(assetObject.userData || {}), id: obj.id, type: obj.type };
+          try { assetObject.traverse?.((n)=>{ n.userData = n.userData || {}; if (!n.userData.ownerId) n.userData.ownerId = obj.id; }); } catch {}
+          assetObject.visible = obj.visible !== false;
+          scene.add(assetObject);
+          try { editorControlsRef.current.addSelectableObject(assetObject); } catch {}
+          loadedObjectsRef.current.set(obj.id, assetObject);
+          setSelectedObject(obj.id);
+          try { editorControlsRef.current.selectObject(assetObject); } catch {}
+        }
       } else if (obj.type === 'cube') {
         // 기존 큐브 오브젝트 처리
         const geometry = new THREE.BoxGeometry(obj.size.x, obj.size.y, obj.size.z);
@@ -1440,7 +1557,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         mesh.position.set(obj.position.x, obj.position.y, obj.position.z);
         mesh.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
         mesh.name = obj.name;
-        mesh.userData = { id: obj.id, type: obj.type };
+  mesh.userData = { id: obj.id, type: obj.type };
+  try { mesh.traverse?.((n)=>{ n.userData = n.userData || {}; if (!n.userData.ownerId) n.userData.ownerId = obj.id; }); } catch {}
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         
@@ -1492,7 +1610,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         mesh.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z);
         mesh.scale.set(obj.scale.x, obj.scale.y, obj.scale.z);
         mesh.name = obj.name;
-        mesh.userData = { id: obj.id, type: obj.type };
+  mesh.userData = { id: obj.id, type: obj.type };
+  // 후속 정리 루틴 보존을 위해 소유자 id 주입
+  try { mesh.traverse((n)=>{ n.userData = n.userData || {}; if (!n.userData.ownerId) n.userData.ownerId = obj.id; }); } catch {}
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         mesh.visible = obj.visible !== false;
@@ -1528,7 +1648,39 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         loadedObjectsRef.current.delete(objectId);
       }
     }
-  }, [objects, setSelectedObject]);
+
+    // 추가 안전 정리: loadedObjectsRef에 기록되지 않은 유령 오브젝트(스토어에 없는 id)를 씬에서 제거
+    try {
+      const toRemove = [];
+      const isLinkedOrAncestorLinked = (node) => {
+        let cur = node;
+        while (cur && cur !== scene) {
+          const cid = cur.userData?.id;
+          const oid = cur.userData?.ownerId;
+          if ((cid && currentObjectIds.has(cid)) || (oid && currentObjectIds.has(oid))) return true;
+          cur = cur.parent;
+        }
+        return false;
+      };
+      scene.traverse((child) => {
+        if (!child || child === scene) return;
+        // 시스템/아웃라인/헬퍼 등은 유지
+        if (child.userData?.isSystemObject) return;
+        if (child.userData?.isSelectionOutline) return;
+        // TransformControls/기즈모/헬퍼 이름 기반 제외
+        const lname = (child.name || '').toLowerCase();
+        if (lname.includes('transformcontrols') || lname.includes('gizmo') || lname.includes('helper')) return;
+        // 스토어에 연결된 객체(또는 그 조상에 연결된 루트)가 있으면 보존
+        if (isLinkedOrAncestorLinked(child)) return;
+        // 연결 정보가 없으면 제거 후보
+        toRemove.push(child);
+      });
+      toRemove.forEach((obj) => {
+        try { editorControlsRef.current?.removeSelectableObject?.(obj); } catch {}
+        try { if (obj.parent) obj.parent.remove(obj); else scene.remove(obj); } catch {}
+      });
+    } catch {}
+  }, [objects, setSelectedObject, sceneReady]);
 
   // 오브젝트 가시성 동기화
   useEffect(() => {

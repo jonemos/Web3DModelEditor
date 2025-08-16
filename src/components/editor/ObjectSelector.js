@@ -647,8 +647,9 @@ export class ObjectSelector {
     
     // 프리즈된 객체는 선택할 수 없음
     const editorState = this.editorStore.getState();
-    const objectInStore = editorState.objects.find(obj => obj.id === object.userData.id) || 
-                         editorState.walls.find(wall => wall.id === object.userData.id);
+    const uid = object.userData?.id ?? object.userData?.ownerId;
+    const objectInStore = editorState.objects.find(obj => obj.id === uid) || 
+                         editorState.walls.find(wall => wall.id === uid);
     
   if (objectInStore && objectInStore.frozen) {
       return false;

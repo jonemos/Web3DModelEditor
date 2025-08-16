@@ -4,6 +4,7 @@ import './SceneHierarchyPanel.css';
 export default function HierarchyTreePanel({
   objects,
   selectedIds = [],
+  selectedObjectId,
   dragUseSelectionForDnD = false,
   onSelect,
   onReparent,
@@ -32,6 +33,15 @@ export default function HierarchyTreePanel({
 
   const roots = byParent.get(null) || [];
 
+  // 선택 비교 정규화: id 타입(숫자/문자열) 불일치 보정 + 단일 선택 아이디 폴백
+  const selectedIdSet = useMemo(() => {
+    try {
+      const arr = Array.isArray(selectedIds) ? selectedIds.slice() : [];
+      if (selectedObjectId != null) arr.push(selectedObjectId);
+      return new Set(arr.map((v) => String(v)));
+    } catch { return new Set(); }
+  }, [selectedIds, selectedObjectId]);
+
   const isAncestor = useCallback((maybeAncestorId, nodeId) => {
     if (maybeAncestorId == null || nodeId == null) return false;
     let cur = byId.get(nodeId);
@@ -54,10 +64,11 @@ export default function HierarchyTreePanel({
 
   const handleDragStart = (e, id) => {
     dragRef.current.draggingId = id;
-  // 옵션: 선택 집합을 항상 사용하거나, 드래그 항목이 선택에 포함된 경우에만 사용
-  const selectedSet = new Set(Array.isArray(selectedIds) ? selectedIds : []);
-  const useSelection = dragUseSelectionForDnD ? (selectedSet.size > 0) : (selectedSet.has(id) && selectedSet.size > 0);
-  let ids = useSelection ? Array.from(selectedSet) : [id];
+    // 옵션: 선택 집합을 항상 사용하거나, 드래그 항목이 선택에 포함된 경우에만 사용
+    const selectedSetStr = selectedIdSet;
+    const idStr = String(id);
+    const useSelection = dragUseSelectionForDnD ? (selectedSetStr.size > 0) : (selectedSetStr.has(idStr) && selectedSetStr.size > 0);
+    let ids = useSelection ? Array.from(selectedSetStr) : [idStr];
     // 중첩 선택 정규화: 상위가 포함된 항목의 모든 자손은 제거(최상위 항목만 유지)
     const idSet = new Set(ids);
     const hasSelectedAncestor = (nid) => {
@@ -171,7 +182,7 @@ export default function HierarchyTreePanel({
   };
 
   const renderNode = (node, depth = 0) => {
-    const isSelected = selectedIds.includes(node.id);
+  const isSelected = selectedIdSet.has(String(node.id));
     const kids = byParent.get(node.id) || [];
     const collapsedHere = collapsed.has(node.id);
     const isOver = overId === node.id;

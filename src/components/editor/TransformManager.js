@@ -199,7 +199,7 @@ export class TransformManager {
   try { this.editorStore?.getState?.().beginBatch?.(); } catch {}
 
     // 선택 해제 전에 스토어 히스토리/상태 갱신을 위해 ID 수집
-    const ids = selectedObjects.map(o => o?.userData?.id).filter(Boolean);
+  const ids = selectedObjects.map(o => o?.userData?.id ?? o?.userData?.ownerId).filter(Boolean);
     const api = this.editorStore?.getState?.();
 
     // 선택 해제
@@ -208,7 +208,7 @@ export class TransformManager {
     // 씬에서 제거 + 스토어에서 제거 기록
     selectedObjects.forEach(object => {
       this.removeObjectFromScene(object);
-      const id = object?.userData?.id;
+      const id = object?.userData?.id ?? object?.userData?.ownerId;
       if (id && api?.removeObjectById) {
         api.removeObjectById(id);
       }

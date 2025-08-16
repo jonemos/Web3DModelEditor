@@ -134,15 +134,15 @@ export const useEditorStore = create((set, get) => {
   
   // Gizmo settings
   gizmoSpace: vg.gizmoSpace || 'world', // 'world' or 'local'
-  gizmoSize: Number.isFinite(vg.gizmoSize) ? vg.gizmoSize : 1.0, // TransformControls size
+  gizmoSize: Number.isFinite(vg.gizmoSize) ? vg.gizmoSize : 0.5, // TransformControls size
   // Snap increments
   snapMove: Number.isFinite(vg.snapMove) ? vg.snapMove : 1.0,
-  snapRotateDeg: Number.isFinite(vg.snapRotateDeg) ? vg.snapRotateDeg : 15,
-  snapScale: Number.isFinite(vg.snapScale) ? vg.snapScale : 0.1,
+  snapRotateDeg: Number.isFinite(vg.snapRotateDeg) ? vg.snapRotateDeg : 5,
+  snapScale: Number.isFinite(vg.snapScale) ? vg.snapScale : 0.01,
   // Camera control sensitivities (hydrate from viewGizmo)
-  cameraPanSpeed: Number.isFinite(vg.cameraPanSpeed) ? vg.cameraPanSpeed : 50,
-  cameraOrbitSpeed: Number.isFinite(vg.cameraOrbitSpeed) ? vg.cameraOrbitSpeed : 100,
-  cameraZoomSpeed: Number.isFinite(vg.cameraZoomSpeed) ? vg.cameraZoomSpeed : 0.3,
+  cameraPanSpeed: Number.isFinite(vg.cameraPanSpeed) ? vg.cameraPanSpeed : 10,
+  cameraOrbitSpeed: Number.isFinite(vg.cameraOrbitSpeed) ? vg.cameraOrbitSpeed : 10,
+  cameraZoomSpeed: Number.isFinite(vg.cameraZoomSpeed) ? vg.cameraZoomSpeed : 0.5,
   // 자석 기능 제거됨
 
   // HDRI settings - 패널이 닫혀도 유지되는 설정 (비동기 환경 저장으로 재하이드레이트)
@@ -249,14 +249,14 @@ export const useEditorStore = create((set, get) => {
         isGridSnap: !!cfg.isGridSnap,
         isGridVisible: !!cfg.isGridVisible,
         gizmoSpace: cfg.gizmoSpace || 'world',
-        gizmoSize: Number.isFinite(cfg.gizmoSize) ? cfg.gizmoSize : 1,
-        snapMove: Number.isFinite(cfg.snapMove) ? cfg.snapMove : 1,
-        snapRotateDeg: Number.isFinite(cfg.snapRotateDeg) ? cfg.snapRotateDeg : 15,
-        snapScale: Number.isFinite(cfg.snapScale) ? cfg.snapScale : 0.1,
+  gizmoSize: Number.isFinite(cfg.gizmoSize) ? cfg.gizmoSize : 0.5,
+  snapMove: Number.isFinite(cfg.snapMove) ? cfg.snapMove : 1,
+  snapRotateDeg: Number.isFinite(cfg.snapRotateDeg) ? cfg.snapRotateDeg : 5,
+  snapScale: Number.isFinite(cfg.snapScale) ? cfg.snapScale : 0.01,
         isPostProcessingEnabled: !!cfg.isPostProcessingEnabled,
-        cameraPanSpeed: Number.isFinite(cfg.cameraPanSpeed) ? cfg.cameraPanSpeed : 50,
-        cameraOrbitSpeed: Number.isFinite(cfg.cameraOrbitSpeed) ? cfg.cameraOrbitSpeed : 100,
-        cameraZoomSpeed: Number.isFinite(cfg.cameraZoomSpeed) ? cfg.cameraZoomSpeed : 0.3
+  cameraPanSpeed: Number.isFinite(cfg.cameraPanSpeed) ? cfg.cameraPanSpeed : 10,
+  cameraOrbitSpeed: Number.isFinite(cfg.cameraOrbitSpeed) ? cfg.cameraOrbitSpeed : 10,
+  cameraZoomSpeed: Number.isFinite(cfg.cameraZoomSpeed) ? cfg.cameraZoomSpeed : 0.5
       })
     } catch {}
   },
@@ -410,7 +410,8 @@ export const useEditorStore = create((set, get) => {
   },
 
   loadCustomMeshes: (meshes) => set(() => ({
-    customMeshes: meshes
+    // 커스텀 메쉬는 타입 명시적으로 부여
+    customMeshes: (Array.isArray(meshes) ? meshes : []).map(m => ({ ...m, type: 'custom' }))
   })),
   
   // 객체의 transform 정보 업데이트
@@ -498,7 +499,7 @@ export const useEditorStore = create((set, get) => {
     const filtered = objectsNext.filter(o => o.id !== objectId)
     return {
       objects: filtered,
-      selectedObject: state.selectedObject === objectId ? null : state.selectedObject
+      selectedObject: (state.selectedObject && (typeof state.selectedObject === 'object' ? state.selectedObject.id : state.selectedObject) === objectId) ? null : state.selectedObject
     }
   }),
 
@@ -609,8 +610,9 @@ export const useEditorStore = create((set, get) => {
         // GLB 객체의 경우 추가 정보 복사
         ...(objectData?.type === 'glb' && {
           url: objectData.url,
-          glbData: objectData.glbData,
-          file: objectData.file
+          // glbData는 큰 바이너리이므로 보관하지 않음. 가능하면 참조 id 사용
+          customMeshId: objectData.customMeshId,
+          file: undefined
         }),
         
         position: {
@@ -709,8 +711,14 @@ export const useEditorStore = create((set, get) => {
       return;
     }
     
+    // 선택된 객체가 객체 자체인지, id인지 모두 허용
+    const selectedId = typeof state.selectedObject === 'object' ? state.selectedObject.id : state.selectedObject;
+    if (!selectedId) {
+      console.warn('선택된 객체 ID를 확인할 수 없습니다.');
+      return;
+    }
     // 선택된 객체 찾기
-  const objectToDelete = state.objects.find(obj => obj.id === state.selectedObject);
+    const objectToDelete = state.objects.find(obj => obj.id === selectedId);
     
     if (!objectToDelete) {
       console.warn('선택된 객체를 찾을 수 없습니다.');
@@ -724,7 +732,7 @@ export const useEditorStore = create((set, get) => {
     }
     
   // 객체 삭제
-  const updatedObjects = state.objects.filter(obj => obj.id !== state.selectedObject);
+  const updatedObjects = state.objects.filter(obj => obj.id !== selectedId);
   // 히스토리 기록
   const entry = { type: 'remove', object: safeCloneForHistory(objectToDelete) }
   const { _pushHistory } = get();
@@ -805,13 +813,117 @@ export const useEditorStore = create((set, get) => {
     }
   }),
   
-  saveMap: (name) => {
+  // 씬의 현재 상태(변환/일부 속성)를 objects에 동기화
+  syncSceneToState: () => {
+    const state = get();
+    const scene = state.scene;
+    if (!scene) return false;
+    const idToObject3D = new Map();
+    try {
+      scene.traverse((child) => {
+        const id = child?.userData?.id;
+        if (id) idToObject3D.set(id, child);
+      });
+    } catch {}
+    const updatedObjects = state.objects.map((o) => {
+      const n = normalizeTransformFields(o);
+      const obj3d = idToObject3D.get(o.id);
+      if (!obj3d || !obj3d.isObject3D) return n;
+      // 변환 동기화
+      const next = {
+        ...n,
+        position: { x: obj3d.position.x, y: obj3d.position.y, z: obj3d.position.z },
+        rotation: { x: obj3d.rotation.x, y: obj3d.rotation.y, z: obj3d.rotation.z },
+        scale: { x: obj3d.scale.x, y: obj3d.scale.y, z: obj3d.scale.z },
+      };
+      // 라이트 속성 동기화 (가능한 경우)
+      try {
+        const type = o.type;
+        const lightKind = type === 'light' ? o.lightType : (
+          type === 'directional_light' ? 'directional' :
+          type === 'point_light' ? 'point' :
+          type === 'spot_light' ? 'spot' : null
+        );
+        if (obj3d.isLight && lightKind) {
+          // 공통
+          if (typeof obj3d.intensity === 'number') next.intensity = obj3d.intensity;
+          if (obj3d.color && typeof obj3d.color.getHex === 'function') next.color = obj3d.color.getHex();
+          next.castShadow = !!obj3d.castShadow;
+          // 종류별
+          if (lightKind === 'point' || lightKind === 'spot') {
+            if (typeof obj3d.distance === 'number') next.distance = obj3d.distance;
+            if (typeof obj3d.decay === 'number') next.decay = obj3d.decay;
+          }
+          if (lightKind === 'spot') {
+            if (typeof obj3d.angle === 'number') next.angle = obj3d.angle;
+            if (typeof obj3d.penumbra === 'number') next.penumbra = obj3d.penumbra;
+          }
+        }
+      } catch {}
+      return next;
+    });
+    set({ objects: updatedObjects });
+    return true;
+  },
+  
+  saveMap: (name, viewState) => {
     const state = get()
+    // 저장 직전 씬의 실제 변환/속성 동기화
+    try { state.syncSceneToState?.() } catch {}
+    // glbData를 제거하고 참조 id만 남기는 사전 처리
+    const serializedObjects = state.objects.map((o) => {
+      if (o?.type === 'glb') {
+        const { glbData, file, ...rest } = o || {}
+        return { ...rest }
+      }
+      return o
+    })
+    // 뷰 상태 자동 캡처(인자가 없을 때)
+    let autoView = viewState;
+    try {
+      if (!autoView) {
+        const cam = state.camera;
+        autoView = cam ? {
+          camera: {
+            type: cam.type,
+            position: { x: cam.position.x, y: cam.position.y, z: cam.position.z },
+            rotation: { x: cam.rotation.x, y: cam.rotation.y, z: cam.rotation.z },
+            zoom: typeof cam.zoom === 'number' ? cam.zoom : undefined,
+          },
+          viewport: {
+            isWireframe: !!state.isWireframe,
+            isGridSnap: !!state.isGridSnap,
+            isGridVisible: !!state.isGridVisible,
+            gizmoSpace: state.gizmoSpace,
+            gizmoSize: state.gizmoSize,
+            snapMove: state.snapMove,
+            snapRotateDeg: state.snapRotateDeg,
+            snapScale: state.snapScale,
+            rendererAA: state.rendererAA,
+            renderMode: state.renderMode,
+            isPostProcessingEnabled: !!state.isPostProcessingEnabled,
+            postProcessingPreset: state.postProcessingPreset,
+            safeMode: { ...state.safeMode },
+            hdriSettings: { ...state.hdriSettings },
+          }
+        } : undefined;
+      }
+    } catch {}
     const mapData = {
-  walls: state.walls,
-  objects: state.objects
+      walls: state.walls,
+      objects: serializedObjects,
+      // 선택적으로 뷰 상태를 함께 저장 (없으면 자동 캡처분 사용)
+      viewState: autoView || undefined
     }
-    localStorage.setItem(`map_${name}`, JSON.stringify(mapData))
+    try { localStorage.setItem(`map_${name}`, JSON.stringify(mapData)) } catch {}
+  },
+  // 맵 원본 데이터 조회 (저장된 viewState 포함)
+  getMapData: (name) => {
+    try {
+      const s = localStorage.getItem(`map_${name}`)
+      if (!s) return null
+      return JSON.parse(s)
+    } catch { return null }
   },
   
   loadMap: (name) => {
@@ -822,6 +934,33 @@ export const useEditorStore = create((set, get) => {
       // 로드 시 변환 필드 정규화 적용
       const normalizedObjects = (mapData.objects || []).map(o => {
         const n = normalizeTransformFields(o)
+        // 레거시 또는 잘못 직렬화된 glbData 정리
+        if (n?.type === 'glb') {
+          if (n.glbData && typeof n.glbData === 'object' && !Array.isArray(n.glbData) && !(n.glbData instanceof ArrayBuffer) && !(n.glbData instanceof Uint8Array)) {
+            // {} 같은 잘못된 데이터는 제거
+            delete n.glbData
+          }
+        }
+        // 레거시: 캔버스 드롭으로 생성된 기본 도형이 type 'mesh'로 저장된 경우 보정
+        if (n?.type === 'mesh' && !n.geometry && !n.params && (n.userData?.type === 'basic' || n.userData?.geometry)) {
+          const originalName = n.userData?.originalName || n.name || '';
+          const lower = String(originalName).toLowerCase();
+          let geometry = n.userData?.geometry;
+          let params = n.userData?.params;
+          if (!geometry) {
+            if (lower.includes('정육면체') || lower.includes('box')) { geometry = 'BoxGeometry'; params = [1,1,1]; }
+            else if (lower.includes('구체') || lower.includes('sphere')) { geometry = 'SphereGeometry'; params = [0.5, 32, 16]; }
+            else if (lower.includes('원기둥') || lower.includes('cylinder')) { geometry = 'CylinderGeometry'; params = [0.5, 0.5, 1, 32]; }
+            else if (lower.includes('원뿔') || lower.includes('cone')) { geometry = 'ConeGeometry'; params = [0.5, 1, 32]; }
+            else if (lower.includes('평면') || lower.includes('plane')) { geometry = 'PlaneGeometry'; params = [1, 1]; }
+            else if (lower.includes('도넛') || lower.includes('torus')) { geometry = 'TorusGeometry'; params = [0.5, 0.2, 16, 100]; }
+          }
+          if (geometry) {
+            n.type = 'basic';
+            n.geometry = geometry;
+            n.params = params || [];
+          }
+        }
         const parentId = Object.prototype.hasOwnProperty.call(n, 'parentId') ? n.parentId ?? null : null
         let order = n.order
         if (!Number.isFinite(order)) order = 0
@@ -832,17 +971,97 @@ export const useEditorStore = create((set, get) => {
         walls: normalizedWalls,
         objects: normalizedObjects
       }))
+      // 저장된 뷰 상태 적용(있을 경우): 카메라/뷰포트 설정
+      try {
+        const vs = mapData.viewState;
+        if (vs) {
+          const patch = {};
+          if (vs.viewport) {
+            const v = vs.viewport;
+            patch.isWireframe = !!v.isWireframe;
+            patch.isGridSnap = !!v.isGridSnap;
+            patch.isGridVisible = !!v.isGridVisible;
+            patch.gizmoSpace = v.gizmoSpace || get().gizmoSpace;
+            if (Number.isFinite(v.gizmoSize)) patch.gizmoSize = v.gizmoSize;
+            if (Number.isFinite(v.snapMove)) patch.snapMove = v.snapMove;
+            if (Number.isFinite(v.snapRotateDeg)) patch.snapRotateDeg = v.snapRotateDeg;
+            if (Number.isFinite(v.snapScale)) patch.snapScale = v.snapScale;
+            if (v.rendererAA) patch.rendererAA = v.rendererAA;
+            if (v.renderMode) patch.renderMode = v.renderMode;
+            patch.isPostProcessingEnabled = !!v.isPostProcessingEnabled;
+            if (v.postProcessingPreset) patch.postProcessingPreset = v.postProcessingPreset;
+            if (v.safeMode) patch.safeMode = { ...get().safeMode, ...v.safeMode };
+            if (v.hdriSettings) patch.hdriSettings = { ...get().hdriSettings, ...v.hdriSettings };
+          }
+          if (Object.keys(patch).length > 0) set(patch);
+          // 카메라는 EditorControls가 관리하므로, 좌표는 나중에 컨트롤에서 반영
+          // 여기서는 상태만 보존하고, 컨트롤 초기화 시 적용될 수 있게 유지
+        }
+      } catch {}
       
       return true
     }
     return false
   },
   
-  clearMap: () => set((state) => ({
-    objects: state.objects.filter(obj => obj.isSystemObject), // 시스템 객체는 유지
-    walls: [],
-    selectedObject: null
-  })),
+  clearMap: () => {
+    const state = get();
+    // 상태 초기화 (시스템 객체만 유지)
+    set({
+      objects: (state.objects || []).filter(obj => obj.isSystemObject),
+      walls: [],
+      selectedObject: null,
+      selectedIds: []
+    });
+    // 씬 잔여물 강제 정리: 스토어에 없는 비시스템 오브젝트 제거
+    try {
+      const scene = get().scene;
+      if (scene) {
+        const keepIds = new Set((get().objects || []).map(o => o.id));
+        const toRemove = [];
+        scene.traverse((child) => {
+          // 시스템/기즈모/헬퍼/오버레이는 유지
+          if (child?.userData?.isSystemObject) return;
+          if (child?.userData?.isSelectionOutline) return;
+          // 스토어에 없는 id 기반 오브젝트 제거 대상
+          const cid = child?.userData?.id;
+          if (!cid || !keepIds.has(cid)) {
+            toRemove.push(child);
+          }
+        });
+        toRemove.forEach((obj) => {
+          try {
+            if (obj.parent) obj.parent.remove(obj);
+            else scene.remove(obj);
+          } catch {}
+        });
+      }
+    } catch {}
+  },
+
+  // 스토어와 씬 싱크 안전 정리: 스토어에 없는 id의 오브젝트를 씬에서 제거
+  pruneOrphanSceneObjects: () => {
+    try {
+      const scene = get().scene;
+      if (!scene) return;
+      const keepIds = new Set((get().objects || []).map(o => o.id));
+      const toRemove = [];
+      scene.traverse((child) => {
+        if (child?.userData?.isSystemObject) return;
+        if (child?.userData?.isSelectionOutline) return;
+        const cid = child?.userData?.id;
+        if (!cid || !keepIds.has(cid)) {
+          // TransformControls/gizmo/helper는 제외
+          const n = (child.name || '').toLowerCase();
+          if (n.includes('transformcontrols') || n.includes('gizmo') || n.includes('helper')) return;
+          toRemove.push(child);
+        }
+      });
+      toRemove.forEach((obj) => {
+        try { if (obj.parent) obj.parent.remove(obj); else scene.remove(obj); } catch {}
+      });
+    } catch {}
+  },
   
   // Scene setup
   setScene: (scene, camera, renderer) => set({ scene, camera, renderer }),

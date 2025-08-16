@@ -247,6 +247,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     // 커스텀 메쉬의 경우 무거운 glbData를 직접 싣지 않고 경량 참조만 전달
     let dataToTransfer = object;
     if (object.type === 'custom') {
+      // 경량 페이로드: id만 전달
       dataToTransfer = { type: 'custom', id: object.id, name: object.name };
     }
     
@@ -280,6 +281,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     // 클릭으로 객체를 중앙에 추가
     if (onObjectDrop) {
       if (object.type === 'custom') {
+        // 드래그와 동일하게 경량 참조만 전달해 일관성 유지
         onObjectDrop({ type: 'custom', id: object.id, name: object.name }, { x: 0, y: 0, z: 0 });
       } else if (object.type === 'library') {
         // 라이브러리 메쉬의 경우

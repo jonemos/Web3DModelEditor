@@ -120,6 +120,19 @@ function EditorPage() {
     }
   }, [scene, hdriSettings.sunLightEnabled, sunLightRef])
 
+  // 씬 리셋 이후 레퍼런스는 있으나 씬에서 빠져있을 수 있으므로 재부착 가드
+  useEffect(() => {
+    if (!scene || !sunLightRef || !hdriSettings.sunLightEnabled) return
+    const existsInScene = (() => {
+      let found = false
+      scene.traverse((c) => { if (c === sunLightRef) found = true })
+      return found
+    })()
+    if (!existsInScene) {
+      try { scene.add(sunLightRef) } catch {}
+    }
+  }, [scene, sunLightRef, hdriSettings.sunLightEnabled])
+
   // 초기 HDRI 환경 설정
   useEffect(() => {
     if (scene && hdriSettings.currentHDRI && hdriSettings.currentHDRI.type === 'none') {
@@ -226,7 +239,9 @@ function EditorPage() {
         
         
         if (selectedObject) {
-          const objectToDelete = objects.find(obj => obj.id === selectedObject);
+          const selectedIdRaw = typeof selectedObject === 'object' ? (selectedObject.id ?? selectedObject.userData?.ownerId) : selectedObject;
+          // ownerId 매핑 보강
+          const objectToDelete = objects.find(obj => obj.id === selectedIdRaw);
           if (objectToDelete) {
             const objectName = objectToDelete.name;
             deleteSelectedObject();
@@ -287,6 +302,9 @@ function EditorPage() {
     sunLight.shadow.camera.bottom = -50
 
     sunLight.name = 'sunLight'
+  // 새 맵 정리(clearMap)에서 삭제되지 않도록 시스템 오브젝트로 표시
+  sunLight.userData = sunLight.userData || {}
+  sunLight.userData.isSystemObject = true
     setSunLightRef(sunLight)
     scene.add(sunLight)
 
@@ -367,6 +385,96 @@ function EditorPage() {
     input.click()
   }
 
+  // 간단한 뷰 상태 직렬화/역직렬화 유틸
+  const getViewState = () => {
+    const state = {}
+    try {
+      const ec = editorControlsRef.current
+      const bc = window.__blenderControls
+      const cam = ec?.getCamera?.() || (bc?.camera)
+      if (cam) {
+        state.camera = {
+          position: cam.position ? cam.position.toArray() : null,
+          target: (bc && bc.target) ? bc.target.toArray() : (ec?.getCameraTarget?.()?.toArray?.() || [0,0,0]),
+          up: cam.up ? cam.up.toArray() : null,
+          fov: cam.fov,
+          near: cam.near,
+          far: cam.far
+        }
+      }
+      // 주요 토글/옵션
+      const s = useEditorStore.getState()
+      state.viewOptions = {
+        isWireframe: s.isWireframe,
+        isGridSnap: s.isGridSnap,
+        isGridVisible: s.isGridVisible,
+        gizmoSpace: s.gizmoSpace,
+        gizmoSize: s.gizmoSize,
+        snapMove: s.snapMove,
+        snapRotateDeg: s.snapRotateDeg,
+        snapScale: s.snapScale,
+        cameraPanSpeed: s.cameraPanSpeed,
+        cameraOrbitSpeed: s.cameraOrbitSpeed,
+        cameraZoomSpeed: s.cameraZoomSpeed,
+        isPostProcessingEnabled: s.isPostProcessingEnabled,
+      }
+    } catch {}
+    return state
+  }
+
+  const applyViewState = (state) => {
+    if (!state || typeof state !== 'object') return
+    try {
+      const ec = editorControlsRef.current
+      const bc = window.__blenderControls
+      // 카메라
+      if (state.camera) {
+        const cam = ec?.getCamera?.() || (bc?.camera)
+        if (cam) {
+          if (Array.isArray(state.camera.position)) cam.position.fromArray(state.camera.position)
+          if (Array.isArray(state.camera.up)) cam.up.fromArray(state.camera.up)
+          if (typeof state.camera.fov === 'number') cam.fov = state.camera.fov
+          if (typeof state.camera.near === 'number') cam.near = state.camera.near
+          if (typeof state.camera.far === 'number') cam.far = state.camera.far
+          cam.updateProjectionMatrix?.()
+          if (bc && Array.isArray(state.camera.target)) {
+            bc.target.fromArray(state.camera.target)
+          } else if (ec && Array.isArray(state.camera.target)) {
+            ec.setCameraTarget?.(new THREE.Vector3().fromArray(state.camera.target))
+          }
+        }
+      }
+      // 옵션들
+      if (state.viewOptions) {
+        const s = useEditorStore.getState()
+        const setters = {
+          isWireframe: 'toggleWireframe',
+          isGridSnap: 'toggleGridSnap',
+          isGridVisible: 'toggleGridVisible',
+        }
+        // 토글류는 현재값과 다를 때만 토글 호출
+        if (typeof state.viewOptions.isWireframe === 'boolean' && s.isWireframe !== state.viewOptions.isWireframe) useEditorStore.getState().toggleWireframe()
+        if (typeof state.viewOptions.isGridSnap === 'boolean' && s.isGridSnap !== state.viewOptions.isGridSnap) useEditorStore.getState().toggleGridSnap()
+        if (typeof state.viewOptions.isGridVisible === 'boolean' && s.isGridVisible !== state.viewOptions.isGridVisible) useEditorStore.getState().toggleGridVisible()
+        if (state.viewOptions.gizmoSpace && s.gizmoSpace !== state.viewOptions.gizmoSpace) useEditorStore.getState().toggleGizmoSpace()
+        if (Number.isFinite(state.viewOptions.gizmoSize)) useEditorStore.getState().setGizmoSize(state.viewOptions.gizmoSize)
+        if (Number.isFinite(state.viewOptions.snapMove)) useEditorStore.getState().setSnapMove(state.viewOptions.snapMove)
+        if (Number.isFinite(state.viewOptions.snapRotateDeg)) useEditorStore.getState().setSnapRotateDeg(state.viewOptions.snapRotateDeg)
+        if (Number.isFinite(state.viewOptions.snapScale)) useEditorStore.getState().setSnapScale(state.viewOptions.snapScale)
+        if (Number.isFinite(state.viewOptions.cameraPanSpeed)) useEditorStore.getState().setCameraPanSpeed(state.viewOptions.cameraPanSpeed)
+        if (Number.isFinite(state.viewOptions.cameraOrbitSpeed)) useEditorStore.getState().setCameraOrbitSpeed(state.viewOptions.cameraOrbitSpeed)
+        if (Number.isFinite(state.viewOptions.cameraZoomSpeed)) useEditorStore.getState().setCameraZoomSpeed(state.viewOptions.cameraZoomSpeed)
+        if (typeof state.viewOptions.isPostProcessingEnabled === 'boolean') {
+          const cur = useEditorStore.getState().isPostProcessingEnabled
+          if (cur !== state.viewOptions.isPostProcessingEnabled) useEditorStore.getState().togglePostProcessingEnabled()
+        }
+        // 즉시 반영
+        ec?.applyInitialViewState?.()
+        if (bc) bc.update?.()
+      }
+    } catch {}
+  }
+
   const handleMenuAction = (action) => {
     // Menu action triggered
     
@@ -374,6 +482,16 @@ function EditorPage() {
       case 'new-map':
         if (confirm(MESSAGES.NEW_MAP_CONFIRM)) {
           clearMap()
+          // 뷰 초기화: 카메라/타겟 기본값으로
+          try {
+            editorControlsRef.current?.resetCamera?.()
+          } catch {}
+          try {
+            if (window.__blenderControls) {
+              window.__blenderControls.target.set(0,0,0)
+              window.__blenderControls.update?.()
+            }
+          } catch {}
         }
         break
         
@@ -563,11 +681,19 @@ function EditorPage() {
 
   const handleDialogConfirm = () => {
     if (showDialog === 'save' && dialogInput.trim()) {
-      saveMap(dialogInput.trim())
+      const viewState = getViewState()
+      // 스토어의 saveMap에 viewState를 포함 저장
+      saveMap(dialogInput.trim(), viewState)
       alert(`맵이 "${dialogInput.trim()}"으로 저장되었습니다.`)
     } else if (showDialog === 'load' && dialogInput.trim()) {
+      // 먼저 로드하여 오브젝트/벽을 반영
       const success = loadMap(dialogInput.trim())
       if (success) {
+        // 저장된 viewState가 있으면 적용
+        try {
+          const raw = useEditorStore.getState().getMapData?.(dialogInput.trim())
+          if (raw && raw.viewState) applyViewState(raw.viewState)
+        } catch {}
         alert(`맵 "${dialogInput.trim()}"을 불러왔습니다.`)
       } else {
         alert(`맵 "${dialogInput.trim()}"을 찾을 수 없습니다.`)

@@ -25,7 +25,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     setTransformMode,
     addWall,
     addObject,
-    removeObject,
+  removeObject,
+  removeObjectById,
     addAsset,
     saveMap,
     loadMap,
@@ -216,7 +217,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     
     // EditorControls를 통해 실제 Three.js 오브젝트 선택
     if (editorControls) {
-      // loadedObjects에서 실제 Three.js 오브젝트 찾기
+      // loadedObjects에서 실제 Three.js 오브젝트 찾기 (ownerId도 보조)
       const threeObject = editorControls.findObjectById(obj.id)
       if (threeObject) {
         // EditorControls의 선택 기능 사용
@@ -230,7 +231,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     }
     
     // 스토어에서 선택된 오브젝트 설정
-    setSelectedObject(obj)
+  // selectedObject는 id로 저장해 모든 액션에서 일관되게 참조
+  setSelectedObject(obj?.id ?? obj)
   }
 
   const handleObjectFocus = (obj) => {
@@ -360,8 +362,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     // Console output removed
     setTimeout(() => {
       try {
-        removeObject(obj)
-        // Console output removed
+        // 참조 동일성에 의존하지 않고 안전하게 삭제
+        removeObjectById?.(obj?.id)
         // Console output removed
       } catch (error) {
         // Console output removed
@@ -410,14 +412,23 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
   }
 
   const handleAssetDrop = (assetData, position) => {
-    // 기본 에셋을 씬에 추가
-    
+    const genId = (base) => `${base || 'obj'}_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
     let newObject;
 
     switch (assetData.type) {
+      case 'start_position':
+        newObject = {
+          id: genId(assetData.name || assetData.type),
+          type: 'start_position',
+          name: assetData.name,
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 }
+        };
+        break;
       case 'directional_light':
         newObject = {
-          id: Date.now(),
+          id: genId(assetData.name || assetData.type),
           type: 'directional_light',
           name: assetData.name,
           position: position || { x: 5, y: 10, z: 5 },
@@ -430,7 +441,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         break;
       case 'point_light':
         newObject = {
-          id: Date.now(),
+          id: genId(assetData.name || assetData.type),
           type: 'point_light',
           name: assetData.name,
           position: position || { x: 0, y: 3, z: 0 },
@@ -444,7 +455,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         break;
       case 'spot_light':
         newObject = {
-          id: Date.now(),
+          id: genId(assetData.name || assetData.type),
           type: 'spot_light',
           name: assetData.name,
           position: position || { x: 0, y: 5, z: 0 },
@@ -459,7 +470,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         break;
       case 'ambient_light':
         newObject = {
-          id: Date.now(),
+          id: genId(assetData.name || assetData.type),
           type: 'ambient_light',
           name: assetData.name,
           position: position || { x: 0, y: 0, z: 0 },
@@ -471,7 +482,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         break;
       case 'audio_source':
         newObject = {
-          id: Date.now(),
+          id: genId(assetData.name || assetData.type),
           type: 'audio_source',
           name: assetData.name,
           position: position || { x: 0, y: 1, z: 0 },
@@ -483,9 +494,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         };
         break;
       default:
-        // 기타 헬퍼나 효과들
         newObject = {
-          id: Date.now(),
+          id: genId(assetData.name || assetData.type),
           type: assetData.type,
           name: assetData.name,
           position: position || { x: 0, y: 0, z: 0 },
@@ -494,58 +504,38 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         };
     }
 
-    addObject(newObject);
-    
-    // 추가된 오브젝트를 선택 상태로 만들기
-    setTimeout(() => {
-      setSelectedObject(newObject);
-    }, 100);
-
-    showToast(`${assetData.name}이(가) 씬에 추가되었습니다.`, 'success');
+  addObject(newObject);
+  // selectedObject를 id로 유지해 일관성 개선
+  setTimeout(() => { setSelectedObject(newObject.id); }, 100);
   }
 
   const handleLibraryDrop = async (objectData, position) => {
-    // 라이브러리에서 드롭된 오브젝트를 씬에 추가
-    
+    const genId = (base) => `${base || 'obj'}_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;
     let newObject;
 
     if (objectData.type === 'library') {
-      // 라이브러리 메쉬 (GLB 파일)
       newObject = {
-        id: Date.now(),
+        id: genId(objectData.name || objectData.id || 'library'),
         type: 'glb',
-        url: objectData.glbUrl, // GLB 파일 URL
+        url: objectData.glbUrl,
         position: position || { x: 0, y: 0, z: 0 },
         rotation: { x: 0, y: 0, z: 0 },
         scale: { x: 1, y: 1, z: 1 },
         name: objectData.name
       };
-      
     } else if (objectData.type === 'custom') {
-      // 사용자 정의 객체: id만 넘어온 경우 실제 GLB 데이터 조회
-      try {
-        const mgr = getGLBMeshManager();
-        const list = await mgr.getCustomMeshes();
-        const found = list.find(m => m.id === objectData.id);
-        if (!found) throw new Error('NOT_FOUND');
-        newObject = {
-          id: Date.now(),
-          type: 'glb',
-          glbData: found.glbData, // 저장된 GLB 데이터
-          position: position || { x: 0, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          scale: { x: 1, y: 1, z: 1 },
-          name: found.name || objectData.name
-        };
-      } catch (e) {
-        showToast('커스텀 메쉬를 불러올 수 없습니다.', 'error');
-        return;
-      }
-      
-    } else {
-      // 기본 도형
       newObject = {
-        id: Date.now(),
+        id: genId(objectData.name || objectData.id || 'custom'),
+        type: 'glb',
+        customMeshId: objectData.id,
+        position: position || { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        name: objectData.name || 'Custom Mesh'
+      };
+    } else {
+      newObject = {
+        id: genId(objectData.name || objectData.type),
         type: objectData.type || 'basic',
         geometry: objectData.geometry,
         params: objectData.params,
@@ -557,11 +547,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     }
 
   addObject(newObject);
-    
-    // 추가된 오브젝트를 선택 상태로 만들기
-    setTimeout(() => {
-      setSelectedObject(newObject);
-    }, 100);
+  // selectedObject를 id로 유지해 일관성 개선
+  setTimeout(() => { setSelectedObject(newObject.id); }, 100);
   }
 
   const handleCloseContextMenu = () => {
@@ -599,7 +586,6 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
             className={`tool-btn post-processing-btn ${isPostProcessingPanelOpen ? 'active' : ''}`}
             onClick={handlePostProcessingToggle}
             title="포스트프로세싱 효과"
-            disabled={!envReady}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M9,12L11,14L15,10L20,15H4L9,12Z"/>
@@ -609,7 +595,6 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
             className={`tool-btn hdri-btn ${showHDRI ? 'active' : ''}`}
             onClick={handleHDRIToggle}
             title="HDRI 환경"
-            disabled={!envReady}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17Z"/>
@@ -653,13 +638,15 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
         />
       )}
 
-      {/* Toast 메시지 */}
+      {/* Toast 메시지 비활성화 */}
+      {/*
       <Toast
         message={toast.message}
         type={toast.type}
         isVisible={toast.isVisible}
         onClose={hideToast}
       />
+      */}
 
       {/* 컨텍스트 메뉴 */}
       <ContextMenu

@@ -593,7 +593,8 @@ export class EditorControls {
     // 씬에서 해당 ID를 가진 오브젝트 찾기
     let foundObject = null;
     this.scene.traverse((child) => {
-      if (child.userData && child.userData.id === id) {
+      if (!child || !child.userData) return;
+      if (child.userData.id === id || child.userData.ownerId === id) {
         foundObject = child;
       }
     });
@@ -771,10 +772,13 @@ export class EditorControls {
     
   // Initializing grid helper
     
-    // 더 밝은 색상으로 그리드 생성
-    this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
+  // 더 밝은 색상으로 그리드 생성
+  this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
     this.gridHelper.name = 'EditorGrid';
     this.gridHelper.position.y = 0; // 정확히 바닥(y=0)에 위치
+  // 새 맵 초기화 시 제거되지 않도록 시스템 플래그 부여
+  this.gridHelper.userData = this.gridHelper.userData || {};
+  this.gridHelper.userData.isSystemObject = true;
     
     // 그리드 머티리얼 설정 개선
     this.gridHelper.material.opacity = 0.8;
@@ -832,11 +836,14 @@ export class EditorControls {
     const currentState = this.editorStore.getState();
     const isGridVisible = currentState.isGridVisible;
     
-    // 새 그리드 생성 (더 밝은 색상과 개선된 설정으로)
-    this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
+  // 새 그리드 생성 (더 밝은 색상과 개선된 설정으로)
+  this.gridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
     this.gridHelper.name = 'EditorGrid';
     this.gridHelper.position.y = 0; // 정확히 바닥(y=0)에 위치
     this.gridHelper.visible = isGridVisible;
+  // 시스템 플래그 유지
+  this.gridHelper.userData = this.gridHelper.userData || {};
+  this.gridHelper.userData.isSystemObject = true;
     
     // 머티리얼 설정 개선
     this.gridHelper.material.opacity = 0.8;
