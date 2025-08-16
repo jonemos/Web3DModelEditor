@@ -192,6 +192,10 @@ export class InputManager {
       button: event.button,
       position: { ...this.mouseState.position },
       dragStart: { ...this.mouseState.dragStart },
+  ctrl: event.ctrlKey,
+  shift: event.shiftKey,
+  alt: event.altKey,
+  meta: event.metaKey,
       originalEvent: event
     };
 

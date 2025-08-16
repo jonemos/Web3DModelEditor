@@ -64,6 +64,8 @@ export class ObjectSelector {
   // 매 프레임 강제 숨김: 헬퍼 라인/보조선 차단 + gizmoScene 재부착 보장
   forceHideGizmoLines() {
     try {
+  // TransformControls 본체는 씬에 추가하지 않음 (Object3D 아님)
+
       const helper = this.transformControls?.getHelper?.();
       if (!helper || !helper.isObject3D) return;
       // 올바른 씬에 존재하도록 보장
@@ -122,8 +124,8 @@ export class ObjectSelector {
           removeLines(helper);
           helper.onBeforeRender = () => { try { if (helperGroup) helperGroup.visible = false; removeLines(helper); } catch {} };
         } catch {}
-        if (helper.parent) helper.parent.remove(helper);
-        scene.add(helper);
+  if (helper.parent) helper.parent.remove(helper);
+  scene.add(helper);
       }
     } catch {}
   }
@@ -147,7 +149,7 @@ export class ObjectSelector {
     if (!object) return false;
     let current = object;
     while (current) {
-      if (current === this.scene) return true;
+  if (current === this.scene || current === this.gizmoScene) return true;
       current = current.parent;
     }
     return false;
@@ -184,11 +186,13 @@ export class ObjectSelector {
     // 선택된 오브젝트들의 중앙점 계산
     this.calculateGroupCenter();
 
-    // 임시 그룹을 중앙점에 위치시킴
+  // 임시 그룹을 중앙점에 위치시킴
     this.tempGroup.position.copy(this.tempGroupCenter);
 
-    // 씬에 임시 그룹 추가 (TransformControls 연결 전에 반드시 필요)
-    this.scene.add(this.tempGroup);
+  // 씬에 임시 그룹 추가 (TransformControls 연결 전에 반드시 필요)
+  // gizmoScene이 있다면 동일 씬에 추가하여 렌더 순서/깊이와 일관성 유지
+  const targetScene = this.gizmoScene || this.scene;
+  try { targetScene.add(this.tempGroup); } catch {}
 
     return this.tempGroup;
   }
@@ -217,7 +221,7 @@ export class ObjectSelector {
   // 임시 그룹 제거
   clearTempGroup() {
     if (this.tempGroup) {
-      this.scene.remove(this.tempGroup);
+  try { if (this.tempGroup.parent) this.tempGroup.parent.remove(this.tempGroup); } catch {}
       this.tempGroup = null;
     }
   }
@@ -382,6 +386,7 @@ export class ObjectSelector {
       // Creating TransformControls
       
   this.transformControls = new TransformControls(this.camera, this.renderer.domElement);
+  // TransformControls 본체는 씬에 추가하지 않음 (헬퍼만 추가)
       
       // 초기 기즈모 사이즈/스냅을 스토어에서 반영
       try {
@@ -488,7 +493,7 @@ export class ObjectSelector {
       this.transformControls.setSize(1.0);
       
       // TransformControls??getHelper()�??�용?�서 ?�각???�현???�에 추�?
-      const gizmoHelper = this.transformControls.getHelper();
+  const gizmoHelper = this.transformControls.getHelper();
       if (gizmoHelper instanceof THREE.Object3D) {
         // 흰색 보조선이 들어있는 'helper' 그룹을 비활성화
         try {
@@ -516,8 +521,8 @@ export class ObjectSelector {
           gizmoHelper.onBeforeRender = () => { try { if (helperGroup) helperGroup.visible = false; removeLines(gizmoHelper); } catch {} };
         } catch {}
         gizmoHelper.renderOrder = 999;
-        const targetScene = this.gizmoScene || this.scene;
-        targetScene.add(gizmoHelper);
+  const targetScene = this.gizmoScene || this.scene;
+  targetScene.add(gizmoHelper);
         // hover/변경 시에도 helper 보조선이 다시 켜지지 않도록 보장
         try {
           const hideHelper = () => {
@@ -743,8 +748,9 @@ export class ObjectSelector {
   if (this.selectedObjects.length > 1) {
       const tempGroup = this.createTempGroup();
       if (tempGroup && this.transformControls) {
-        // 임시 그룹이 씬에 추가되었는지 확인
-        if (tempGroup.parent === this.scene) {
+    // 임시 그룹이 렌더 가능한 씬에 추가되었는지 확인 (gizmoScene 우선)
+    const okParent = (tempGroup.parent === (this.gizmoScene || this.scene));
+    if (okParent) {
           this.editorStore.getState().setSelectedObject(tempGroup);
           this.transformControls.attach(tempGroup);
           this.setGizmoMode(this.gizmoMode);
@@ -835,12 +841,13 @@ export class ObjectSelector {
   try { this.addSelectionOutline(object); this.updateSelectionOutline(object); } catch {}
       
       // Transform controls 업데이트
-      if (this.selectedObjects.length > 1) {
+    if (this.selectedObjects.length > 1) {
         // 다중 선택인 경우 임시 그룹 생성
         const tempGroup = this.createTempGroup();
         if (tempGroup && this.transformControls) {
-          // 임시 그룹이 씬에 추가되었는지 확인
-          if (tempGroup.parent === this.scene) {
+      // 임시 그룹이 렌더 가능한 씬에 추가되었는지 확인 (gizmoScene 우선)
+      const okParent = (tempGroup.parent === (this.gizmoScene || this.scene));
+      if (okParent) {
             this.editorStore.getState().setSelectedObject(tempGroup);
             this.transformControls.attach(tempGroup);
             this.setGizmoMode(this.gizmoMode);
@@ -1400,8 +1407,11 @@ export class ObjectSelector {
     
     // Transform controls ?�제
     if (this.transformControls) {
+      try {
+        const helper = this.transformControls.getHelper?.();
+        if (helper && helper.parent) helper.parent.remove(helper);
+      } catch {}
       this.transformControls.dispose();
-      this.scene.remove(this.transformControls);
     }
     
     // ?�택 박스 ?�거
