@@ -44,6 +44,10 @@ const InspectorPanel = memo(function InspectorPanel({
       </div>
     )
   }
+  // 리하이드레이션 로드 상태 배지
+  const viewReady = useEditorStoreHook((s) => s.viewReady)
+  const uiReady = useEditorStoreHook((s) => s.uiReady)
+  const envReady = useEditorStoreHook((s) => s.envReady)
   // 아코디언(블렌더 스타일) 섹션 접힘 상태
   const [collapsed, setCollapsed] = useState({
     transform: false,
@@ -901,6 +905,11 @@ const InspectorPanel = memo(function InspectorPanel({
         <div className="properties-section-wrapper">
           <div className="section-header">
             <h4>속성</h4>
+            <div style={{display:'flex',gap:6,alignItems:'center',marginLeft:'auto'}}>
+              <span title="뷰 설정" style={{padding:'2px 6px',borderRadius:4,fontSize:11,background: viewReady? 'rgba(40,167,69,0.15)' : 'rgba(255,193,7,0.12)', color: viewReady? '#7CDA9B' : '#FFD666', border: `1px solid ${viewReady? 'rgba(40,167,69,0.45)' : 'rgba(255,193,7,0.35)'}`}}>View {viewReady? '✓' : '…'}</span>
+              <span title="UI 설정" style={{padding:'2px 6px',borderRadius:4,fontSize:11,background: uiReady? 'rgba(40,167,69,0.15)' : 'rgba(255,193,7,0.12)', color: uiReady? '#7CDA9B' : '#FFD666', border: `1px solid ${uiReady? 'rgba(40,167,69,0.45)' : 'rgba(255,193,7,0.35)'}`}}>UI {uiReady? '✓' : '…'}</span>
+              <span title="환경 설정" style={{padding:'2px 6px',borderRadius:4,fontSize:11,background: envReady? 'rgba(40,167,69,0.15)' : 'rgba(255,193,7,0.12)', color: envReady? '#7CDA9B' : '#FFD666', border: `1px solid ${envReady? 'rgba(40,167,69,0.45)' : 'rgba(255,193,7,0.35)'}`}}>Env {envReady? '✓' : '…'}</span>
+            </div>
             {objectInfo && (
               <div className="object-info">
                 <span className="object-name">{objectInfo.name}</span>

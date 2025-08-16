@@ -482,7 +482,7 @@ export class PostProcessingManager {
   if (effectName === 'toneMapping') {
     try {
       import('../../utils/viewGizmoConfig.js').then(mod => {
-        try { mod.saveEnvironmentSettings({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
+        try { mod.saveEnvironmentSettingsAsync({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
       }).catch(() => {});
     } catch {}
   }
@@ -503,7 +503,7 @@ export class PostProcessingManager {
       if (effectName === 'toneMapping') {
         try {
           import('../../utils/viewGizmoConfig.js').then(mod => {
-            try { mod.saveEnvironmentSettings({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
+            try { mod.saveEnvironmentSettingsAsync({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
           }).catch(() => {});
         } catch {}
       }
@@ -608,7 +608,7 @@ export class PostProcessingManager {
     // 환경에 프리셋 저장 (best-effort)
     try {
       import('../../utils/viewGizmoConfig.js').then(mod => {
-        try { mod.saveEnvironmentSettings({ postProcessing: { preset: preset } }) } catch {}
+        try { mod.saveEnvironmentSettingsAsync({ postProcessing: { preset: preset } }) } catch {}
       }).catch(() => {});
     } catch {}
   }

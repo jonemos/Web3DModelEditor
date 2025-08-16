@@ -1,10 +1,13 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import mkcert from 'vite-plugin-mkcert'
 
 export default defineConfig({
   plugins: [
     react(),
+  // 개발/프리뷰 HTTPS를 위한 로컬 인증서 자동 생성
+  mkcert(),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
@@ -58,7 +61,11 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    host: true
+    host: true,
+    https: true
+  },
+  preview: {
+    https: true
   },
   build: {
     outDir: 'dist',

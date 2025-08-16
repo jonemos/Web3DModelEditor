@@ -290,6 +290,16 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3); /* 그림자 추가로 더 명확하게 */
 }
 
+/* 커스텀 메쉬 내보내기 버튼 스타일 (delete-btn 클래스를 재사용) */
+.library-item.custom-mesh .delete-btn + .delete-btn {
+  right: 18px; /* 삭제 버튼과 간격 */
+  background: rgba(0, 123, 255, 0.9);
+}
+
+.library-item.custom-mesh .delete-btn + .delete-btn:hover {
+  background: rgba(0, 123, 255, 1);
+}
+
 .delete-btn:hover {
   background: rgba(244, 67, 54, 1);
   transform: scale(1.1);
@@ -378,4 +388,34 @@
 
 .library-mesh:hover {
   z-index: 1001;
+}
+
+/* 라이브러리 패널 컨텍스트 메뉴 */
+.lib-context-menu {
+  position: fixed;
+  min-width: 140px;
+  background: rgba(32, 32, 32, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 99999;
+  padding: 6px;
+  backdrop-filter: blur(12px);
+}
+
+.lib-context-menu .ctx-item {
+  width: 100%;
+  background: transparent;
+  color: #eee;
+  border: none;
+  text-align: left;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.lib-context-menu .ctx-item:hover {
+  background: rgba(255, 165, 0, 0.15);
+  color: #fff;
 }

@@ -1,11 +1,7 @@
-// 프로젝트 전역 설정 통합 매니저
-// - 다중 네임스페이스(섹션)로 설정을 보관
-// - localStorage에 단일 키로 저장/로드
-// - 기존 view/gizmo API는 하위 호환 제공
-
-// 구버전(개별 키) 호환을 위한 레거시 키
-const LEGACY_VIEW_GIZMO_KEY = 'viewGizmoConfig'
-const LEGACY_HDRI_KEY = 'hdriSettings'
+// 프로젝트 전역 설정 통합 매니저 (Async Only)
+// - 모든 퍼시스턴스는 SQLite(sql.js) 비동기 API로 수행
+// - 동기(localStorage) 경로와 레거시 마이그레이션 제거
+// - 기존 하위 호환 동기 API는 제공하지 않음
 
 // 통합 설정 스토리지 키 (버전 포함)
 const APP_SETTINGS_KEY = 'web3dEditor.settings.v1'
@@ -95,39 +91,6 @@ export const defaultAppSettings = {
   environment: { ...defaultEnvironmentSettings },
 }
 
-// 통합 저장소 로드 (레거시 마이그레이션 포함)
-export function loadAppSettings() {
-  try {
-    const raw = localStorage.getItem(APP_SETTINGS_KEY)
-    if (raw) {
-      const data = JSON.parse(raw)
-      return normalizeAppSettings(data)
-    }
-    // 레거시 단일 키에서 마이그레이션
-    const legacyRaw = localStorage.getItem(LEGACY_VIEW_GIZMO_KEY)
-    const legacyHdriRaw = localStorage.getItem(LEGACY_HDRI_KEY)
-    if (legacyRaw || legacyHdriRaw) {
-      const migrated = { ...defaultAppSettings }
-      if (legacyRaw) {
-        const legacy = JSON.parse(legacyRaw)
-        migrated.viewGizmo = shallowMerge(defaultViewGizmoConfig, legacy)
-      }
-      if (legacyHdriRaw) {
-        const legacyHdri = JSON.parse(legacyHdriRaw)
-        migrated.environment = shallowMerge(
-          defaultEnvironmentSettings,
-          { hdriSettings: shallowMerge(defaultEnvironmentSettings.hdriSettings, legacyHdri) }
-        )
-      }
-      saveAppSettings(migrated)
-      return migrated
-    }
-    return { ...defaultAppSettings }
-  } catch {
-    return { ...defaultAppSettings }
-  }
-}
-
 function normalizeAppSettings(raw) {
   const root = shallowMerge(defaultAppSettings, raw)
   root.viewGizmo = shallowMerge(defaultViewGizmoConfig, root.viewGizmo)
@@ -138,18 +101,8 @@ function normalizeAppSettings(raw) {
   return root
 }
 
-export function saveAppSettings(settings) {
-  try {
-    const normalized = normalizeAppSettings(settings || {})
-    localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalized))
-    return true
-  } catch {
-    return false
-  }
-}
-
 // ------------------------------
-// SQLite 연동 비동기 API (병행 지원)
+// SQLite 연동 비동기 API (단일 경로)
 // ------------------------------
 import { settingsGet, settingsSet } from './sqlite'
 
@@ -158,27 +111,14 @@ export async function getAppSettingsAsync() {
     const fromSql = await settingsGet(APP_SETTINGS_KEY)
     if (fromSql && typeof fromSql === 'object') return normalizeAppSettings(fromSql)
   } catch {}
-  // fallback to sync/localStorage
-  return loadAppSettings()
+  // fallback: 기본값 반환
+  return { ...defaultAppSettings }
 }
 
 export async function saveAppSettingsAsync(settings) {
   const normalized = normalizeAppSettings(settings || {})
   try { await settingsSet(APP_SETTINGS_KEY, normalized) } catch {}
-  try { localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalized)) } catch {}
   return true
-}
-
-// 섹션 단위 로드/세이브
-export function loadSettingsSection(section) {
-  const app = loadAppSettings()
-  return app?.[section]
-}
-
-export function saveSettingsSection(section, partial) {
-  const app = loadAppSettings()
-  const next = { ...app, [section]: shallowMerge(app?.[section] || {}, partial || {}) }
-  return saveAppSettings(next)
 }
 
 export async function loadSettingsSectionAsync(section) {
@@ -200,7 +140,6 @@ export function startSettingsAutoPersist(store, section, pickFn, debounceMs = 15
 
   let prev = pickFn(store.getState())
   const persist = debounce((val) => {
-    try { saveSettingsSection(section, val) } catch {}
     try { saveSettingsSectionAsync(section, val) } catch {}
   }, debounceMs)
   const unsub = store.subscribe((state) => {
@@ -218,17 +157,8 @@ export function startSettingsAutoPersist(store, section, pickFn, debounceMs = 15
 }
 
 // ------------------------------
-// 하위 호환: View/Gizmo 전용 API
+// View/Gizmo 비동기 전용 API
 // ------------------------------
-
-export function loadViewGizmoConfig() {
-  const cfg = loadSettingsSection('viewGizmo')
-  return shallowMerge(defaultViewGizmoConfig, cfg || {})
-}
-
-export function saveViewGizmoConfig(cfg) {
-  return saveSettingsSection('viewGizmo', cfg)
-}
 
 export function startViewGizmoConfigAutoPersist(store) {
   const pick = (s) => ({
@@ -249,19 +179,8 @@ export function startViewGizmoConfigAutoPersist(store) {
 }
 
 // ------------------------------
-// 환경 설정(HDRI) 전용 API
+// 환경 설정(HDRI) 비동기 전용 API
 // ------------------------------
-
-export function loadEnvironmentSettings() {
-  const env = loadSettingsSection('environment')
-  return shallowMerge(defaultEnvironmentSettings, env || {})
-}
-
-export function saveEnvironmentSettings(cfg) {
-  try { saveSettingsSection('environment', cfg) } catch {}
-  try { saveSettingsSectionAsync('environment', cfg) } catch {}
-  return true
-}
 
 export async function loadViewGizmoConfigAsync() {
   const cfg = await loadSettingsSectionAsync('viewGizmo')

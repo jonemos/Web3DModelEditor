@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useEditorStore } from '../../../store/editorStore';
 import { getGLBMeshManager } from '../../../utils/GLBMeshManager';
 import './LibraryPanel.css';
@@ -12,6 +13,56 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   const glbMeshManager = useRef(getGLBMeshManager());
   // 썸네일 blob:ObjectURL 메모리 누수 방지용 추적 셋
   const activeBlobURLsRef = useRef(new Set());
+  const fileInputRef = useRef(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [ctxMenu, setCtxMenu] = useState({ open: false, x: 0, y: 0, mesh: null });
+  const ctxMenuRef = useRef(null);
+
+  // 컨텍스트 메뉴 전역 닫기 처리
+  useEffect(() => {
+    if (!ctxMenu.open) return;
+    const close = () => setCtxMenu({ open: false, x: 0, y: 0, mesh: null });
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    const onDocClick = (e) => {
+      try {
+        const el = ctxMenuRef.current;
+        if (el && el.contains(e.target)) return; // 메뉴 내부 클릭은 무시
+      } catch {}
+      close();
+    };
+    window.addEventListener('click', onDocClick);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', onDocClick);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [ctxMenu.open]);
+
+  const openContextMenuForMesh = (e, mesh) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ open: true, x: e.clientX, y: e.clientY, mesh });
+  };
+
+  const handleExportGLB = async () => {
+    if (!ctxMenu.mesh) return;
+    try {
+      let target = ctxMenu.mesh;
+      // glbData가 없을 경우 최신 데이터를 조회
+      if (!target.glbData && target.id) {
+        const list = await glbMeshManager.current.getCustomMeshes();
+        const found = list.find(m => m.id === target.id);
+        if (found) target = found;
+      }
+      glbMeshManager.current.downloadCustomMesh(target);
+      try { window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '다운로드 시작', type: 'success', duration: 1500 } })); } catch {}
+    } catch (e) {
+      console.error('GLB 내보내기 실패:', e);
+      window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '내보내기 실패', type: 'error', duration: 2500 } }));
+    } finally {
+      setCtxMenu({ open: false, x: 0, y: 0, mesh: null });
+    }
+  };
 
   // 3D 객체 라이브러리 데이터
   const objectLibrary = [
@@ -162,18 +213,41 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     loadLibraryMeshes();
   }, []); // 컴포넌트 마운트 시 한 번만 실행
 
+  // GLB 파일 임포트 핸들러
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+  const handleImportFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setIsImporting(true);
+    try {
+      for (const file of files) {
+        try {
+          await glbMeshManager.current.importGLBFile(file);
+        } catch (err) {
+          console.error('임포트 실패:', err);
+          window.dispatchEvent(new CustomEvent('appToast', { detail: { message: `${file.name} 임포트 실패`, type: 'error', duration: 3000 } }))
+        }
+      }
+      const meshes = await glbMeshManager.current.getCustomMeshes();
+      loadCustomMeshes(meshes);
+      window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '임포트 완료', type: 'success', duration: 2000 } }))
+    } finally {
+      setIsImporting(false);
+      // 같은 파일 다시 선택 가능하도록 value 초기화
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleDragStart = (e, object) => {
     setIsDragging(true);
     draggedObject.current = object;
     
-    // 커스텀 메쉬의 경우 GLB 데이터를 처리
+    // 커스텀 메쉬의 경우 무거운 glbData를 직접 싣지 않고 경량 참조만 전달
     let dataToTransfer = object;
     if (object.type === 'custom') {
-      // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함
-      dataToTransfer = {
-        ...object,
-        type: 'custom' // type을 'custom'으로 유지
-      };
+      dataToTransfer = { type: 'custom', id: object.id, name: object.name };
     }
     
     // 드래그 이미지를 위한 캔버스 생성
@@ -194,7 +268,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     
     // 캔버스를 드래그 이미지로 설정
     e.dataTransfer.setDragImage(canvas, 25, 25);
-    e.dataTransfer.setData('text/plain', JSON.stringify(dataToTransfer));
+  e.dataTransfer.setData('text/plain', JSON.stringify(dataToTransfer));
   };
 
   const handleDragEnd = () => {
@@ -206,16 +280,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     // 클릭으로 객체를 중앙에 추가
     if (onObjectDrop) {
       if (object.type === 'custom') {
-        try {
-          // 커스텀 메쉬의 경우 type을 'custom'으로 유지하여 EditorUI에서 올바르게 처리되도록 함
-          const customObject = {
-            ...object,
-            type: 'custom' // type을 'custom'으로 유지
-          };
-          onObjectDrop(customObject, { x: 0, y: 0, z: 0 });
-        } catch (error) {
-          alert('커스텀 메쉬를 로드할 수 없습니다. 데이터가 손상되었을 수 있습니다.');
-        }
+        onObjectDrop({ type: 'custom', id: object.id, name: object.name }, { x: 0, y: 0, z: 0 });
       } else if (object.type === 'library') {
         // 라이브러리 메쉬의 경우
         onObjectDrop(object, { x: 0, y: 0, z: 0 });
@@ -274,6 +339,22 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
       </div>
 
       <div className="library-content">
+        {/* 임포트 UI */}
+        <div className="category-section" style={{marginTop: 0}}>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <button className="upload-btn" onClick={handleImportClick} disabled={isImporting} title="GLB 파일 임포트">
+              {isImporting ? '임포트 중…' : 'GLB 임포트'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".glb,model/gltf-binary"
+              multiple
+              style={{display:'none'}}
+              onChange={handleImportFiles}
+            />
+          </div>
+        </div>
         <div className="category-section">
           <h4 className="category-title">기본 도형</h4>
           <div className="object-grid">
@@ -287,7 +368,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
                 onClick={() => handleClick(object)}
                 title={object.name}
               >
-                <div className="library-thumbnail">
+                <div className="object-grid">
                   <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
                     {object.id === 'cube' && (
                       <path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L6.04,7.5L12,10.85L17.96,7.5L12,4.15M5,15.91L11,19.29V12.58L5,9.21V15.91M19,15.91V9.21L13,12.58V19.29L19,15.91Z"/>
@@ -321,6 +402,14 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         {libraryMeshes.length > 0 && (
           <div className="category-section">
             <h4 className="category-title">라이브러리 메쉬</h4>
+                        <div style={{display:'flex',gap:6,position:'absolute',top:6,right:6}}>
+                          <button className="delete-btn" onClick={(e) => handleDeleteCustomMesh(mesh, e)} title="삭제">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/></svg>
+                          </button>
+                          <button className="delete-btn" onClick={(e) => { e.stopPropagation(); glbMeshManager.current.downloadCustomMesh(mesh); }} title="내보내기">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M5,20H19V18H5M14,10V3H10V10H7L12,15L17,10H14Z"/></svg>
+                          </button>
+                        </div>
             <div className="object-grid">
               {libraryMeshes.map((object) => (
                 <div
@@ -371,6 +460,7 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
                   onDragStart={(e) => handleDragStart(e, mesh)}
                   onDragEnd={handleDragEnd}
                   onClick={() => handleClick(mesh)}
+                  onContextMenu={(e) => openContextMenuForMesh(e, mesh)}
                   title={mesh.name}
                 >
                   <div className="library-thumbnail">
@@ -466,6 +556,19 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
           </div>
         )}
       </div>
+      {/* 컨텍스트 메뉴 */}
+      {ctxMenu.open && createPortal(
+        <div
+          ref={ctxMenuRef}
+          className="lib-context-menu"
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}
+        >
+          <button className="ctx-item" onClick={handleExportGLB}>
+            GLB 내보내기
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

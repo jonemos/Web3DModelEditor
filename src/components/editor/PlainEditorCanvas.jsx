@@ -7,7 +7,6 @@ import { EditorControls } from './EditorControls.js';
 import { BlenderControls } from './BlenderControls.js';
 import { PostProcessingManager } from './PostProcessingManager.js';
 import { getGLBMeshManager } from '../../utils/GLBMeshManager';
-import { loadEnvironmentSettings } from '../../utils/viewGizmoConfig';
 
 function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onContextMenu }) {
   const mountRef = useRef(null);
@@ -825,12 +824,100 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             // GLB 로더로 메쉬 로드
             const loader = getGLTFLoader();
             let modelUrl;
+            let capturedGlbData = null;
+
+            // 로드 계속 진행 함수 (먼저 선언해 hoist 문제 제거)
+            function continueWithLoad() {
+              loader.load(
+                modelUrl,
+                (gltf) => {
+                  const model = gltf.scene;
+                  model.position.copy(intersection);
+                  
+                  // 그림자 설정
+                  model.traverse((child) => {
+                    if (child.isMesh) {
+                      child.castShadow = true;
+                      child.receiveShadow = true;
+                    }
+                  });
+                  
+                  scene.add(model);
+                  
+                  // 선택 가능한 오브젝트로 등록
+                  editorControls.addSelectableObject(model);
+                  
+                  // 고유 ID 생성
+                  const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                  model.name = uniqueId;
+                  model.userData = {
+                    id: uniqueId,
+                    name: objectData.name,
+                    type: objectData.type,
+                    originalData: objectData
+                  };
+                  
+                  // 로드된 오브젝트로 기록
+                  loadedObjectsRef.current.set(uniqueId, model);
+                  
+                  // 에디터 스토어에 객체 등록
+                  const addObject = useEditorStore.getState().addObject;
+                  addObject({
+                    id: uniqueId,
+                    name: objectData.name,
+                    type: 'glb',
+                    ...(objectData.type === 'custom'
+                        ? { glbData: capturedGlbData }
+                        : { url: objectData.glbUrl }
+                    ),
+                    position: { x: intersection.x, y: intersection.y, z: intersection.z },
+                    rotation: { x: model.rotation.x, y: model.rotation.y, z: model.rotation.z },
+                    scale: { x: 1, y: 1, z: 1 },
+                    visible: true,
+                    userData: model.userData
+                  });
+                  
+                  // 새로 추가된 객체 선택
+                  setSelectedObject(uniqueId);
+                  
+                  // URL 정리 (커스텀 메쉬의 경우에만)
+                  if (objectData.type === 'custom') {
+                    URL.revokeObjectURL(modelUrl);
+                  }
+                },
+                undefined,
+                (error) => {
+                  console.error('커스텀/라이브러리 메쉬 로드 실패:', error);
+                  if (objectData.type === 'custom') {
+                    URL.revokeObjectURL(modelUrl);
+                  }
+                }
+              );
+            }
             
             if (objectData.type === 'custom') {
               // 커스텀 메쉬: GLB 데이터를 Blob URL로 변환
               try {
                 const glbMeshManager = getGLBMeshManager();
-                modelUrl = glbMeshManager.createBlobURL(objectData.glbData);
+                const proceed = (data) => {
+                  capturedGlbData = data;
+                  modelUrl = glbMeshManager.createBlobURL(capturedGlbData);
+                  continueWithLoad();
+                };
+                const handleErr = (error) => {
+                  console.error('GLB 데이터 변환 실패:', error);
+                };
+                if (!objectData.glbData && objectData.id) {
+                  glbMeshManager.getCustomMeshes().then(list => {
+                    const found = list.find(m => m.id === objectData.id);
+                    if (!found) throw new Error('NOT_FOUND');
+                    proceed(found.glbData);
+                  }).catch(handleErr);
+                  return; // 비동기 처리 후 continueWithLoad에서 이어짐
+                } else {
+                  proceed(objectData.glbData);
+                  return; // 동기 경로에서도 더 진행하지 않도록 종료
+                }
               } catch (error) {
                 console.error('GLB 데이터 변환 실패:', error);
                 return;
@@ -838,69 +925,9 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             } else if (objectData.type === 'library') {
               // 라이브러리 메쉬: glbUrl 사용
               modelUrl = objectData.glbUrl;
+              continueWithLoad();
+              return; // 기본 처리 로직으로 떨어지지 않도록 종료
             }
-            
-            loader.load(
-              modelUrl,
-              (gltf) => {
-                const model = gltf.scene;
-                model.position.copy(intersection);
-                
-                // 그림자 설정
-                model.traverse((child) => {
-                  if (child.isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
-                  }
-                });
-                
-                scene.add(model);
-                
-                // 선택 가능한 오브젝트로 등록
-                editorControls.addSelectableObject(model);
-                
-                // 고유 ID 생성
-                const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                model.name = uniqueId;
-                model.userData = {
-                  id: uniqueId,
-                  name: objectData.name,
-                  type: objectData.type,
-                  originalData: objectData
-                };
-                
-                // 로드된 오브젝트로 기록
-                loadedObjectsRef.current.set(uniqueId, model);
-                
-                // 에디터 스토어에 객체 등록
-                const addObject = useEditorStore.getState().addObject;
-                addObject({
-                  id: uniqueId,
-                  name: objectData.name,
-                  type: 'mesh',
-                  position: { x: intersection.x, y: intersection.y, z: intersection.z },
-                  rotation: { x: model.rotation.x, y: model.rotation.y, z: model.rotation.z },
-                  scale: { x: 1, y: 1, z: 1 },
-                  visible: true,
-                  userData: model.userData
-                });
-                
-                // 새로 추가된 객체 선택
-                setSelectedObject(uniqueId);
-                
-                // URL 정리 (커스텀 메쉬의 경우에만)
-                if (objectData.type === 'custom') {
-                  URL.revokeObjectURL(modelUrl);
-                }
-              },
-              undefined,
-              (error) => {
-                console.error('커스텀/라이브러리 메쉬 로드 실패:', error);
-                if (objectData.type === 'custom') {
-                  URL.revokeObjectURL(modelUrl);
-                }
-              }
-            );
             
             return; // 기본 geometry 처리 로직을 건너뛰기
           }

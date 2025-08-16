@@ -18,10 +18,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     objects,
     walls,
     savedObjects,
-  selectedIds,
-  setSelectedIds,
-  setParent,
-  reorderSiblings,
+    selectedIds,
+    setSelectedIds,
+    setParent,
+    reorderSiblings,
     setTransformMode,
     addWall,
     addObject,
@@ -36,6 +36,9 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     setSelectedObject
   } = useEditorStore()
 
+  const viewReady = useEditorStore(s => s.viewReady)
+  const uiReady = useEditorStore(s => s.uiReady)
+  const envReady = useEditorStore(s => s.envReady)
   const [mapName, setMapName] = useState('')
   const [assetName, setAssetName] = useState('')
   const showLibrary = useEditorStore((s) => s.showLibrary)
@@ -46,6 +49,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
   const setShowAssets = useEditorStore((s) => s.setShowAssets)
   const setShowHDRI = useEditorStore((s) => s.setShowHDRI)
   const setIsPostProcessingPanelOpen = useEditorStore((s) => s.setIsPostProcessingPanelOpen)
+  const allReady = viewReady && uiReady && envReady
   const [contextMenu, setContextMenu] = useState({
     isVisible: false,
     x: 0,
@@ -500,7 +504,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     showToast(`${assetData.name}이(가) 씬에 추가되었습니다.`, 'success');
   }
 
-  const handleLibraryDrop = (objectData, position) => {
+  const handleLibraryDrop = async (objectData, position) => {
     // 라이브러리에서 드롭된 오브젝트를 씬에 추가
     
     let newObject;
@@ -518,17 +522,25 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
       };
       
     } else if (objectData.type === 'custom') {
-      // 사용자 정의 객체 (저장된 GLB 데이터)
-      
-      newObject = {
-        id: Date.now(),
-        type: 'glb',
-        glbData: objectData.glbData, // 저장된 GLB 데이터
-        position: position || { x: 0, y: 0, z: 0 },
-        rotation: { x: 0, y: 0, z: 0 },
-        scale: { x: 1, y: 1, z: 1 },
-        name: objectData.name
-      };
+      // 사용자 정의 객체: id만 넘어온 경우 실제 GLB 데이터 조회
+      try {
+        const mgr = getGLBMeshManager();
+        const list = await mgr.getCustomMeshes();
+        const found = list.find(m => m.id === objectData.id);
+        if (!found) throw new Error('NOT_FOUND');
+        newObject = {
+          id: Date.now(),
+          type: 'glb',
+          glbData: found.glbData, // 저장된 GLB 데이터
+          position: position || { x: 0, y: 0, z: 0 },
+          rotation: { x: 0, y: 0, z: 0 },
+          scale: { x: 1, y: 1, z: 1 },
+          name: found.name || objectData.name
+        };
+      } catch (e) {
+        showToast('커스텀 메쉬를 불러올 수 없습니다.', 'error');
+        return;
+      }
       
     } else {
       // 기본 도형
@@ -544,7 +556,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
       };
     }
 
-    addObject(newObject);
+  addObject(newObject);
     
     // 추가된 오브젝트를 선택 상태로 만들기
     setTimeout(() => {
@@ -587,6 +599,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
             className={`tool-btn post-processing-btn ${isPostProcessingPanelOpen ? 'active' : ''}`}
             onClick={handlePostProcessingToggle}
             title="포스트프로세싱 효과"
+            disabled={!envReady}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M9,12L11,14L15,10L20,15H4L9,12Z"/>
@@ -596,6 +609,7 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
             className={`tool-btn hdri-btn ${showHDRI ? 'active' : ''}`}
             onClick={handleHDRIToggle}
             title="HDRI 환경"
+            disabled={!envReady}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17Z"/>

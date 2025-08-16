@@ -37,31 +37,7 @@ function HDRIPanel({ scene, onClose }) {
     setTimeout(() => setToast(null), 3000)
   }
 
-  // HDRI 설정 로드 함수 (스토어 기반)
-  const loadHDRISettings = () => {
-    try {
-      const savedSettings = localStorage.getItem('hdriSettings')
-      if (savedSettings) {
-        const settings = JSON.parse(savedSettings)
-        
-        // 스토어에 설정 복원
-        updateHDRISettings(settings)
-        
-        // HDRI 환경 복원
-        if (settings.currentHDRI && settings.currentHDRI.type) {
-          setTimeout(() => {
-            applyDefaultHDRI(settings.currentHDRI.type, settings.currentHDRI)
-          }, 100)
-        }
-        
-        
-        return true
-      }
-    } catch (error) {
-      console.error('HDRI 설정 복원 실패:', error)
-    }
-    return false
-  }
+  // 동기 로컬스토리지 복원 경로 제거됨 (스토어 비동기 리하이드레이션 사용)
 
   // 기본 제공 HDRI 목록
   const defaultHDRIs = [

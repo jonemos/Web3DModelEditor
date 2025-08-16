@@ -18,6 +18,76 @@ export class GLBMeshManager {
   }
 
   /**
+   * 사용자가 업로드한 GLB 파일을 커스텀 메쉬 라이브러리에 추가
+   * @param {File} file .glb 파일
+   * @returns {Promise<Object>} 저장된 메쉬 메타데이터
+   */
+  async importGLBFile(file) {
+    if (!file) throw new Error('NO_FILE');
+    const buf = await file.arrayBuffer();
+    const nameBase = (file.name || 'imported').replace(/\.(glb|gltf)$/i, '');
+    return this.importGLBBuffer(buf, nameBase);
+  }
+
+  /**
+   * GLB ArrayBuffer를 커스텀 메쉬로 저장
+   * @param {ArrayBuffer} glbBuffer
+   * @param {string} name 저장할 표시 이름
+   */
+  async importGLBBuffer(glbBuffer, name = 'Imported Mesh') {
+    try {
+      // 썸네일을 생성하기 위해 Blob URL로 로드
+      const blob = new Blob([glbBuffer], { type: 'model/gltf-binary' });
+      const blobUrl = URL.createObjectURL(blob);
+      let thumbnail = null;
+      try {
+        thumbnail = await this.generateThumbnailFromURL(blobUrl);
+      } finally {
+        try { URL.revokeObjectURL(blobUrl) } catch {}
+      }
+
+      const timestamp = Date.now();
+      const meshData = {
+        id: `custom_${timestamp}`,
+        name: name || `custom_${timestamp}`,
+        thumbnail,
+        type: 'custom',
+        glbData: glbBuffer,
+        createdAt: timestamp
+      };
+
+      await this.saveCustomMesh(meshData);
+      try { window.dispatchEvent(new CustomEvent('customMeshAdded')) } catch {}
+      return meshData;
+    } catch (e) {
+      console.error('GLB 임포트 실패:', e);
+      throw e;
+    }
+  }
+
+  /**
+   * 커스텀 메쉬 데이터를 파일로 다운로드
+   * @param {Object} mesh {id, name, glbData}
+   */
+  downloadCustomMesh(mesh) {
+    if (!mesh || !mesh.glbData) return;
+    try {
+      const blob = new Blob([mesh.glbData], { type: 'model/gltf-binary' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const safeName = (mesh.name || mesh.id || 'mesh').replace(/[^a-zA-Z0-9_-]/g, '_');
+      a.href = url;
+      a.download = `${safeName}.glb`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => { try { URL.revokeObjectURL(url) } catch {} }, 0);
+    } catch (e) {
+      console.error('다운로드 실패:', e);
+    }
+  }
+
+  /**
    * 썸네일 생성용 렌더러 초기화
    */
   initThumbnailRenderer() {
@@ -205,51 +275,32 @@ export class GLBMeshManager {
    * @returns {Array} 라이브러리 메쉬 배열
    */
   async loadLibraryMeshes() {
-    try {
-      // library/mesh 폴더의 GLB 파일 목록
-      const meshFiles = [
-        { filename: '111.glb', name: '메쉬 111' },
-        { filename: '222.glb', name: '메쉬 222' },
-        { filename: 'SM_MERGED_BP_C_GY_Floor_C_1.glb', name: '바닥 메쉬' },
-        { filename: 'SM_MERGED_BP_GY_Ceil_C_1.glb', name: '천장 메쉬' },
-        { filename: 'SM_MERGED_BP_GY_Pillar_C_1.glb', name: '기둥 메쉬' },
-        { filename: 'SM_MERGED_BP_GY_Wall_C_1.glb', name: '벽 메쉬' },
-        { filename: 'SM_MERGED_StaticMeshActor_0.glb', name: '정적 메쉬' }
-      ];
+    // 기본값: 라이브러리 매니페스트 비활성화 → 네트워크 요청 자체를 만들지 않아 404 로그 방지
+    // 활성화하려면 Vite 환경변수 VITE_ENABLE_LIBRARY_MANIFEST=true 또는 window.__ENABLE_LIBRARY_MANIFEST = true 설정
+    const enableByEnv = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_ENABLE_LIBRARY_MANIFEST === 'true';
+    const enableByWindow = typeof window !== 'undefined' && window.__ENABLE_LIBRARY_MANIFEST === true;
+    if (!enableByEnv && !enableByWindow) {
+      return [];
+    }
 
-      const meshObjects = [];
-      
-      // 각 파일에 대해 존재 여부 확인
-      for (const file of meshFiles) {
-        const glbUrl = `/library/mesh/${file.filename}`;
-        
-        // 파일 존재 여부 확인
-        try {
-          const response = await fetch(glbUrl, { method: 'HEAD' });
-          if (!response.ok) {
-            continue; // 파일이 없으면 건너뛰기
-          }
-        } catch (error) {
-          continue; // 파일 확인 실패 시 건너뛰기
-        }
-        
-        const meshObject = {
-          id: `library_${file.filename.replace('.glb', '')}`,
-          name: file.name,
-          type: 'library',
-          geometry: 'LibraryMesh',
-          glbUrl: glbUrl,
-          filename: file.filename,
-          thumbnail: null,
-          isLoadingThumbnail: true
-        };
-        
-        meshObjects.push(meshObject);
-      }
-      
-      return meshObjects;
+    try {
+      const manifestUrl = '/library/mesh/manifest.json';
+      const res = await fetch(manifestUrl, { method: 'GET', cache: 'no-store' });
+      if (!res.ok) return [];
+      const files = await res.json(); // 기대 형태: [{filename:'x.glb', name:'표시명'}]
+      if (!Array.isArray(files)) return [];
+      return files.map((file) => ({
+        id: `library_${String(file.filename || '').replace(/\.glb$/i, '')}`,
+        name: file.name || file.filename,
+        type: 'library',
+        geometry: 'LibraryMesh',
+        glbUrl: `/library/mesh/${file.filename}`,
+        filename: file.filename,
+        thumbnail: null,
+        isLoadingThumbnail: true
+      }));
     } catch (error) {
-      console.error('라이브러리 메쉬 로드 실패:', error);
+      // 조용히 무시하고 빈 배열 (패널 오픈 시 404 로그 방지)
       return [];
     }
   }
@@ -559,6 +610,8 @@ export class GLBMeshManager {
     // 썸네일이 Blob이면 Object URL로 변환해 UI에서 직접 사용 가능하도록 가공
     const processed = meshes.map((m) => {
       const out = { ...m };
+  // 패널/드롭 핸들러에서 인식되도록 명시적 타입 부여
+  if (!out.type) out.type = 'custom';
       if (m && m.thumbnail && typeof m.thumbnail === 'object' && 'size' in m.thumbnail) {
         try {
           out.thumbnail = URL.createObjectURL(m.thumbnail);

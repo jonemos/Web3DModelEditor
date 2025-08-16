@@ -1,0 +1,9 @@
+[
+  { "filename": "111.glb", "name": "111" },
+  { "filename": "222.glb", "name": "222" },
+  { "filename": "SM_MERGED_BP_C_GY_Floor_C_1.glb", "name": "Floor" },
+  { "filename": "SM_MERGED_BP_GY_Ceil_C_1.glb", "name": "Ceil" },
+  { "filename": "SM_MERGED_BP_GY_Pillar_C_1.glb", "name": "Pillar" },
+  { "filename": "SM_MERGED_BP_GY_Wall_C_1.glb", "name": "Wall" },
+  { "filename": "SM_MERGED_StaticMeshActor_0.glb", "name": "StaticMeshActor_0" }
+]
