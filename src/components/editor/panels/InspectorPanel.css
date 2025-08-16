@@ -129,7 +129,7 @@
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 12px;
+  padding: 8px 10px 12px;
 }
 
 .no-selection {
@@ -294,49 +294,64 @@
   opacity: 0.8;
 }
 
-/* 탭 네비게이션 */
-.tab-button {
-  flex: 1;
+.editing-badge {
+  margin-left: auto;
+  background: rgba(255, 140, 0, 0.15);
+  border: 1px solid rgba(255, 140, 0, 0.4);
+  color: #ffb866;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 10px;
+}
+
+.properties-container.editing {
+  /* 편집 중임을 은은하게 알려주는 배경 강조 */
+  background: linear-gradient(180deg, rgba(255,140,0,0.04), transparent);
+}
+
+/* Accordion (Blender-like) */
+.accordion {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+}
+
+.accordion-section {
+  background: rgba(30, 30, 30, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.accordion-header {
+  width: 100%;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 10px 6px;
-  background: none;
+  gap: 8px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, rgba(45,45,45,0.95), rgba(35,35,35,0.95));
   border: none;
-  color: #cccccc;
+  color: #ddd;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-size: 11px;
-  gap: 4px;
-  min-height: 55px;
-  position: relative;
-  border-radius: 0;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
 }
 
-.tab-button:hover {
-  background: rgba(255, 165, 0, 0.1);
-  color: #ff8c00;
+.accordion-header:hover {
+  background: linear-gradient(180deg, rgba(55,55,55,0.95), rgba(40,40,40,0.95));
 }
 
-.tab-button.active {
-  background: rgba(255, 165, 0, 0.2);
-  color: #ff8c00;
-  border-bottom: 3px solid #ff8c00;
+.accordion-header .chevron {
+  display: inline-block;
+  transition: transform .15s ease;
 }
+.accordion-header .chevron.open { transform: rotate(0deg); }
+.accordion-header .chevron { transform: rotate(-90deg); }
 
-.tab-icon {
-  font-size: 18px;
-  display: block;
-  margin-bottom: 2px;
-}
-
-.tab-label {
-  font-weight: 500;
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  line-height: 1;
+.accordion-body {
+  padding: 10px 10px 12px;
 }
 
 /* 속성 그룹 스타일 */
@@ -472,9 +487,30 @@
 .transform-properties,
 .material-properties,
 .light-properties,
-.camera-properties {
-  padding: 16px;
+.camera-properties,
+.part-properties,
+.object-properties {
+  padding: 0;
 }
+
+/* Blender-like inputs */
+.transform-properties .transform-row,
+.object-properties .property-group,
+.material-properties .property-group,
+.light-properties .property-group,
+.camera-properties .property-group,
+.part-properties .property-group {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.transform-label { font-size: 11px; color: #bbb; font-weight: 600; }
+.transform-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.transform-input-group { display: flex; flex-direction: column; }
+.input-label { font-size: 10px; color: #aaa; margin-bottom: 4px; text-align: center; }
+.transform-input-group input { text-align: center; }
 
 /* No selection state */
 .no-selection {

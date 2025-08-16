@@ -5,12 +5,6 @@ const AssetsPanel = ({ onAssetDrop, onClose }) => {
   // 기본 렌더링 에셋 라이브러리
   const renderingAssets = [
     {
-      id: 'start_position',
-      name: '스타트 위치',
-      type: 'start_position',
-      description: '플레이어 시작 위치 마커'
-    },
-    {
       id: 'point_light',
       name: '포인트 라이트',
       type: 'point_light',

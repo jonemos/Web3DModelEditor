@@ -16,6 +16,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const postProcessingRef = useRef(null);
   const sceneRef = useRef(null);
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
+  const statsRef = useRef({ lastT: 0, frames: 0, fps: 0, lastPush: 0, vert: 0, tri: 0, obj: 0 });
   const dropIndicatorRef = useRef(null); // 드롭 위치 인디케이터(링)
   const dropFadeRef = useRef({ animId: null, t: 0, target: 0, start: 0, startTime: 0, duration: 220, easing: 'easeInOutQuad', maxOpacity: 0.6 });
   
@@ -206,19 +207,22 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   editorControls.objectSelector.setGizmoScene?.(gizmoScene);
 
   // Add lights
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
-    scene.add(ambientLight);
+  const ambientLight = new THREE.AmbientLight(0x404040, 0.6);
+  ambientLight.userData.isSystemObject = true;
+  scene.add(ambientLight);
 
   const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
     directionalLight.position.set(50, 50, 50);
     directionalLight.castShadow = true;
     directionalLight.shadow.mapSize.width = 1024;
     directionalLight.shadow.mapSize.height = 1024;
+  directionalLight.userData.isSystemObject = true;
     scene.add(directionalLight);
 
   // Bloom/SSAO 시각 확인을 위한 보조 광원과 바닥면
   const point = new THREE.PointLight(0xffaa88, 1.0, 100);
   point.position.set(0, 6, 6);
+  point.userData.isSystemObject = true;
   scene.add(point);
   const groundMat = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.9, metalness: 0.0 });
   const groundGeo = new THREE.PlaneGeometry(200, 200);
@@ -286,6 +290,32 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       // 선택된 오브젝트들의 아웃라인 업데이트 (애니메이션 중인 오브젝트용)
       if (editorControlsRef.current) {
         editorControlsRef.current.updateSelectedOutlines();
+        // 라이트 헬퍼 주기적 동기화(타겟 이동 포함)
+        try {
+          const sel = editorControlsRef.current.getSelectedObjects?.() || [];
+          sel.forEach((obj) => {
+            if (obj?.isLight && obj.userData?.lightHelper && typeof obj.userData.lightHelper.update === 'function') {
+              obj.userData.lightHelper.update();
+            } else if (obj?.userData?.isLightTarget || obj?.userData?.ownerId) {
+              // 타겟이 선택된 경우: 소유 라이트의 헬퍼 갱신
+              try {
+                const ownerId = obj.userData.ownerId;
+                let ownerLight = null;
+                if (ownerId && loadedObjectsRef.current?.has(ownerId)) {
+                  ownerLight = loadedObjectsRef.current.get(ownerId);
+                } else {
+                  // 폴백: 씬에서 target === obj인 라이트 탐색
+                  scene.traverse((n) => {
+                    if (!ownerLight && n?.isLight && n.target === obj) ownerLight = n;
+                  });
+                }
+                if (ownerLight?.userData?.lightHelper && typeof ownerLight.userData.lightHelper.update === 'function') {
+                  ownerLight.userData.lightHelper.update();
+                }
+              } catch {}
+            }
+          });
+        } catch {}
       }
       
       // 드롭 링 rAF 페이드 처리 (easeInOutQuad)
@@ -324,7 +354,44 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const bcUpdated = (() => { try { return blenderControlsRef.current?.update?.() } catch { return false } })();
   if (bcUpdated) needsRender = true;
 
-  // 렌더링 (포스트프로세싱 사용 여부)
+  // === 통계 갱신 (FPS 및 지오메트리 집계) - 렌더 스킵과 무관하게 실행 ===
+      try {
+        const now = performance.now();
+        const s = statsRef.current;
+        if (!s.lastT) s.lastT = now;
+        s.frames += 1;
+        const dt = now - s.lastT;
+        if (dt >= 500) { // 0.5초 윈도우로 FPS 계산
+          s.fps = Math.round((s.frames * 1000) / dt);
+          s.frames = 0; s.lastT = now;
+        }
+        // 1초마다 씬 집계 후 스토어에 푸시
+        if (!s.lastPush || (now - s.lastPush) >= 1000) {
+          s.lastPush = now;
+          let objCount = 0, vert = 0, tri = 0;
+          scene.traverse((child) => {
+            if (!child.visible) return;
+            if (child.userData?.isSystemObject || child.userData?.isSelectionOutline) return;
+            // Group 카운트
+            if (child.isGroup) objCount += 1;
+            // Mesh 카운트 및 지오메트리 합산
+            if (child.isMesh && child.geometry) {
+              objCount += 1;
+              const g = child.geometry;
+              const pos = g.attributes?.position;
+              const idx = g.index;
+              const v = pos ? pos.count : 0;
+              const t = idx ? Math.floor(idx.count / 3) : (pos ? Math.floor(pos.count / 3) : 0);
+              vert += v;
+              tri += t;
+            }
+          });
+          s.obj = objCount; s.vert = vert; s.tri = tri;
+          try { useEditorStore.getState().setStats({ fps: s.fps, objects: objCount, vertices: vert, triangles: tri }); } catch {}
+        }
+      } catch {}
+
+      // 렌더링 (포스트프로세싱 사용 여부)
       if (mode === 'on-demand' && !needsRender) {
         return; // 스킵 프레임
       }
@@ -334,6 +401,17 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
       
       const usePP = isPostProcessingEnabledRef.current && !!postProcessingRef.current;
+      // 라이트 헬퍼 월드행렬/업데이트 (전역 보강)
+      try {
+        scene.traverse((n) => {
+          if (n?.isLight && n.userData?.lightHelper && typeof n.userData.lightHelper.update === 'function') {
+            try { n.updateMatrixWorld(true); } catch {}
+            try { n.target?.updateMatrixWorld?.(true); } catch {}
+            // three.js SpotLightHelper.update는 light/target의 월드행렬 최신화 후 호출해야 방향/콘이 맞음
+            n.userData.lightHelper.update();
+          }
+        });
+      } catch {}
       if (usePP) {
         // EditorControls가 보유한 최신 카메라를 컴포저에 반영
         try { postProcessingRef.current.setCamera(currentCamera); } catch {}
@@ -341,12 +419,12 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
       } else {
         renderer.render(scene, currentCamera);
       }
-  // 렌더 전후로도 기즈모 라인 강제 숨김 (안전망)
-  try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
+      // 렌더 전후로도 기즈모 라인 강제 숨김 (안전망)
+      try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
       // postprocess 이후 gizmo 오버레이 씬 렌더 (깊이 무시, 색상만 덮어씀)
       renderer.clearDepth();
       renderer.render(gizmoScene, currentCamera);
-  try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
+      try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
     };
   animate();
 
@@ -490,11 +568,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             switch (objectData.type) {
               case 'start_position':
-                // 스타트 위치 마커
-                const markerGeometry = new THREE.ConeGeometry(0.3, 1, 8);
-                const markerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
-                assetObject = new THREE.Mesh(markerGeometry, markerMaterial);
-                assetObject.position.copy(intersection);
+                // 스타트 위치는 사용하지 않음 (생성 스킵)
+                assetObject = null;
                 break;
                 
               case 'directional_light':
@@ -508,10 +583,39 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                 
                 // 라이트 헬퍼 추가
                 const directionalHelper = new THREE.DirectionalLightHelper(directionalLight, 1);
+                directionalLight.userData = directionalLight.userData || {};
+                directionalLight.userData.lightHelper = directionalHelper;
                 scene.add(directionalHelper);
+                try { directionalHelper.update(); } catch {}
+                // 타겟 선택/레이캐스트용 핸들 추가 및 선택 가능 등록
+                try {
+                  const tGrabGeo = new THREE.SphereGeometry(0.18, 12, 12);
+                  const tGrabMat = new THREE.MeshBasicMaterial({ color: 0x66ffcc, transparent: true, opacity: 0.95 });
+                  const tGrab = new THREE.Mesh(tGrabGeo, tGrabMat);
+                  tGrab.name = 'DirectionalTargetHandle';
+                  tGrab.userData.isSystemObject = true;
+                  tGrab.userData.isLightTargetHandle = true;
+                  tGrab.raycast = THREE.Mesh.prototype.raycast;
+                  directionalLight.target.userData = directionalLight.target.userData || {};
+                  directionalLight.target.userData.isLightTarget = true;
+                  directionalLight.target.add(tGrab);
+                } catch {}
+
+                // 선택/레이캐스트용 그랩 핸들(라이트의 자식으로 추가)
+                try {
+                  const grabGeo = new THREE.SphereGeometry(0.25, 12, 12);
+                  const grabMat = new THREE.MeshBasicMaterial({ color: 0xffff66, transparent: true, opacity: 0.9 });
+                  const grab = new THREE.Mesh(grabGeo, grabMat);
+                  grab.name = 'DirectionalLightHandle';
+                  grab.userData.isSystemObject = true; // 통계/선택 외부 영향 차단
+                  grab.userData.isLightHelper = true;
+                  grab.raycast = THREE.Mesh.prototype.raycast; // 레이캐스트 가능
+                  directionalLight.add(grab);
+                } catch {}
                 
                 assetObject = directionalLight;
                 scene.add(directionalLight.target); // target도 씬에 추가
+                try { editorControls.addSelectableObject(directionalLight.target); } catch {}
                 break;
                 
               case 'point_light':
@@ -522,7 +626,22 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                 
                 // 라이트 헬퍼 추가
                 const pointHelper = new THREE.PointLightHelper(pointLight, 0.5);
+                pointLight.userData = pointLight.userData || {};
+                pointLight.userData.lightHelper = pointHelper;
                 scene.add(pointHelper);
+                try { pointHelper.update(); } catch {}
+
+                // 선택/레이캐스트용 그랩 핸들(라이트의 자식으로 추가)
+                try {
+                  const grabGeo = new THREE.SphereGeometry(0.2, 12, 12);
+                  const grabMat = new THREE.MeshBasicMaterial({ color: 0xffff66, transparent: true, opacity: 0.95 });
+                  const grab = new THREE.Mesh(grabGeo, grabMat);
+                  grab.name = 'PointLightHandle';
+                  grab.userData.isSystemObject = true;
+                  grab.userData.isLightHelper = true;
+                  grab.raycast = THREE.Mesh.prototype.raycast;
+                  pointLight.add(grab);
+                } catch {}
                 
                 assetObject = pointLight;
                 break;
@@ -536,10 +655,40 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                 
                 // 라이트 헬퍼 추가
                 const spotHelper = new THREE.SpotLightHelper(spotLight);
+                spotLight.userData = spotLight.userData || {};
+                spotLight.userData.lightHelper = spotHelper;
                 scene.add(spotHelper);
+                try { spotHelper.update(); } catch {}
+
+                // 선택/레이캐스트용 그랩 핸들(라이트의 자식으로 추가)
+                try {
+                  const grabGeo = new THREE.SphereGeometry(0.22, 12, 12);
+                  const grabMat = new THREE.MeshBasicMaterial({ color: 0xffff66, transparent: true, opacity: 0.9 });
+                  const grab = new THREE.Mesh(grabGeo, grabMat);
+                  grab.name = 'SpotLightHandle';
+                  grab.userData.isSystemObject = true;
+                  grab.userData.isLightHelper = true;
+                  grab.raycast = THREE.Mesh.prototype.raycast;
+                  spotLight.add(grab);
+                } catch {}
                 
                 assetObject = spotLight;
                 scene.add(spotLight.target); // target도 씬에 추가
+                // 타겟 선택/레이캐스트용 핸들 추가
+                try {
+                  const tGrabGeo = new THREE.SphereGeometry(0.18, 12, 12);
+                  const tGrabMat = new THREE.MeshBasicMaterial({ color: 0x66ffcc, transparent: true, opacity: 0.95 });
+                  const tGrab = new THREE.Mesh(tGrabGeo, tGrabMat);
+                  tGrab.name = 'SpotTargetHandle';
+                  tGrab.userData.isSystemObject = true;
+                  tGrab.userData.isLightTargetHandle = true;
+                  tGrab.raycast = THREE.Mesh.prototype.raycast;
+                  spotLight.target.userData = spotLight.target.userData || {};
+                  spotLight.target.userData.isLightTarget = true;
+                  spotLight.target.add(tGrab);
+                } catch {}
+                // 스포트라이트 타겟도 선택 가능 등록 (방향 조작을 위해)
+                try { editorControls.addSelectableObject(spotLight.target); } catch {}
                 break;
                 
               case 'ambient_light':
@@ -575,6 +724,17 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
                 // 축 헬퍼
                 assetObject = new THREE.AxesHelper(2);
                 assetObject.position.copy(intersection);
+                // 선택/레이캐스트용 그랩 핸들(자식으로 추가)
+                try {
+                  const grabGeo = new THREE.SphereGeometry(0.2, 12, 12);
+                  const grabMat = new THREE.MeshBasicMaterial({ color: 0x66ccff, transparent: true, opacity: 0.9 });
+                  const grab = new THREE.Mesh(grabGeo, grabMat);
+                  grab.name = 'AxesHelperHandle';
+                  grab.userData.isSystemObject = true;
+                  grab.userData.isHelperHandle = true;
+                  grab.raycast = THREE.Mesh.prototype.raycast;
+                  assetObject.add(grab);
+                } catch {}
                 break;
                 
               default:
@@ -595,16 +755,17 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
               // 고유 ID 생성
               const uniqueId = `${objectData.name}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
               assetObject.name = uniqueId;
-              assetObject.userData = {
+              // 기존 userData 보존(헬퍼 참조 등) + 메타데이터 병합
+              assetObject.userData = Object.assign(assetObject.userData || {}, {
                 id: uniqueId,
                 name: objectData.name,
                 type: objectData.type,
                 originalData: objectData
-              };
+              });
               
               scene.add(assetObject);
               
-              // 선택 가능한 오브젝트로 등록
+                // 선택 가능한 오브젝트로 등록
               editorControls.addSelectableObject(assetObject);
               
               // 로드된 오브젝트로 기록
@@ -612,16 +773,29 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
               
               // 에디터 스토어에 객체 등록
               const addObject = useEditorStore.getState().addObject;
+              // 라이트 계열 중 기즈모 이동 대상(directional/point/spot)만 type을 'light'로 저장
+              const isLightAsset = ['directional_light','point_light','spot_light'].includes(objectData.type);
+              const lightType = objectData.type === 'directional_light' ? 'directional' : (objectData.type === 'point_light' ? 'point' : (objectData.type === 'spot_light' ? 'spot' : undefined));
               addObject({
                 id: uniqueId,
                 name: objectData.name,
-                type: objectData.type,
+                type: isLightAsset ? 'light' : objectData.type,
+                lightType: isLightAsset ? lightType : undefined,
                 position: { x: assetObject.position.x, y: assetObject.position.y, z: assetObject.position.z },
                 rotation: { x: assetObject.rotation.x, y: assetObject.rotation.y, z: assetObject.rotation.z },
                 scale: { x: assetObject.scale.x, y: assetObject.scale.y, z: assetObject.scale.z },
                 visible: true,
                 userData: assetObject.userData
               });
+              // 타겟/핸들에 소유자 ID 주입(선택 처리 및 동기화용)
+              try {
+                if (assetObject.isLight && assetObject.target && assetObject.target.isObject3D) {
+                  assetObject.target.userData = assetObject.target.userData || {};
+                  assetObject.target.userData.ownerId = uniqueId;
+                  const tHandle = assetObject.target.children?.find?.(c => c.userData?.isLightTargetHandle);
+                  if (tHandle) tHandle.userData.ownerId = uniqueId;
+                }
+              } catch {}
               
               // 새로 추가된 객체 선택
               setSelectedObject(uniqueId);

@@ -455,6 +455,31 @@ export class ObjectSelector {
           const selected = this.selectedObjects && this.selectedObjects.length > 0
             ? this.selectedObjects
             : (this.lastSelectedObject ? [this.lastSelectedObject] : []);
+          // 회전 모드에서는 스포트/디렉셔널 라이트의 타겟을 라이트 회전에 맞춰 재배치하여 Helper 방향이 즉시 반영되게 함
+          try {
+            const mode = this.transformControls.getMode?.();
+            if (mode === 'rotate') {
+              selected.forEach(obj => {
+                if (obj && obj.isLight && (obj.isSpotLight || obj.isDirectionalLight) && obj.target) {
+                  try {
+                    const lightWorldPos = new THREE.Vector3();
+                    const dir = new THREE.Vector3();
+                    obj.getWorldPosition(lightWorldPos);
+                    obj.getWorldDirection(dir);
+                    let dist = 0;
+                    try { dist = obj.target.getWorldPosition(new THREE.Vector3()).distanceTo(lightWorldPos); } catch {}
+                    if (!Number.isFinite(dist) || dist < 0.001) dist = 10;
+                    const newTargetWorld = lightWorldPos.clone().add(dir.multiplyScalar(dist));
+                    obj.target.position.copy(newTargetWorld);
+                    obj.target.updateMatrixWorld(true);
+                    if (obj.userData?.lightHelper && typeof obj.userData.lightHelper.update === 'function') {
+                      obj.userData.lightHelper.update();
+                    }
+                  } catch {}
+                }
+              });
+            }
+          } catch {}
           selected.forEach(obj => this.scheduleTransformUpdate(obj));
         } catch {}
       });
@@ -535,6 +560,38 @@ export class ObjectSelector {
     if (!object) return;
     const id = object.userData?.id;
     if (!id) return;
+    // 라이트/타겟 헬퍼 갱신(기즈모 이동 중 반영)
+    try {
+      if (object.isLight && object.userData?.lightHelper) {
+        const h = object.userData.lightHelper;
+        try { object.updateMatrixWorld(true); } catch {}
+        try { object.target?.updateMatrixWorld?.(true); } catch {}
+        if (typeof h.update === 'function') h.update();
+        // Spot/Directional helper는 target 포함해 갱신
+      } else if (object.userData?.isLightTarget) {
+        // 타겟 이동 시, 소유 라이트 헬퍼 갱신
+        let ownerLight = null;
+        try {
+          const ownerId = object.userData?.ownerId;
+          if (ownerId) {
+            // 씬에서 ownerId 매칭 라이트 탐색(간단 폴백)
+            this.scene.traverse((n) => {
+              if (!ownerLight && n?.isLight && n.userData?.id === ownerId) ownerLight = n;
+            });
+          } else {
+            // target 역참조
+            this.scene.traverse((n) => {
+              if (!ownerLight && n?.isLight && n.target === object) ownerLight = n;
+            });
+          }
+        } catch {}
+        if (ownerLight?.userData?.lightHelper && typeof ownerLight.userData.lightHelper.update === 'function') {
+          try { ownerLight.updateMatrixWorld(true); } catch {}
+          try { ownerLight.target?.updateMatrixWorld?.(true); } catch {}
+          ownerLight.userData.lightHelper.update();
+        }
+      }
+    } catch {}
     this._pendingTransformUpdates.set(id, {
       position: { x: object.position.x, y: object.position.y, z: object.position.z },
       rotation: { x: object.rotation.x, y: object.rotation.y, z: object.rotation.z },
@@ -557,6 +614,14 @@ export class ObjectSelector {
           update(id, transform);
         }
       }
+    } catch {}
+    // 라이트 헬퍼 최종 동기화
+    try {
+      this.selectedObjects?.forEach?.((obj) => {
+        if (obj?.isLight && obj.userData?.lightHelper && typeof obj.userData.lightHelper.update === 'function') {
+          obj.userData.lightHelper.update();
+        }
+      });
     } catch {}
     this._pendingTransformUpdates.clear();
   }
@@ -874,7 +939,7 @@ export class ObjectSelector {
       intersects = this.raycaster.intersectObjects(this.selectableObjects, true);
     } catch { intersects = []; }
 
-    // 폴백: selectableObjects에서 교차가 없으면 씬 전체 검사 → selectableObjects 조상 승격
+    // 폴백: selectableObjects에서 교차가 없으면 씬 전체 검사 → selectableObjects 조상 승격만 허용
     if ((!intersects || intersects.length === 0) && this.scene) {
       try {
         const allHits = this.raycaster.intersectObjects(this.scene.children, true);
@@ -889,11 +954,6 @@ export class ObjectSelector {
         for (const hit of allHits) {
           const found = pickSelectableAncestor(hit.object);
           if (found) { intersects = [{ object: found }]; break; }
-          // selectableObjects 조상이 없으면 첫 히트를 그대로 사용 (유효 객체 허용)
-          if (!intersects.length && hit?.object) {
-            intersects = [{ object: hit.object }];
-            break;
-          }
         }
       } catch {}
     }
@@ -904,8 +964,11 @@ export class ObjectSelector {
       while (selectedObject && selectedObject.parent && !this.selectableObjects.includes(selectedObject)) {
         selectedObject = selectedObject.parent;
       }
-      // 최종 유효성 검사
-      if (!selectedObject || !this.isObjectValidForSelection(selectedObject)) return;
+      // 최종 유효성 검사: 반드시 selectableObjects 목록 내에 존재해야 함
+      if (!selectedObject || !this.selectableObjects.includes(selectedObject) || !this.isObjectValidForSelection(selectedObject)) {
+        if (!isMultiSelect && !this.isDragging) this.deselectAllObjects();
+        return;
+      }
 
       if (isMultiSelect) this.toggleObjectSelection(selectedObject);
       else this.selectSingleObject(selectedObject);

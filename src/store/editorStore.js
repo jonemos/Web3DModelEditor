@@ -127,6 +127,8 @@ export const useEditorStore = create((set, get) => {
     return { ...base, ...(env?.safeMode || {}) };
   })(),
   vramEstimateMB: 0,
+  // 뷰 통계 (FPS/오브젝트/버텍스/폴리곤)
+  stats: { fps: 0, objects: 0, vertices: 0, triangles: 0 },
   // 렌더러/렌더 모드 설정 (환경 저장 연동)
   rendererAA: (() => {
     try { return loadEnvironmentSettings()?.rendererAA || 'msaa' } catch {}
@@ -244,6 +246,9 @@ export const useEditorStore = create((set, get) => {
   // 포스트프로세싱 전체 온/오프
   togglePostProcessingEnabled: () => set((state) => ({ isPostProcessingEnabled: !state.isPostProcessingEnabled })),
   setPostProcessingPreset: (key) => set({ postProcessingPreset: key || 'default' }),
+
+  // 통계 갱신
+  setStats: (partial) => set((state) => ({ stats: { ...state.stats, ...partial } })),
 
   // 세이프 모드 토글 및 픽셀 비율 설정
   toggleSafeMode: (on) => {

@@ -411,18 +411,6 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     let newObject;
 
     switch (assetData.type) {
-      case 'start_position':
-        newObject = {
-          id: Date.now(),
-          type: 'start_position',
-          name: assetData.name,
-          position: position || { x: 0, y: 0, z: 0 },
-          rotation: { x: 0, y: 0, z: 0 },
-          scale: { x: 1, y: 1, z: 1 },
-          color: 0x00ff00,
-          geometry: 'marker'
-        };
-        break;
       case 'directional_light':
         newObject = {
           id: Date.now(),

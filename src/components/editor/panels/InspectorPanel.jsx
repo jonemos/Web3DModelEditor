@@ -4,6 +4,7 @@ import { useEditorStore } from '../../../store/editorStore'
 import { PropertiesManager } from '../../../utils/PropertiesManager'
 import HierarchyTreePanel from './HierarchyTreePanel.jsx'
 import './InspectorPanel.css'
+import { useEditorStore as useEditorStoreHook } from '../../../store/editorStore'
 
 const InspectorPanel = memo(function InspectorPanel({
   // SceneHierarchy 관련 props
@@ -29,7 +30,29 @@ const InspectorPanel = memo(function InspectorPanel({
   
   onClose
 }) {
-  const [activeTab, setActiveTab] = useState('transform')
+  // 내부 소형 컴포넌트: 뷰 통계 표시
+  const ViewStats = () => {
+    const stats = useEditorStoreHook((s) => s.stats)
+    return (
+      <div style={{marginTop: 10, padding: '10px 12px', background: 'rgba(255,255,255,0.04)', borderRadius: 6, fontSize: 13, lineHeight: 1.6}}>
+        <div style={{display:'grid', gridTemplateColumns:'120px 1fr', gap:'6px 12px'}}>
+          <div>FPS</div><div>{stats?.fps ?? 0}</div>
+          <div>오브젝트</div><div>{stats?.objects ?? 0}</div>
+          <div>버텍스</div><div>{stats?.vertices ?? 0}</div>
+          <div>폴리곤(트라이)</div><div>{stats?.triangles ?? 0}</div>
+        </div>
+      </div>
+    )
+  }
+  // 아코디언(블렌더 스타일) 섹션 접힘 상태
+  const [collapsed, setCollapsed] = useState({
+    transform: false,
+    object: false,
+    material: false,
+    light: false,
+    camera: false,
+    part: false
+  })
   const [propertiesManager, setPropertiesManager] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0) // 강제 리렌더링용
   // rAF 기반 변화 감지 및 스로틀용 ref들
@@ -59,15 +82,13 @@ const InspectorPanel = memo(function InspectorPanel({
     }
   }, [editorControls, onObjectUpdate])
 
-  // 선택된 객체 변경 시 PropertiesManager 업데이트
+  // 선택 변경 시 PropertiesManager 업데이트 (기즈모 상호작용 중에는 반짝임 방지)
   useEffect(() => {
-    if (propertiesManager && selectedObject) {
-      propertiesManager.setSelectedObject(selectedObject)
-      
-      // 강제 리렌더링 트리거
-      setRefreshKey(prev => prev + 1)
-    }
-  }, [propertiesManager, selectedObject])
+    if (!propertiesManager) return
+    const sel = selectedObject || (editorControls?.selectedObjects?.[0] ?? null)
+    propertiesManager.setSelectedObject(sel)
+    setRefreshKey(prev => prev + 1)
+  }, [propertiesManager, selectedObject, editorControls])
 
   // TransformControls 이벤트와 연동하여, 드래그 중에만 rAF로 동기화
   useEffect(() => {
@@ -155,6 +176,23 @@ const InspectorPanel = memo(function InspectorPanel({
 
   const objectType = propertiesManager?.getObjectType() || 'unknown'
   const objectInfo = propertiesManager?.getObjectInfo()
+  const lastValidSelRef = useRef(null)
+
+  // 선택 객체의 sticky 유지: 기즈모 클릭/드래그 중엔 마지막 유효 객체로 유지
+  useEffect(() => {
+    if (!propertiesManager) return
+    const gizmoActive = !!(editorControls?._gizmoPointerDown || editorControls?.objectSelector?.transformControls?.dragging)
+    // 현재 info가 유효하면 갱신
+    if (propertiesManager.getObjectInfo()) {
+      lastValidSelRef.current = propertiesManager.threeObject || lastValidSelRef.current
+      return
+    }
+    // 유효하지 않은데 기즈모 상호작용 중이면 이전을 복원
+    if (gizmoActive && lastValidSelRef.current) {
+      try { propertiesManager.setSelectedObject(lastValidSelRef.current) } catch {}
+      setRefreshKey(prev => prev + 1)
+    }
+  }, [propertiesManager, editorControls])
   const selectedPartInfo = editorControls?.getSelectedPartInfo?.() || null
 
   // 탭 목록 정의
@@ -190,12 +228,8 @@ const InspectorPanel = memo(function InspectorPanel({
 
   const availableTabs = getAvailableTabs()
 
-  // 현재 탭이 사용할 수 없는 경우 첫 번째 탭으로 변경
-  useEffect(() => {
-    if (availableTabs.length > 0 && !availableTabs.some(tab => tab.id === activeTab)) {
-      setActiveTab(availableTabs[0].id)
-    }
-  }, [availableTabs, activeTab])
+  // 섹션 접힘 토글
+  const toggleSection = (id) => setCollapsed(prev => ({ ...prev, [id]: !prev[id] }))
 
   // Object 탭 렌더링
   const renderObjectTab = () => {
@@ -800,22 +834,8 @@ const InspectorPanel = memo(function InspectorPanel({
       )
     }
 
-    switch (activeTab) {
-      case 'transform':
-        return renderTransformTab()
-      case 'object':
-        return renderObjectTab()
-      case 'material':
-        return renderMaterialTab()
-      case 'part':
-        return renderPartTab()
-      case 'light':
-        return renderLightTab()
-      case 'camera':
-        return renderCameraTab()
-      default:
-        return renderTransformTab()
-    }
+  // 사용되지 않음 (탭 제거됨)
+  return null
   }
 
   return (
@@ -881,32 +901,115 @@ const InspectorPanel = memo(function InspectorPanel({
         <div className="properties-section-wrapper">
           <div className="section-header">
             <h4>속성</h4>
-            {selectedObject && objectInfo && (
+            {objectInfo && (
               <div className="object-info">
                 <span className="object-name">{objectInfo.name}</span>
                 <span className="object-type">({objectType})</span>
+                {(editorControls?.objectSelector?.transformControls?.dragging || editorControls?._gizmoPointerDown) && (
+                  <span className="editing-badge" title="기즈모 편집 중 - 값만 실시간 갱신됩니다">편집 중</span>
+                )}
               </div>
             )}
           </div>
           
-          {/* 탭 네비게이션 */}
-          {selectedObject && availableTabs.length > 0 && (
-            <div className="properties-tabs">
-              {availableTabs.map(tab => (
-                <button
-                  key={tab.id}
-                  className={`tab-button ${activeTab === tab.id ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  <span className="tab-icon">{tab.icon}</span>
-                  <span className="tab-label">{tab.label}</span>
-                </button>
-              ))}
-            </div>
-          )}
+          <div className={`properties-container ${(editorControls?.objectSelector?.transformControls?.dragging || editorControls?._gizmoPointerDown) ? 'editing' : ''}`}>
+            {!selectedObject && (
+              <div className="no-selection">
+                <div className="no-selection-icon">ℹ️</div>
+                <div className="no-selection-text">뷰 정보</div>
+                <div className="no-selection-hint">선택된 객체가 없을 때 현재 시스템 상태를 보여줍니다.</div>
+                <ViewStats />
+              </div>
+            )}
+            {objectInfo && (
+              <div className="accordion">
+                {/* Transform */}
+                <div className="accordion-section">
+                  <button className="accordion-header" onClick={() => toggleSection('transform')}>
+                    <span className={`chevron ${collapsed.transform ? '' : 'open'}`}>▾</span>
+                    <span className="title">Transform</span>
+                  </button>
+                  {!collapsed.transform && (
+                    <div className="accordion-body transform-properties">
+                      {renderTransformTab()}
+                    </div>
+                  )}
+                </div>
 
-          <div className="properties-container">
-            {renderTabContent()}
+                {/* Object */}
+                <div className="accordion-section">
+                  <button className="accordion-header" onClick={() => toggleSection('object')}>
+                    <span className={`chevron ${collapsed.object ? '' : 'open'}`}>▾</span>
+                    <span className="title">Object</span>
+                  </button>
+                  {!collapsed.object && (
+                    <div className="accordion-body object-properties">
+                      {renderObjectTab()}
+                    </div>
+                  )}
+                </div>
+
+                {/* Material (mesh일 때) */}
+                {objectType === 'mesh' && (
+                  <div className="accordion-section">
+                    <button className="accordion-header" onClick={() => toggleSection('material')}>
+                      <span className={`chevron ${collapsed.material ? '' : 'open'}`}>▾</span>
+                      <span className="title">Material</span>
+                    </button>
+                    {!collapsed.material && (
+                      <div className="accordion-body material-properties">
+                        {renderMaterialTab()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Light */}
+                {objectType === 'light' && (
+                  <div className="accordion-section">
+                    <button className="accordion-header" onClick={() => toggleSection('light')}>
+                      <span className={`chevron ${collapsed.light ? '' : 'open'}`}>▾</span>
+                      <span className="title">Light</span>
+                    </button>
+                    {!collapsed.light && (
+                      <div className="accordion-body light-properties">
+                        {renderLightTab()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Camera */}
+                {objectType === 'camera' && (
+                  <div className="accordion-section">
+                    <button className="accordion-header" onClick={() => toggleSection('camera')}>
+                      <span className={`chevron ${collapsed.camera ? '' : 'open'}`}>▾</span>
+                      <span className="title">Camera</span>
+                    </button>
+                    {!collapsed.camera && (
+                      <div className="accordion-body camera-properties">
+                        {renderCameraTab()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Part Inspect (mesh일 때) */}
+        {objectType === 'mesh' && (
+                  <div className="accordion-section">
+                    <button className="accordion-header" onClick={() => toggleSection('part')}>
+                      <span className={`chevron ${collapsed.part ? '' : 'open'}`}>▾</span>
+                      <span className="title">Part</span>
+                    </button>
+                    {!collapsed.part && (
+                      <div className="accordion-body part-properties">
+                        {renderPartTab()}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+      )}
           </div>
         </div>
       </div>

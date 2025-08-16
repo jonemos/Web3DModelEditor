@@ -46,6 +46,28 @@ export class EditorControls {
     } catch {}
     this.objectSelector = new ObjectSelector(scene, camera, renderer, editorStore);
   this.objectSelector.setGizmoScene?.(null);
+    // TransformControls(gizmo) 포인터 다운 감지 플래그
+    this._gizmoPointerDown = false;
+    this._gizmoPointerDownAt = 0;
+    try {
+      const tc = this.objectSelector?.transformControls;
+      if (tc) {
+        tc.addEventListener('mouseDown', () => {
+          this._gizmoPointerDown = true;
+          this._gizmoPointerDownAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        });
+        tc.addEventListener('mouseUp', () => {
+          this._gizmoPointerDown = false;
+          this._gizmoPointerDownAt = 0;
+        });
+        tc.addEventListener('dragging-changed', (e) => {
+          // 드래깅 중에는 항상 가드
+          if (e?.value) {
+            this._gizmoPointerDown = true;
+          }
+        });
+      }
+    } catch {}
     
     // MouseController에 ObjectSelector 설정 (기즈모 상호작용 감지용)
     this.mouseController.setObjectSelector(this.objectSelector);
@@ -140,7 +162,10 @@ export class EditorControls {
       this.updateMousePosition(position);
       
       // 기즈모 클릭 체크
-      if (this.objectSelector.isDraggingGizmo()) {
+      const nowTs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      const gizmoActive = this._gizmoPointerDown || (this._gizmoPointerDownAt && (nowTs - this._gizmoPointerDownAt) < 300);
+      if (this.objectSelector.isDraggingGizmo() || gizmoActive) {
+        // 기즈모 상호작용 시 선택 변경 방지
         return;
       }
       

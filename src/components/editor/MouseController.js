@@ -124,6 +124,10 @@ export class MouseController {
    */
   handleLeftMouseDown(mouseInfo) {
     const { position, ctrl, shift } = mouseInfo;
+    // 기즈모 상호작용 상태면 선택 시작 방지
+    if (this.isGizmoInteracting && this.isGizmoInteracting()) {
+      return;
+    }
     
     // 다중 선택 모드 확인
     const isMultiSelect = ctrl || shift;
@@ -272,7 +276,7 @@ export class MouseController {
     const { button, position } = mouseInfo;
     
     // 기즈모와 상호작용 중이었다면 상태만 리셋하고 다른 처리는 하지 않음
-    if (this.isGizmoInteracting()) {
+  if (this.isGizmoInteracting()) {
       this.resetMouseState();
       return;
     }
