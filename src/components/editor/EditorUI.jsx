@@ -34,7 +34,11 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     toggleObjectVisibility,
     toggleObjectFreeze,
     renameObject,
-    setSelectedObject
+  setSelectedObject,
+  // annotations store API
+  annotations,
+  addAnnotation,
+  removeAnnotation
   } = useEditorStore()
 
   const viewReady = useEditorStore(s => s.viewReady)
@@ -574,7 +578,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
   }
 
   // ===== 주석(코멘트) 시스템 =====
-  const annotationsRef = useRef([]); // {id, targetObject, localPoint, el}
+  // 런타임 렌더용 메모리 구조: DOM/Three 참조 보유
+  const annotationsRef = useRef([]); // {id, ownerId, targetObject, localPoint(Vector3), el}
   const lineCanvasRef = useRef(null);
 
   const ensureAnnotationLayers = () => {
@@ -630,10 +635,14 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     const scene = editorControls?.scene;
     const keep = [];
     for (const a of annotationsRef.current) {
+      // 대상 객체 리바인딩 시도 (씬이 갱신된 경우)
+      if ((!a.targetObject || !a.targetObject.parent) && a.ownerId && editorControls?.findObjectById) {
+        try { a.targetObject = editorControls.findObjectById(a.ownerId) } catch {}
+      }
       // 오브젝트가 씬에 남아있는지 확인
       let inScene = false; let p = a.targetObject;
       while (p) { if (p === scene) { inScene = true; break; } p = p.parent; }
-      if (!a.targetObject || !inScene) { try { a.el?.remove?.(); } catch {}; continue; }
+      if (!a.targetObject || !inScene) { try { a.el?.style && (a.el.style.display = 'none'); } catch {}; continue; }
       // 월드 포인트 계산
       try { a.targetObject.updateMatrixWorld?.(true); } catch {}
       const world = a.localPoint.clone();
@@ -642,9 +651,10 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
       if (!scr) { keep.push(a); continue; }
       // UI 박스 위치 (화면 고정: 픽셀 크기 유지)
       const el = a.el;
-      const ox = 10, oy = -10; // 살짝 오프셋
+          const ox = 20, oy = -20; // 살짝 오프셋 - 기존 대비 2배 길이
       el.style.left = `${Math.round(scr.x + ox)}px`;
       el.style.top = `${Math.round(scr.y + oy)}px`;
+      try { el.style.display = 'block'; } catch {}
       // 라인: 포인트 → 박스 좌상단
       const box = el.getBoundingClientRect();
       ctx.moveTo(scr.x, scr.y);
@@ -666,8 +676,28 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
   const handleAddComment = (hitInfo) => {
     const text = prompt('코멘트를 입력하세요:');
     if (!text) return;
+    if (!hitInfo?.object || !hitInfo?.point) return;
+    // 소유 루트 식별 (userData.id 보유 조상), 없으면 ownerId 사용
+    const findRootInfo = (obj) => {
+      let rootId = null; let cur = obj;
+      while (cur) { if (cur.userData?.id) { rootId = cur.userData.id; break; } cur = cur.parent; }
+      if (!rootId) rootId = obj.userData?.ownerId ?? null;
+      const rootObj = rootId && editorControls?.findObjectById ? editorControls.findObjectById(rootId) : null;
+      return { rootId, rootObj };
+    };
+    const { rootId, rootObj } = findRootInfo(hitInfo.object);
+    if (!rootId || !rootObj) return; // 루트 식별 실패 시 저장 생략
+
+    // 루트 기준 로컬 포인트로 변환
+    const localV = hitInfo.point.clone();
+    try { rootObj.worldToLocal(localV); } catch {}
+
+    // 스토어에 영속 추가 (동일 id 사용)
+    const id = `ann_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+    try { addAnnotation?.({ id, ownerId: rootId, text, local: { x: localV.x, y: localV.y, z: localV.z } }) } catch {}
+
+    // UI 박스 생성 및 런타임 등록
     const { layer } = ensureAnnotationLayers();
-    // UI 박스 생성
     const el = document.createElement('div');
     el.className = 'annotation-box';
     el.innerHTML = `<div class="annotation-text"></div><button class="annotation-close">✕</button>`;
@@ -685,24 +715,81 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
       position: 'absolute', top: '4px', right: '6px', border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer'
     });
     layer.appendChild(el);
+    annotationsRef.current.push({ id, ownerId: rootId, targetObject: rootObj, localPoint: localV.clone(), el });
 
-    // 로컬 포인트로 저장
-    const target = hitInfo?.object;
-    let local = hitInfo?.point?.clone?.();
-    if (target && local) { try { target.worldToLocal(local); } catch {} }
-    const id = Date.now();
-    const entry = { id, targetObject: target || null, localPoint: local || new THREE.Vector3(), el };
-    annotationsRef.current.push(entry);
-
-    closeBtn.addEventListener('click', () => {
-      // 삭제
+    const onClose = () => {
       try { el.remove(); } catch {}
       annotationsRef.current = annotationsRef.current.filter(a => a.id !== id);
+      try { removeAnnotation?.(id) } catch {}
       updateAnnotations();
-    });
+    };
+    closeBtn.addEventListener('click', onClose);
 
     updateAnnotations();
   };
+
+  // 저장된 주석 → DOM/참조로 동기화
+  useEffect(() => {
+    const anns = Array.isArray(annotations) ? annotations : [];
+    const existing = new Map(annotationsRef.current.map(a => [a.id, a]));
+    const presentIds = new Set();
+    const { layer } = ensureAnnotationLayers();
+    // 추가/갱신
+    for (const ann of anns) {
+      presentIds.add(ann.id);
+      if (!existing.has(ann.id)) {
+        // 새 DOM 생성
+        const el = document.createElement('div');
+        el.className = 'annotation-box';
+        el.innerHTML = `<div class="annotation-text"></div><button class="annotation-close">✕</button>`;
+        const textEl = el.querySelector('.annotation-text');
+        textEl.textContent = String(ann.text || '');
+        Object.assign(el.style, {
+          position: 'fixed', minWidth: '180px', maxWidth: '260px',
+          padding: '8px 10px', background: 'rgba(0,0,0,0.66)', color: '#fff',
+          border: '1px solid rgba(255,255,255,0.2)', borderRadius: '6px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.35)', fontSize: '12px', lineHeight: '1.4',
+          pointerEvents: 'auto', display: 'none'
+        });
+        const closeBtn = el.querySelector('.annotation-close');
+        Object.assign(closeBtn.style, {
+          position: 'absolute', top: '4px', right: '6px', border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer'
+        });
+        layer.appendChild(el);
+
+        const target = ann.ownerId && editorControls?.findObjectById ? editorControls.findObjectById(ann.ownerId) : null;
+        const entry = {
+          id: ann.id,
+          ownerId: ann.ownerId ?? null,
+          targetObject: target || null,
+          localPoint: new THREE.Vector3(ann.local?.x || 0, ann.local?.y || 0, ann.local?.z || 0),
+          el
+        };
+        const onClose = () => {
+          try { el.remove(); } catch {}
+          annotationsRef.current = annotationsRef.current.filter(a => a.id !== ann.id);
+          try { removeAnnotation?.(ann.id) } catch {}
+          updateAnnotations();
+        };
+        closeBtn.addEventListener('click', onClose);
+        annotationsRef.current.push(entry);
+      } else {
+        // 텍스트 갱신
+        try {
+          existing.get(ann.id).el.querySelector('.annotation-text').textContent = String(ann.text || '');
+        } catch {}
+      }
+    }
+    // 제거된 항목 정리
+    const next = [];
+    for (const a of annotationsRef.current) {
+      if (presentIds.has(a.id)) next.push(a); else { try { a.el.remove(); } catch {} }
+    }
+    annotationsRef.current = next;
+    // 즉시 한 번 그려주기
+    updateAnnotations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [annotations, editorControls]);
 
   return (
     <div className="editor-ui">

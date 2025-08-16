@@ -197,6 +197,9 @@ export const useEditorStore = create((set, get) => {
   customMeshes: [],
   objects: [],
   walls: [],
+  // 주석(코멘트) 데이터 (맵 저장/불러오기 대상)
+  // [{ id: string, ownerId: string|null, text: string, local: {x:number,y:number,z:number} }]
+  annotations: [],
   
   // Clipboard for copy/paste functionality
   clipboard: null, // 복사된 객체를 저장하는 클립보드
@@ -497,8 +500,11 @@ export const useEditorStore = create((set, get) => {
     const entry = { type: 'remove', object: safeCloneForHistory(target) }
     _pushHistory(entry)
     const filtered = objectsNext.filter(o => o.id !== objectId)
+    // 관련 주석 삭제 (ownerId 매칭)
+    const nextAnnotations = (state.annotations || []).filter(a => a.ownerId !== objectId)
     return {
       objects: filtered,
+      annotations: nextAnnotations,
       selectedObject: (state.selectedObject && (typeof state.selectedObject === 'object' ? state.selectedObject.id : state.selectedObject) === objectId) ? null : state.selectedObject
     }
   }),
@@ -738,8 +744,11 @@ export const useEditorStore = create((set, get) => {
   const { _pushHistory } = get();
   _pushHistory(entry)
     
+    // 관련 주석 삭제 (ownerId 매칭)
+    const nextAnnotations = (state.annotations || []).filter(a => a.ownerId !== selectedId)
     set({ 
       objects: updatedObjects,
+      annotations: nextAnnotations,
       selectedObject: null // 선택 해제
     });
   },
@@ -912,6 +921,8 @@ export const useEditorStore = create((set, get) => {
     const mapData = {
       walls: state.walls,
       objects: serializedObjects,
+      // 주석도 함께 저장
+      annotations: Array.isArray(state.annotations) ? state.annotations : [],
       // 선택적으로 뷰 상태를 함께 저장 (없으면 자동 캡처분 사용)
       viewState: autoView || undefined
     }
@@ -967,9 +978,19 @@ export const useEditorStore = create((set, get) => {
         return { ...n, parentId, order }
       })
       const normalizedWalls = (mapData.walls || []).map(normalizeTransformFields)
+      // 주석 복원 (로컬 좌표 정규화)
+      const normalizedAnnotations = Array.isArray(mapData.annotations)
+        ? mapData.annotations.map((a) => ({
+            id: a?.id || `ann_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+            ownerId: a?.ownerId ?? null,
+            text: typeof a?.text === 'string' ? a.text : '',
+            local: normalizeVec3(a?.local, { x: 0, y: 0, z: 0 })
+          }))
+        : []
       set(() => ({
         walls: normalizedWalls,
-        objects: normalizedObjects
+        objects: normalizedObjects,
+        annotations: normalizedAnnotations
       }))
       // 저장된 뷰 상태 적용(있을 경우): 카메라/뷰포트 설정
       try {
@@ -1010,6 +1031,7 @@ export const useEditorStore = create((set, get) => {
     set({
       objects: (state.objects || []).filter(obj => obj.isSystemObject),
       walls: [],
+      annotations: [],
       selectedObject: null,
       selectedIds: []
     });
@@ -1037,7 +1059,28 @@ export const useEditorStore = create((set, get) => {
         });
       }
     } catch {}
+  // UI에 주석 제거 신호 (선택 사항)
+  try { window.dispatchEvent(new CustomEvent('annotationsCleared')); } catch {}
   },
+  
+  // ------------------------
+  // Annotation API (persisted with map)
+  // ------------------------
+  addAnnotation: (ann) => set((state) => {
+    const id = ann?.id || `ann_${Date.now()}_${Math.random().toString(36).slice(2,7)}`
+    const ownerId = ann?.ownerId ?? null
+    const text = typeof ann?.text === 'string' ? ann.text : ''
+    const l = normalizeVec3(ann?.local, { x: 0, y: 0, z: 0 })
+    const next = [...(state.annotations || []), { id, ownerId, text, local: l }]
+    return { annotations: next }
+  }),
+  removeAnnotation: (id) => set((state) => ({ annotations: (state.annotations || []).filter(a => a.id !== id) })),
+  setAnnotations: (arr) => set({ annotations: Array.isArray(arr) ? arr.map(a => ({
+    id: a?.id || `ann_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+    ownerId: a?.ownerId ?? null,
+    text: typeof a?.text === 'string' ? a.text : '',
+    local: normalizeVec3(a?.local, { x: 0, y: 0, z: 0 })
+  })) : [] }),
 
   // 스토어와 씬 싱크 안전 정리: 스토어에 없는 id의 오브젝트를 씬에서 제거
   pruneOrphanSceneObjects: () => {
