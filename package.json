@@ -13,6 +13,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.15.0",
+  "sql.js": "^1.11.0",
     "three": "^0.170.0",
     "three-stdlib": "^2.36.0",
     "zustand": "^4.4.1"

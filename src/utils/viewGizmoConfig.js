@@ -25,56 +25,51 @@ const shallowEqual = (a, b) => {
   return true
 }
 
-// 디바운스
+// 간단한 디바운스
 function debounce(fn, ms = 200) {
   let t = null
   return (...args) => {
-    if (t) clearTimeout(t)
+    clearTimeout(t)
     t = setTimeout(() => fn(...args), ms)
   }
 }
 
-// 기본 스키마 정의 (필요 시 섹션 확장)
+// 기본 설정 값들
 export const defaultViewGizmoConfig = {
   isWireframe: false,
   isGridSnap: false,
   isGridVisible: true,
   gizmoSpace: 'world',
-  gizmoSize: 1.0,
-  snapMove: 1.0,
+  gizmoSize: 1,
+  snapMove: 1,
   snapRotateDeg: 15,
   snapScale: 0.1,
+  cameraPanSpeed: 50,
+  cameraOrbitSpeed: 100,
+  cameraZoomSpeed: 0.3,
   isPostProcessingEnabled: false,
-  // 카메라 컨트롤 민감도(뷰 기즈모 설정에 포함)
-  cameraPanSpeed: 50,   // EditorControls 기준값과 동일
-  cameraOrbitSpeed: 100, // EditorControls 기준값과 동일
-  cameraZoomSpeed: 0.3   // 휠 스크롤 당 전달되는 delta 스케일
 }
 
 export const defaultUISettings = {
   showLibrary: false,
-  showAssets: false,
+  showAssets: true,
   isPostProcessingPanelOpen: false,
   showHDRI: false,
-  // 뷰/기즈모 설정 팝오버 열림 상태 (UI 섹션에 영구 저장)
-  isViewGizmoSettingsOpen: false
+  isViewGizmoSettingsOpen: false,
+  dragUseSelectionForDnD: false,
 }
 
 export const defaultEditorSettings = {
-  // 예: 기본 변환 모드, 패널 배치 등 추후 확장
+  // 편집기 전용 값이 생기면 여기에 추가
 }
 
 export const defaultGameSettings = {
-  // 예: 플레이어 감도, HUD 토글 등 추후 확장
+  // 게임 전용 값이 생기면 여기에 추가
 }
 
-// 환경(렌더) 관련 통합 설정 (HDRI 등)
 export const defaultEnvironmentSettings = {
   hdriSettings: {
-    currentHDRI: {
-      name: '기본 배경',
-      type: 'none'
-    },
+    currentHDRI: { name: '기본 배경', type: 'none' },
     hdriIntensity: 1,
     hdriRotation: 0,
     sunLightEnabled: true,
@@ -82,21 +77,13 @@ export const defaultEnvironmentSettings = {
     timeOfDay: 12,
     sunAzimuth: 0,
     sunElevation: 45,
-    sunColor: '#ffffff'
+    sunColor: '#ffffff',
   },
-  postProcessing: {
-    enabled: false,
-    preset: 'default'
-  },
-  toneMapping: {
-    enabled: true,
-    mapping: 'ACESFilmic',
-    exposure: 1.0
-  },
-  safeMode: {
-    enabled: false,
-    pixelRatio: 1.0
-  }
+  postProcessing: { enabled: false, preset: 'default' },
+  toneMapping: { enabled: true, mapping: 'ACESFilmic', exposure: 1.0 },
+  safeMode: { enabled: false, pixelRatio: 1 },
+  rendererAA: 'msaa', // 'msaa' | 'fxaa' | 'none'
+  renderMode: 'continuous', // 'continuous' | 'on-demand'
 }
 
 export const defaultAppSettings = {
@@ -105,7 +92,7 @@ export const defaultAppSettings = {
   ui: { ...defaultUISettings },
   editor: { ...defaultEditorSettings },
   game: { ...defaultGameSettings },
-  environment: { ...defaultEnvironmentSettings }
+  environment: { ...defaultEnvironmentSettings },
 }
 
 // 통합 저장소 로드 (레거시 마이그레이션 포함)
@@ -127,7 +114,10 @@ export function loadAppSettings() {
       }
       if (legacyHdriRaw) {
         const legacyHdri = JSON.parse(legacyHdriRaw)
-        migrated.environment = shallowMerge(defaultEnvironmentSettings, { hdriSettings: shallowMerge(defaultEnvironmentSettings.hdriSettings, legacyHdri) })
+        migrated.environment = shallowMerge(
+          defaultEnvironmentSettings,
+          { hdriSettings: shallowMerge(defaultEnvironmentSettings.hdriSettings, legacyHdri) }
+        )
       }
       saveAppSettings(migrated)
       return migrated
@@ -139,7 +129,6 @@ export function loadAppSettings() {
 }
 
 function normalizeAppSettings(raw) {
-  // 루트 및 섹션별 보정 (얕은 병합)
   const root = shallowMerge(defaultAppSettings, raw)
   root.viewGizmo = shallowMerge(defaultViewGizmoConfig, root.viewGizmo)
   root.ui = shallowMerge(defaultUISettings, root.ui)
@@ -159,6 +148,27 @@ export function saveAppSettings(settings) {
   }
 }
 
+// ------------------------------
+// SQLite 연동 비동기 API (병행 지원)
+// ------------------------------
+import { settingsGet, settingsSet } from './sqlite'
+
+export async function getAppSettingsAsync() {
+  try {
+    const fromSql = await settingsGet(APP_SETTINGS_KEY)
+    if (fromSql && typeof fromSql === 'object') return normalizeAppSettings(fromSql)
+  } catch {}
+  // fallback to sync/localStorage
+  return loadAppSettings()
+}
+
+export async function saveAppSettingsAsync(settings) {
+  const normalized = normalizeAppSettings(settings || {})
+  try { await settingsSet(APP_SETTINGS_KEY, normalized) } catch {}
+  try { localStorage.setItem(APP_SETTINGS_KEY, JSON.stringify(normalized)) } catch {}
+  return true
+}
+
 // 섹션 단위 로드/세이브
 export function loadSettingsSection(section) {
   const app = loadAppSettings()
@@ -171,6 +181,17 @@ export function saveSettingsSection(section, partial) {
   return saveAppSettings(next)
 }
 
+export async function loadSettingsSectionAsync(section) {
+  const app = await getAppSettingsAsync()
+  return app?.[section]
+}
+
+export async function saveSettingsSectionAsync(section, partial) {
+  const app = await getAppSettingsAsync()
+  const next = { ...app, [section]: shallowMerge(app?.[section] || {}, partial || {}) }
+  return saveAppSettingsAsync(next)
+}
+
 // 제네릭 자동 저장 구독기 (Zustand 등 호환)
 // pickFn: storeState -> 섹션에 저장할 평면 객체
 export function startSettingsAutoPersist(store, section, pickFn, debounceMs = 150) {
@@ -178,7 +199,10 @@ export function startSettingsAutoPersist(store, section, pickFn, debounceMs = 15
   if (typeof pickFn !== 'function') return () => {}
 
   let prev = pickFn(store.getState())
-  const persist = debounce((val) => saveSettingsSection(section, val), debounceMs)
+  const persist = debounce((val) => {
+    try { saveSettingsSection(section, val) } catch {}
+    try { saveSettingsSectionAsync(section, val) } catch {}
+  }, debounceMs)
   const unsub = store.subscribe((state) => {
     try {
       const value = pickFn(state)
@@ -216,10 +240,10 @@ export function startViewGizmoConfigAutoPersist(store) {
     snapMove: Number.isFinite(s.snapMove) ? s.snapMove : 1,
     snapRotateDeg: Number.isFinite(s.snapRotateDeg) ? s.snapRotateDeg : 15,
     snapScale: Number.isFinite(s.snapScale) ? s.snapScale : 0.1,
-  isPostProcessingEnabled: !!s.isPostProcessingEnabled,
-  cameraPanSpeed: Number.isFinite(s.cameraPanSpeed) ? s.cameraPanSpeed : 50,
-  cameraOrbitSpeed: Number.isFinite(s.cameraOrbitSpeed) ? s.cameraOrbitSpeed : 100,
-  cameraZoomSpeed: Number.isFinite(s.cameraZoomSpeed) ? s.cameraZoomSpeed : 0.3
+    isPostProcessingEnabled: !!s.isPostProcessingEnabled,
+    cameraPanSpeed: Number.isFinite(s.cameraPanSpeed) ? s.cameraPanSpeed : 50,
+    cameraOrbitSpeed: Number.isFinite(s.cameraOrbitSpeed) ? s.cameraOrbitSpeed : 100,
+    cameraZoomSpeed: Number.isFinite(s.cameraZoomSpeed) ? s.cameraZoomSpeed : 0.3,
   })
   return startSettingsAutoPersist(store, 'viewGizmo', pick, 150)
 }
@@ -234,15 +258,31 @@ export function loadEnvironmentSettings() {
 }
 
 export function saveEnvironmentSettings(cfg) {
-  return saveSettingsSection('environment', cfg)
+  try { saveSettingsSection('environment', cfg) } catch {}
+  try { saveSettingsSectionAsync('environment', cfg) } catch {}
+  return true
+}
+
+export async function loadViewGizmoConfigAsync() {
+  const cfg = await loadSettingsSectionAsync('viewGizmo')
+  return shallowMerge(defaultViewGizmoConfig, cfg || {})
+}
+
+export async function loadEnvironmentSettingsAsync() {
+  const env = await loadSettingsSectionAsync('environment')
+  return shallowMerge(defaultEnvironmentSettings, env || {})
+}
+
+export async function saveEnvironmentSettingsAsync(cfg) {
+  return saveSettingsSectionAsync('environment', cfg)
 }
 
 export function startEnvironmentAutoPersist(store) {
   const pick = (s) => ({
-  hdriSettings: { ...(s.hdriSettings || {}) },
-  postProcessing: { enabled: !!s.isPostProcessingEnabled, preset: s.postProcessingPreset || 'default' },
-  // safeMode는 스토어에서 직접 관리되므로 자동 저장에 포함
-  safeMode: { enabled: !!s.safeMode?.enabled, pixelRatio: Number(s.safeMode?.pixelRatio ?? 1) }
+    hdriSettings: { ...(s.hdriSettings || {}) },
+    postProcessing: { enabled: !!s.isPostProcessingEnabled, preset: s.postProcessingPreset || 'default' },
+    // safeMode는 스토어에서 직접 관리되므로 자동 저장에 포함
+    safeMode: { enabled: !!s.safeMode?.enabled, pixelRatio: Number(s.safeMode?.pixelRatio ?? 1) },
   })
   return startSettingsAutoPersist(store, 'environment', pick, 200)
 }

@@ -11,6 +11,7 @@ function HDRIPanel({ scene, onClose }) {
   const sunLightRef = useEditorStore(state => state.sunLightRef)
   const setSunLightRef = useEditorStore(state => state.setSunLightRef)
   const saveHDRISettings = useEditorStore(state => state.saveHDRISettings)
+  const renderer = useEditorStore(state => state.renderer)
   
   // 로컬 상태 (UI 관련)
   const [isLoading, setIsLoading] = useState(false)
@@ -182,17 +183,39 @@ function HDRIPanel({ scene, onClose }) {
         timeoutPromise
       ])
 
-      // HDRI 텍스처 설정
+      // HDRI 텍스처 설정 (회전/필터 안정화)
       texture.mapping = THREE.EquirectangularReflectionMapping
-      
-      // 기존 텍스처 정리
-      if (currentHDRI?.texture) {
-        currentHDRI.texture.dispose()
-      }
-      
-      // 씬의 환경맵과 배경 설정
-      scene.environment = texture
+  texture.magFilter = THREE.LinearFilter
+      texture.minFilter = THREE.LinearFilter
+      texture.generateMipmaps = false
+  texture.matrixAutoUpdate = true
+      // 회전 중심은 텍스처 중앙
+      texture.center?.set?.(0.5, 0.5)
+      texture.needsUpdate = true
+
+      // 기존 리소스 정리
+      try {
+        if (currentHDRI?.envRT?.dispose) currentHDRI.envRT.dispose()
+      } catch {}
+      try {
+        if (currentHDRI?.texture && currentHDRI.texture !== texture) currentHDRI.texture.dispose()
+      } catch {}
+
+      // 씬의 배경은 원본 equirect 텍스처 사용 (회전 가능)
       scene.background = texture
+
+      // 환경맵은 PMREM으로 컨볼브된 텍스처 사용 (조명 안정화)
+      let envRT = null
+      if (renderer) {
+        const pmrem = new THREE.PMREMGenerator(renderer)
+        pmrem.compileEquirectangularShader()
+        envRT = pmrem.fromEquirectangular(texture)
+        pmrem.dispose()
+        scene.environment = envRT.texture
+      } else {
+        // 렌더러가 아직 없으면 임시로 원본 텍스처 사용
+        scene.environment = texture
+      }
       
       // 강도 적용
       if (scene.backgroundIntensity !== undefined) {
@@ -205,7 +228,9 @@ function HDRIPanel({ scene, onClose }) {
       updateHDRISettings({
         currentHDRI: {
           name: name,
+          type: 'hdr',
           texture: texture,
+          envRT: envRT,
           url: url
         }
       })
@@ -224,21 +249,39 @@ function HDRIPanel({ scene, onClose }) {
         try {
           
           const fallbackTexture = await loadWithTextureLoader(url)
-          
+
+          // LDR 이미지 설정 및 안전 필터
           fallbackTexture.mapping = THREE.EquirectangularReflectionMapping
-          
-          // 기존 텍스처 정리
-          if (currentHDRI?.texture) {
-            currentHDRI.texture.dispose()
-          }
-          
-          scene.environment = fallbackTexture
+          fallbackTexture.magFilter = THREE.LinearFilter
+          fallbackTexture.minFilter = THREE.LinearFilter
+          fallbackTexture.generateMipmaps = false
+          fallbackTexture.matrixAutoUpdate = true
+          fallbackTexture.center?.set?.(0.5, 0.5)
+          fallbackTexture.needsUpdate = true
+
+          // 기존 리소스 정리
+          try { if (currentHDRI?.envRT?.dispose) currentHDRI.envRT.dispose() } catch {}
+          try { if (currentHDRI?.texture) currentHDRI.texture.dispose() } catch {}
+
+          // 배경/환경 설정
           scene.background = fallbackTexture
-          
+          let envRT = null
+          if (renderer) {
+            const pmrem = new THREE.PMREMGenerator(renderer)
+            pmrem.compileEquirectangularShader()
+            envRT = pmrem.fromEquirectangular(fallbackTexture)
+            pmrem.dispose()
+            scene.environment = envRT.texture
+          } else {
+            scene.environment = fallbackTexture
+          }
+
           updateHDRISettings({
             currentHDRI: {
               name: name + ' (폴백)',
+              type: 'hdr',
               texture: fallbackTexture,
+              envRT: envRT,
               url: url
             }
           })
@@ -325,6 +368,8 @@ function HDRIPanel({ scene, onClose }) {
         if (scene.background && scene.background.isTexture) {
           scene.background.dispose()
         }
+  // 기존 환경 RT 제거
+  try { if (currentHDRI?.envRT?.dispose) currentHDRI.envRT.dispose() } catch {}
         scene.background = new THREE.Color(0x87CEEB)
         scene.environment = null
         
@@ -341,6 +386,8 @@ function HDRIPanel({ scene, onClose }) {
         if (scene.background && scene.background.isTexture) {
           scene.background.dispose()
         }
+  // 기존 환경 RT 제거
+  try { if (currentHDRI?.envRT?.dispose) currentHDRI.envRT.dispose() } catch {}
         scene.background = new THREE.Color(0x2a2a2a) // 회색 배경
         scene.environment = null
         
@@ -366,7 +413,30 @@ function HDRIPanel({ scene, onClose }) {
     updateHDRISettings({ hdriRotation: value })
     if (scene && currentHDRI && currentHDRI.texture && currentHDRI.type !== 'none') {
       // HDRI 회전 적용
-      currentHDRI.texture.rotation = value * Math.PI / 180
+      const rad = value * Math.PI / 180
+      try { currentHDRI.texture.center?.set?.(0.5, 0.5) } catch {}
+      currentHDRI.texture.rotation = rad
+      currentHDRI.texture.needsUpdate = true
+
+      // 환경맵(PMREM) 재생성으로 회전 반영
+      if (renderer) {
+        try { if (currentHDRI.envRT?.dispose) currentHDRI.envRT.dispose() } catch {}
+        try {
+          const pmrem = new THREE.PMREMGenerator(renderer)
+          pmrem.compileEquirectangularShader()
+          const envRT = pmrem.fromEquirectangular(currentHDRI.texture)
+          pmrem.dispose()
+          scene.environment = envRT.texture
+          updateHDRISettings({ currentHDRI: { ...currentHDRI, envRT } })
+        } catch (e) {
+          console.warn('PMREM 재생성 실패 (회전 적용):', e)
+          scene.environment = currentHDRI.texture
+          updateHDRISettings({ currentHDRI: { ...currentHDRI, envRT: null } })
+        }
+      } else {
+        // 렌더러가 없으면 임시로 원본 텍스처만 반영
+        scene.environment = currentHDRI.texture
+      }
     }
   }
 
@@ -516,10 +586,23 @@ function HDRIPanel({ scene, onClose }) {
         if (scene.environmentIntensity !== undefined) {
           scene.environmentIntensity = hdriIntensity
         }
+        try { currentHDRI.texture.center?.set?.(0.5, 0.5) } catch {}
         currentHDRI.texture.rotation = hdriRotation * Math.PI / 180
+        currentHDRI.texture.needsUpdate = true
+        // 환경 재생성 보정 (렌더러가 있을 때)
+        if (renderer) {
+          try { if (!currentHDRI.envRT) {
+            const pmrem = new THREE.PMREMGenerator(renderer)
+            pmrem.compileEquirectangularShader()
+            const envRT = pmrem.fromEquirectangular(currentHDRI.texture)
+            pmrem.dispose()
+            scene.environment = envRT.texture
+            updateHDRISettings({ currentHDRI: { ...currentHDRI, envRT } })
+          } } catch {}
+        }
       }
     }
-  }, [scene, currentHDRI, hdriIntensity, hdriRotation])
+  }, [scene, currentHDRI, hdriIntensity, hdriRotation, renderer])
 
   return (
     <div className="hdri-panel">

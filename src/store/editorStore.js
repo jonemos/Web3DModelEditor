@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { loadViewGizmoConfig, startViewGizmoConfigAutoPersist, loadSettingsSection, startSettingsAutoPersist, loadEnvironmentSettings, startEnvironmentAutoPersist, saveEnvironmentSettings } from '../utils/viewGizmoConfig'
+import { loadViewGizmoConfig, loadViewGizmoConfigAsync, startViewGizmoConfigAutoPersist, loadSettingsSection, loadSettingsSectionAsync, startSettingsAutoPersist, loadEnvironmentSettings, loadEnvironmentSettingsAsync, startEnvironmentAutoPersist, saveEnvironmentSettings, saveEnvironmentSettingsAsync } from '../utils/viewGizmoConfig'
 import { idbAddCustomMesh, idbDeleteCustomMesh } from '../utils/idb'
 
 // localStorage에서 HDRI 설정 로드하는 헬퍼 함수
@@ -47,6 +47,46 @@ export const useEditorStore = create((set, get) => {
   // 설정 하이드레이션 (초기 1회)
   const vg = loadViewGizmoConfig()
   const uiInitial = loadSettingsSection('ui') || {}
+  // 비동기 리하이드레이션: SQLite 최신값으로 덮어쓰기
+  ;(async () => {
+    try {
+      const [vgAsync, uiAsync, envAsync] = await Promise.all([
+        loadViewGizmoConfigAsync(),
+        loadSettingsSectionAsync('ui'),
+        loadEnvironmentSettingsAsync(),
+      ])
+      if (vgAsync) set((s) => ({
+        isWireframe: !!vgAsync.isWireframe,
+        isGridSnap: !!vgAsync.isGridSnap,
+        isGridVisible: !!vgAsync.isGridVisible,
+        gizmoSpace: vgAsync.gizmoSpace || 'world',
+        gizmoSize: Number.isFinite(vgAsync.gizmoSize) ? vgAsync.gizmoSize : s.gizmoSize,
+        snapMove: Number.isFinite(vgAsync.snapMove) ? vgAsync.snapMove : s.snapMove,
+        snapRotateDeg: Number.isFinite(vgAsync.snapRotateDeg) ? vgAsync.snapRotateDeg : s.snapRotateDeg,
+        snapScale: Number.isFinite(vgAsync.snapScale) ? vgAsync.snapScale : s.snapScale,
+        cameraPanSpeed: Number.isFinite(vgAsync.cameraPanSpeed) ? vgAsync.cameraPanSpeed : s.cameraPanSpeed,
+        cameraOrbitSpeed: Number.isFinite(vgAsync.cameraOrbitSpeed) ? vgAsync.cameraOrbitSpeed : s.cameraOrbitSpeed,
+        cameraZoomSpeed: Number.isFinite(vgAsync.cameraZoomSpeed) ? vgAsync.cameraZoomSpeed : s.cameraZoomSpeed,
+        isPostProcessingEnabled: !!vgAsync.isPostProcessingEnabled,
+      }))
+      if (uiAsync) set({
+        showLibrary: !!uiAsync.showLibrary,
+        showAssets: !!uiAsync.showAssets,
+        isPostProcessingPanelOpen: !!uiAsync.isPostProcessingPanelOpen,
+        showHDRI: !!uiAsync.showHDRI,
+        isViewGizmoSettingsOpen: !!uiAsync.isViewGizmoSettingsOpen,
+        dragUseSelectionForDnD: !!uiAsync.dragUseSelectionForDnD,
+      })
+      if (envAsync) set((s) => ({
+        isPostProcessingEnabled: !!(envAsync.postProcessing?.enabled ?? s.isPostProcessingEnabled),
+        postProcessingPreset: envAsync.postProcessing?.preset || s.postProcessingPreset,
+        safeMode: { ...s.safeMode, ...(envAsync.safeMode || {}) },
+        rendererAA: envAsync.rendererAA || s.rendererAA,
+        renderMode: envAsync.renderMode || s.renderMode,
+        hdriSettings: envAsync.hdriSettings ? { ...s.hdriSettings, ...envAsync.hdriSettings } : s.hdriSettings,
+      }))
+    } catch {}
+  })()
   
   return {
   // Scene state
@@ -230,7 +270,8 @@ export const useEditorStore = create((set, get) => {
     const valid = ['msaa', 'fxaa', 'none'];
     const m = valid.includes(mode) ? mode : 'msaa';
     set({ rendererAA: m });
-    try { saveEnvironmentSettings({ rendererAA: m }) } catch {}
+  try { saveEnvironmentSettings({ rendererAA: m }) } catch {}
+  try { saveEnvironmentSettingsAsync({ rendererAA: m }) } catch {}
     // 런타임 반영: FXAA 상호배타 처리 및 렌더러 AA는 재생성 시 반영(현재 프레임 즉시 반영 불가)
     try {
       const ppm = get().postProcessingManager;
@@ -241,7 +282,8 @@ export const useEditorStore = create((set, get) => {
     const valid = ['continuous', 'on-demand'];
     const m = valid.includes(mode) ? mode : 'continuous';
     set({ renderMode: m });
-    try { saveEnvironmentSettings({ renderMode: m }) } catch {}
+  try { saveEnvironmentSettings({ renderMode: m }) } catch {}
+  try { saveEnvironmentSettingsAsync({ renderMode: m }) } catch {}
   },
   // 포스트프로세싱 전체 온/오프
   togglePostProcessingEnabled: () => set((state) => ({ isPostProcessingEnabled: !state.isPostProcessingEnabled })),
@@ -275,6 +317,7 @@ export const useEditorStore = create((set, get) => {
     try { get().estimateVRAMUsage(); } catch {}
   // persist to environment
   try { saveEnvironmentSettings({ safeMode: { enabled: get().safeMode.enabled, pixelRatio: get().safeMode.pixelRatio } }) } catch {}
+  try { saveEnvironmentSettingsAsync({ safeMode: { enabled: get().safeMode.enabled, pixelRatio: get().safeMode.pixelRatio } }) } catch {}
   },
   setSafeModePixelRatio: (pr) => {
     const clamped = Math.max(0.5, Math.min(2, Number(pr) || 1));
@@ -291,7 +334,8 @@ export const useEditorStore = create((set, get) => {
       if (ppm) ppm.handleResize(window.innerWidth, window.innerHeight);
     } catch {}
     try { get().estimateVRAMUsage(); } catch {}
-    try { saveEnvironmentSettings({ safeMode: { enabled: get().safeMode.enabled, pixelRatio: clamped } }) } catch {}
+  try { saveEnvironmentSettings({ safeMode: { enabled: get().safeMode.enabled, pixelRatio: clamped } }) } catch {}
+  try { saveEnvironmentSettingsAsync({ safeMode: { enabled: get().safeMode.enabled, pixelRatio: clamped } }) } catch {}
   },
   // 대략적인 VRAM 사용량 추정 (MB)
   estimateVRAMUsage: (opts = {}) => {
