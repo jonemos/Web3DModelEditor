@@ -1,7 +1,9 @@
+import { Suspense, lazy } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
-import HomePage from './pages/HomePage'
-import GamePage from './pages/GamePage'
-import EditorPage from './pages/EditorPage'
+// 라우트 단위 코드 스플리팅
+const HomePage = lazy(() => import('./pages/HomePage'))
+const GamePage = lazy(() => import('./pages/GamePage'))
+const EditorPage = lazy(() => import('./pages/EditorPage'))
 import './App.css'
 
 function App() {
@@ -13,11 +15,13 @@ function App() {
       }}
     >
       <div className="App">
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/game" element={<GamePage />} />
-          <Route path="/editor" element={<EditorPage />} />
-        </Routes>
+        <Suspense fallback={<div style={{padding: 16}}>Loading…</div>}>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/game" element={<GamePage />} />
+            <Route path="/editor" element={<EditorPage />} />
+          </Routes>
+        </Suspense>
       </div>
     </Router>
   )

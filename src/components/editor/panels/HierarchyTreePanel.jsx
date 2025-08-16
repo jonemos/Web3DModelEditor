@@ -4,14 +4,18 @@ import './SceneHierarchyPanel.css';
 export default function HierarchyTreePanel({
   objects,
   selectedIds = [],
+  dragUseSelectionForDnD = false,
   onSelect,
   onReparent,
-  onReorder
+  onReorder,
+  onBatchStart,
+  onBatchEnd,
+  onToggleVisibility,
+  onToggleFreeze
 }) {
   const dragRef = useRef({ draggingId: null });
   const [overId, setOverId] = useState(null);
   const [overPos, setOverPos] = useState(null); // 'above' | 'inside' | 'below'
-  const [isOverRoot, setIsOverRoot] = useState(false);
   const [collapsed, setCollapsed] = useState(() => new Set());
 
   const byId = useMemo(() => new Map((objects || []).map(o => [o.id, o])), [objects]);
@@ -50,8 +54,28 @@ export default function HierarchyTreePanel({
 
   const handleDragStart = (e, id) => {
     dragRef.current.draggingId = id;
+  // 옵션: 선택 집합을 항상 사용하거나, 드래그 항목이 선택에 포함된 경우에만 사용
+  const selectedSet = new Set(Array.isArray(selectedIds) ? selectedIds : []);
+  const useSelection = dragUseSelectionForDnD ? (selectedSet.size > 0) : (selectedSet.has(id) && selectedSet.size > 0);
+  let ids = useSelection ? Array.from(selectedSet) : [id];
+    // 중첩 선택 정규화: 상위가 포함된 항목의 모든 자손은 제거(최상위 항목만 유지)
+    const idSet = new Set(ids);
+    const hasSelectedAncestor = (nid) => {
+      let cur = byId.get(nid);
+      const guard = new Set();
+      while (cur) {
+        if (guard.has(cur.id)) break;
+        guard.add(cur.id);
+        const pid = cur.parentId ?? null;
+        if (pid == null) return false;
+        if (idSet.has(pid)) return true;
+        cur = byId.get(pid);
+      }
+      return false;
+    };
+    ids = ids.filter(nid => !hasSelectedAncestor(nid));
     try {
-      const json = JSON.stringify({ id });
+      const json = JSON.stringify({ ids });
       e.dataTransfer.setData('application/json', json);
       e.dataTransfer.setData('text/plain', json);
       e.dataTransfer.effectAllowed = 'move';
@@ -60,7 +84,6 @@ export default function HierarchyTreePanel({
 
   const handleDragOver = (e, targetId) => {
     e.preventDefault();
-    setIsOverRoot(false);
     setOverId(targetId ?? null);
     try {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -88,39 +111,63 @@ export default function HierarchyTreePanel({
     onReorder?.(parentId ?? null, ordered);
   };
 
+  const commitReorderMultipleAroundTarget = (parentId, movingIds, targetId, pos) => {
+    const siblings = (objects || []).filter(o => (o.parentId ?? null) === (parentId ?? null));
+    const moveSet = new Set(movingIds);
+    const base = siblings.map(s => s.id).filter(id => !moveSet.has(id));
+    const idx = base.indexOf(targetId);
+    const insertIdx = pos === 'above' ? Math.max(0, idx) : Math.min(base.length, idx + 1);
+    const ordered = [...base.slice(0, insertIdx), ...movingIds, ...base.slice(insertIdx)];
+    onReorder?.(parentId ?? null, ordered);
+  };
+
   const handleDropOnItem = (e, targetId) => {
     e.preventDefault();
-    const movingId = dragRef.current.draggingId;
+    // payload에서 멀티 아이디 수집 (폴백: draggingId)
+    let payload = null;
+    try {
+      const txt = e.dataTransfer.getData('application/json') || e.dataTransfer.getData('text/plain') || '';
+      if (txt) payload = JSON.parse(txt);
+    } catch {}
+    const ids = Array.isArray(payload?.ids) && payload.ids.length ? payload.ids : (dragRef.current.draggingId ? [dragRef.current.draggingId] : []);
     setOverId(null);
     setOverPos(null);
-    setIsOverRoot(false);
-    if (!movingId || movingId === targetId) return;
+    if (!ids.length) return;
     const target = byId.get(targetId);
     if (!target) return;
 
-    // 사이클 방지
-    if (isAncestor(movingId, targetId)) return;
-
     const zone = overPos || 'inside';
     if (zone === 'inside') {
-      onReparent?.(movingId, targetId);
+      if (ids.length > 1) onBatchStart?.();
+      // 각 항목을 타겟의 자식으로
+      ids.forEach(movingId => {
+        if (movingId === targetId) return;
+        // 사이클 방지: movingId가 target의 조상인 경우 스킵
+        if (isAncestor(movingId, targetId)) return;
+        onReparent?.(movingId, targetId);
+      });
+      if (ids.length > 1) onBatchEnd?.();
     } else {
       const newParentId = target.parentId ?? null;
-      // 먼저 동일 부모로 이동
-      onReparent?.(movingId, newParentId);
-      // 그 다음 순서 조정
-      commitReorderAroundTarget(newParentId, movingId, targetId, zone);
+      if (ids.length > 1) onBatchStart?.();
+      // 새로운 부모로 이동 후, 멀티 순서 삽입
+      const validMoves = ids.filter(movingId => {
+        if (movingId === targetId) return false;
+        // 사이클 방지: movingId의 조상으로 이동하는 경우 방지
+        const tpid = newParentId;
+        if (tpid != null) {
+          // target의 부모가 movingId의 자손인지 검사 (간접적으로 불필요한 케이스 방지)
+          return !isAncestor(movingId, tpid);
+        }
+        return true;
+      });
+      validMoves.forEach(movingId => onReparent?.(movingId, newParentId));
+      if (validMoves.length) commitReorderMultipleAroundTarget(newParentId, validMoves, targetId, zone);
+      if (ids.length > 1) onBatchEnd?.();
     }
-  };
-
-  const handleDropOnRoot = (e) => {
-    e.preventDefault();
-    const movingId = dragRef.current.draggingId;
-    setIsOverRoot(false);
-    setOverId(null);
-    setOverPos(null);
-    if (!movingId) return;
-    onReparent?.(movingId, null);
+    // 드롭 후 첫 번째 이동 대상을 다시 선택해 컨트롤/선택 상태를 단일화
+    const pick = ids[0];
+    if (pick != null) onSelect?.(pick);
   };
 
   const renderNode = (node, depth = 0) => {
@@ -130,6 +177,9 @@ export default function HierarchyTreePanel({
     const isOver = overId === node.id;
     const zone = isOver ? (overPos || 'inside') : null;
     const indent = Math.max(0, depth) * 12;
+    const visible = node.visible !== false;
+    const frozen = node.frozen === true;
+    const typeIcon = node.type === 'camera' ? '📷' : (node.type === 'light' ? '💡' : '🔶');
 
     return (
       <div key={node.id} className={`tree-node ${isSelected ? 'selected' : ''}`}
@@ -159,7 +209,30 @@ export default function HierarchyTreePanel({
                   style={{ width: 16, height: 20, background: 'none', border: 'none', color: '#aaa', cursor: 'pointer' }}>
             {kids.length > 0 ? (collapsedHere ? '▸' : '▾') : '·'}
           </button>
-          <span className="tree-name" style={{ color: isSelected ? '#fff' : '#ccc', fontWeight: isSelected ? 'bold' : 'normal', userSelect: 'none' }}>{node.name}</span>
+          <span className="tree-type" style={{ opacity: 0.8 }}>{typeIcon}</span>
+          <span className="tree-name" style={{ color: isSelected ? '#fff' : '#ccc', fontWeight: isSelected ? 'bold' : 'normal', userSelect: 'none', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+          <div className="tree-actions" style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {node.parentId != null && (
+              <button
+                className="icon-btn unparent"
+                title="부모 해제 (루트로 이동)"
+                onClick={(e) => { e.stopPropagation(); onReparent?.(node.id, null); }}
+                style={{ width: 22, height: 20, background: 'none', border: 'none', cursor: 'pointer', color: '#ddd' }}
+              >⏏</button>
+            )}
+            <button
+              className={`icon-btn eye ${visible ? 'on' : 'off'}`}
+              title={visible ? '숨기기' : '보이기'}
+              onClick={(e) => { e.stopPropagation(); onToggleVisibility?.(node); }}
+              style={{ width: 22, height: 20, background: 'none', border: 'none', cursor: 'pointer', color: visible ? '#ddd' : '#666' }}
+            >{visible ? '👁' : '🙈'}</button>
+            <button
+              className={`icon-btn lock ${frozen ? 'on' : 'off'}`}
+              title={frozen ? '잠금 해제' : '잠금'}
+              onClick={(e) => { e.stopPropagation(); onToggleFreeze?.(node); }}
+              style={{ width: 22, height: 20, background: 'none', border: 'none', cursor: 'pointer', color: frozen ? '#ddd' : '#666' }}
+            >{frozen ? '🔒' : '🔓'}</button>
+          </div>
         </div>
         {kids.length > 0 && !collapsedHere && (
           <div className="tree-children">
@@ -174,18 +247,6 @@ export default function HierarchyTreePanel({
     <div className="scene-hierarchy-panel">
       <div className="panel-header"><h3>계층</h3></div>
       <div className="panel-content">
-        {/* 루트 드롭 영역 */}
-        <div onDragOver={(e) => { e.preventDefault(); setIsOverRoot(true); setOverId(null); setOverPos(null); }}
-             onDragLeave={() => setIsOverRoot(false)}
-             onDrop={handleDropOnRoot}
-             style={{
-               border: isOverRoot ? '2px dashed #00b894' : '1px dashed #444',
-               background: isOverRoot ? 'rgba(0,184,148,0.12)' : 'transparent',
-               color: '#aaa', fontSize: 11, padding: '6px 8px', borderRadius: 4, marginBottom: 6
-             }}
-             title="여기에 드롭하면 루트로 이동">
-          루트로 드롭하여 상위 해제
-        </div>
         {(roots || []).map(node => renderNode(node, 0))}
       </div>
     </div>

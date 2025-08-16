@@ -53,6 +53,9 @@ export default defineConfig({
       }
     })
   ],
+  optimizeDeps: {
+    include: ['three', 'three-stdlib', 'react', 'react-dom', 'react-router-dom', 'zustand']
+  },
   server: {
     port: 3000,
     host: true
@@ -63,7 +66,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
+          // three 관련은 분리하여 캐시/초기 로드 최적화
           'three': ['three'],
+          'three-stdlib': ['three-stdlib'],
           'react-vendor': ['react', 'react-dom'],
           'router': ['react-router-dom'],
           'state': ['zustand']

@@ -20,7 +20,7 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
   const inputRef = useRef(null)
   const [dragOverId, setDragOverId] = useState(null)
   const [dragOverZone, setDragOverZone] = useState(null) // 'above' | 'inside' | 'below'
-  const [isDraggingToRoot, setIsDraggingToRoot] = useState(false)
+  
   const [collapsedIds, setCollapsedIds] = useState(() => new Set())
   const [altDupActive, setAltDupActive] = useState(false)
   const store = useEditorStore()
@@ -238,35 +238,7 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
     try { editorControls?.objectSelector?.updateAllSelectionOutlines?.() } catch {}
   }
 
-  const handleDropOnRoot = (e) => {
-    e.preventDefault()
-    setIsDraggingToRoot(false)
-    let payload = null
-    try { payload = JSON.parse(e.dataTransfer.getData('application/json')) } catch {}
-    const ids = Array.isArray(payload?.ids) ? payload.ids : []
-    if (!ids.length) return
-    const api = store
-    try { api.beginBatch && api.beginBatch() } catch {}
-    for (const id of ids) {
-      // Store: parentId null
-      try { api.setParent && api.setParent(id, null) } catch {}
-      // Three: clear parent to scene
-      const child3 = editorControls?.findObjectById?.(id)
-      if (child3) {
-        try { clearParent3D(child3, editorControls?.scene, true) } catch {}
-      }
-    }
-    try { api.endBatch && api.endBatch() } catch {}
-    try { editorControls?.objectSelector?.updateAllSelectionOutlines?.() } catch {}
-  }
-
-  const handleDragOverRoot = (e) => {
-    e.preventDefault()
-    setIsDraggingToRoot(true)
-    e.dataTransfer.dropEffect = 'move'
-  }
-
-  const handleDragLeaveRoot = () => setIsDraggingToRoot(false)
+  
 
   const renderObjectItem = (obj, isWall = false, depth = 0) => {
     // 단일 선택 확인
@@ -471,24 +443,7 @@ const SceneHierarchyPanel = memo(function SceneHierarchyPanel({
       </div>
       <div className="panel-content">
         <div className="objects-list">
-          {/* 루트 드롭 영역 */}
-          <div
-            onDragOver={handleDragOverRoot}
-            onDragLeave={handleDragLeaveRoot}
-            onDrop={handleDropOnRoot}
-            style={{
-              border: isDraggingToRoot ? '2px dashed #00b894' : '1px dashed #444',
-              background: isDraggingToRoot ? 'rgba(0,184,148,0.12)' : 'transparent',
-              color: '#aaa',
-              fontSize: '11px',
-              padding: '6px 8px',
-              borderRadius: 4,
-              marginBottom: 6
-            }}
-            title="여기에 드롭하면 루트로 이동"
-          >
-            루트로 드롭하여 상위 해제
-          </div>
+          
           {objects && objects.length > 0 && (
             <>
               <h4>오브젝트</h4>

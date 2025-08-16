@@ -154,6 +154,8 @@ export const useEditorStore = create((set, get) => {
   showHDRI: !!uiInitial.showHDRI,
   // View/Gizmo 설정 팝오버 열림 상태
   isViewGizmoSettingsOpen: !!uiInitial.isViewGizmoSettingsOpen,
+  // DnD 동작 설정: 드래그 시작 시 선택 집합을 항상 사용(기본: false)
+  dragUseSelectionForDnD: !!uiInitial.dragUseSelectionForDnD,
 
   // Actions for UI Panels
   setShowLibrary: (v) => set({ showLibrary: !!v }),
@@ -161,6 +163,7 @@ export const useEditorStore = create((set, get) => {
   setIsPostProcessingPanelOpen: (v) => set({ isPostProcessingPanelOpen: !!v }),
   setShowHDRI: (v) => set({ showHDRI: !!v }),
   setIsViewGizmoSettingsOpen: (v) => set({ isViewGizmoSettingsOpen: !!v }),
+  setDragUseSelectionForDnD: (on) => set({ dragUseSelectionForDnD: !!on }),
 
   // Actions
   setSelectedObject: (object) => set({ selectedObject: object }),
@@ -873,6 +876,7 @@ try {
       isPostProcessingPanelOpen: !!s.isPostProcessingPanelOpen,
   showHDRI: !!s.showHDRI,
   isViewGizmoSettingsOpen: !!s.isViewGizmoSettingsOpen,
+  dragUseSelectionForDnD: !!s.dragUseSelectionForDnD,
     }),
     120
   )

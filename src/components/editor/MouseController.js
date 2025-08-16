@@ -334,24 +334,38 @@ export class MouseController {
    */
   updateSelectionBox(mouseInfo) {
     const { position } = mouseInfo;
-    const currentX = position.screenX;
-    const currentY = position.screenY;
+  const currentX = position.screenX;
+  const currentY = position.screenY;
+  // 캔버스 경계 내로 클램프하여 UI 패널 영역에서는 선택 박스가 보이지 않도록 함
+  const canvas = this.inputManager?.canvas;
+  const rect = canvas ? canvas.getBoundingClientRect() : null;
+  const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+  const startX = this.selectionBox.startX;
+  const startY = this.selectionBox.startY;
+  const x1 = rect ? clamp(startX, rect.left, rect.right) : startX;
+  const y1 = rect ? clamp(startY, rect.top, rect.bottom) : startY;
+  const x2 = rect ? clamp(currentX, rect.left, rect.right) : currentX;
+  const y2 = rect ? clamp(currentY, rect.top, rect.bottom) : currentY;
     
-    const left = Math.min(this.selectionBox.startX, currentX);
-    const top = Math.min(this.selectionBox.startY, currentY);
-    const width = Math.abs(currentX - this.selectionBox.startX);
-    const height = Math.abs(currentY - this.selectionBox.startY);
+  const left = Math.min(x1, x2);
+  const top = Math.min(y1, y2);
+  const width = Math.abs(x2 - x1);
+  const height = Math.abs(y2 - y1);
     
     // 선택 박스가 충분히 클 때만 표시
     if (width > this.state.dragThreshold || height > this.state.dragThreshold) {
-      this.showSelectionBox(left, top, width, height);
+      if (width > 0 && height > 0) {
+        this.showSelectionBox(left, top, width, height);
+      } else {
+        this.hideSelectionBox();
+      }
       
       if (this.handlers.dragSelect) {
         this.handlers.dragSelect({
-          startX: this.selectionBox.startX,
-          startY: this.selectionBox.startY,
-          currentX,
-          currentY,
+          startX: x1,
+          startY: y1,
+          currentX: x2,
+          currentY: y2,
           left,
           top,
           width,
@@ -377,13 +391,29 @@ export class MouseController {
       return;
     }
     
+    // 종료 좌표도 캔버스 경계로 클램프
+    const canvas = this.inputManager?.canvas;
+    const rect = canvas ? canvas.getBoundingClientRect() : null;
+    const clamp = (v, min, max) => Math.min(Math.max(v, min), max);
+    const sx = rect ? clamp(this.selectionBox.startX, rect.left, rect.right) : this.selectionBox.startX;
+    const sy = rect ? clamp(this.selectionBox.startY, rect.top, rect.bottom) : this.selectionBox.startY;
+    const ex = rect ? clamp(position.screenX, rect.left, rect.right) : position.screenX;
+    const ey = rect ? clamp(position.screenY, rect.top, rect.bottom) : position.screenY;
+
+    if (rect) {
+      // 영역이 0 이하이면 무시
+      if (Math.abs(ex - sx) <= this.state.dragThreshold && Math.abs(ey - sy) <= this.state.dragThreshold) {
+        return;
+      }
+    }
+
     // 드래그 선택 완료 핸들러 실행
     if (this.handlers.dragSelectEnd) {
       this.handlers.dragSelectEnd({
-        startX: this.selectionBox.startX,
-        startY: this.selectionBox.startY,
-        endX: position.screenX,
-        endY: position.screenY,
+        startX: sx,
+        startY: sy,
+        endX: ex,
+        endY: ey,
         isMultiSelect
       });
     }

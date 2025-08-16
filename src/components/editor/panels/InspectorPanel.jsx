@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, memo } from 'react'
+import { setParent as setParent3D, clearParent as clearParent3D } from '../../../utils/HierarchyUtils'
+import { useEditorStore } from '../../../store/editorStore'
 import { PropertiesManager } from '../../../utils/PropertiesManager'
 import HierarchyTreePanel from './HierarchyTreePanel.jsx'
 import './InspectorPanel.css'
@@ -833,17 +835,44 @@ const InspectorPanel = memo(function InspectorPanel({
             <HierarchyTreePanel
               objects={objects}
               selectedIds={selectedIds || []}
+              dragUseSelectionForDnD={(() => { try { return useEditorStore.getState().dragUseSelectionForDnD } catch { return false } })()}
+              onBatchStart={() => { try { useEditorStore.getState().beginBatch?.() } catch {} }}
+              onBatchEnd={() => { try { useEditorStore.getState().endBatch?.() } catch {} }}
               onSelect={(id) => {
                 setSelectedIds?.([id]);
                 const obj = editorControls?.findObjectById?.(id);
                 if (obj) editorControls?.selectObject?.(obj);
               }}
               onReparent={(childId, newParentId) => {
+                // 단일 호출 기준. HierarchyTreePanel은 여러 번 호출 가능(멀티 드롭)
+                // 1) 상태 트리 업데이트
                 setParent?.(childId, newParentId);
+                // 2) Three.js 그래프 동기화 (월드 변환 유지)
+                try {
+                  const child3 = editorControls?.findObjectById?.(childId);
+                  if (child3) {
+                    if (newParentId == null) {
+                      clearParent3D(child3, editorControls?.scene, true);
+                    } else {
+                      const parent3 = editorControls?.findObjectById?.(newParentId);
+                      if (parent3 && child3 !== parent3) setParent3D(child3, parent3, true);
+                    }
+                  }
+                } catch {}
+                // 아웃라인 갱신은 일괄 처리되도록 살짝 지연하여 중복 호출 coalesce
+                try { clearTimeout(window.__reparentOutlineT); } catch {}
+                try {
+                  window.__reparentOutlineT = setTimeout(() => {
+                    editorControls?.objectSelector?.updateAllSelectionOutlines?.();
+                    window.__reparentOutlineT = null;
+                  }, 0);
+                } catch {}
               }}
               onReorder={(parentId, orderedIds) => {
                 reorderSiblings?.(parentId, orderedIds);
               }}
+              onToggleVisibility={(node) => onObjectVisibilityToggle?.(node)}
+              onToggleFreeze={(node) => onObjectFreezeToggle?.(node)}
             />
           </div>
         </div>
