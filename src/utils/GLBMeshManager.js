@@ -3,6 +3,7 @@ import { getGLTFLoader, setKTX2Renderer } from './gltfLoaderFactory.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { idbGetAllCustomMeshes, idbAddCustomMesh, idbDeleteCustomMesh, migrateLocalStorageCustomMeshesToIDB } from './idb.js';
+import { isWorkerSupported, workerThumbnailFromGLB, workerThumbnailFromObjectJSON, imageBitmapToDataURL, workerExportGLBFromObjectJSON } from './meshWorkerClient.js';
 
 /**
  * GLB 메쉬 관리를 위한 통합 클래스
@@ -56,14 +57,24 @@ export class GLBMeshManager {
    */
   async importGLBBuffer(glbBuffer, name = 'Imported Mesh') {
     try {
-      // 썸네일을 생성하기 위해 Blob URL로 로드
-      const blob = new Blob([glbBuffer], { type: 'model/gltf-binary' });
-      const blobUrl = URL.createObjectURL(blob);
+      // 썸네일 생성: Worker가 있으면 워커에서 OffscreenCanvas로 렌더, 실패 시 메인 스레드 폴백
       let thumbnail = null;
-      try {
-        thumbnail = await this.generateThumbnailFromURL(blobUrl);
-      } finally {
-        try { URL.revokeObjectURL(blobUrl) } catch {}
+    if (isWorkerSupported()) {
+        try {
+      const { bitmap } = await workerThumbnailFromGLB(glbBuffer, 128, false);
+          thumbnail = await imageBitmapToDataURL(bitmap);
+        } catch (e) {
+          // fallback below
+        }
+      }
+      if (!thumbnail) {
+        const blob = new Blob([glbBuffer], { type: 'model/gltf-binary' });
+        const blobUrl = URL.createObjectURL(blob);
+        try {
+          thumbnail = await this.generateThumbnailFromURL(blobUrl);
+        } finally {
+          try { URL.revokeObjectURL(blobUrl) } catch {}
+        }
       }
 
       const timestamp = Date.now();
@@ -322,64 +333,45 @@ export class GLBMeshManager {
    * @returns {Promise<string>} 썸네일 데이터 URL
    */
   async generateThumbnailFromURL(glbUrl) {
+    // Worker가 있으면 URL을 ArrayBuffer로 페치해 워커로 전달
+    if (isWorkerSupported()) {
+      try {
+        const res = await fetch(glbUrl, { cache: 'no-store' });
+        const buf = await res.arrayBuffer();
+        const { bitmap } = await workerThumbnailFromGLB(buf, 128);
+        return await imageBitmapToDataURL(bitmap);
+      } catch (e) {
+        // fallback below
+      }
+    }
+    // 메인 스레드 렌더 폴백
     return new Promise((resolve, reject) => {
-  this.loader.load(
+      this.loader.load(
         glbUrl,
         (gltf) => {
           try {
             const { scene, camera, renderer } = this.thumbnailRenderer;
-            
-            // 기존 메쉬들 제거
-            const meshesToRemove = [];
-            scene.traverse((child) => {
-              if (child.isMesh) {
-                meshesToRemove.push(child);
-              }
-            });
-            meshesToRemove.forEach(mesh => scene.remove(mesh));
-            
-            // 새 모델 추가
-            const model = gltf.scene;
-            scene.add(model);
-            
-            // 바운딩 박스 계산
+            // 기존 메쉬 제거
+            const toRemove = [];
+            scene.traverse((c)=>{ if (c.isMesh) toRemove.push(c); });
+            toRemove.forEach(m=>scene.remove(m));
+            const model = gltf.scene; scene.add(model);
             const box = new THREE.Box3().setFromObject(model);
-            const center = box.getCenter(new THREE.Vector3());
             const size = box.getSize(new THREE.Vector3());
-            
-            // 모델의 원점은 그대로 유지 (내보낸 피벗을 신뢰)
-            
-            // 카메라 위치 조정
             const maxDim = Math.max(size.x, size.y, size.z);
             const fov = camera.fov * (Math.PI / 180);
             let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-            
-            // 적절한 거리로 조정 (약간 더 멀리)
             cameraZ *= 1.5;
-            
             camera.position.set(cameraZ * 0.7, cameraZ * 0.5, cameraZ);
             camera.lookAt(0, 0, 0);
-            
-            // 렌더링
             renderer.render(scene, camera);
-            
-            // 캔버스에서 데이터 URL 생성
             const dataURL = renderer.domElement.toDataURL('image/png');
-            
-            // 모델 제거
             scene.remove(model);
-            
             resolve(dataURL);
-          } catch (error) {
-            reject(error);
-          }
+          } catch (error) { reject(error); }
         },
-        (progress) => {
-          // 로딩 진행 상황 (필요시 사용)
-        },
-        (error) => {
-          reject(error);
-        }
+        undefined,
+        (error) => reject(error)
       );
     });
   }
@@ -509,6 +501,19 @@ export class GLBMeshManager {
   async exportObjectToGLB(object, options = {}) {
     const { preserveTransform = false } = options;
     
+    // 1) Try worker-based export when supported, using Object3D.toJSON
+    if (isWorkerSupported()) {
+      try {
+        const json = object?.toJSON ? object.toJSON() : new THREE.Object3D().toJSON();
+        const { glb } = await workerExportGLBFromObjectJSON(json, { preserveTransform, compressToSingleMesh: true });
+        if (glb && (glb.byteLength || (glb.buffer && glb.buffer.byteLength))) {
+          return glb;
+        }
+      } catch (e) {
+        // fallback to main thread exporter below
+      }
+    }
+
     return new Promise((resolve, reject) => {
       // 오브젝트를 안전하게 복제하여 변환 초기화
       let clonedObject;
@@ -617,9 +622,9 @@ export class GLBMeshManager {
     const { preserveTransform = true, compressToSingleMesh = true } = options;
     
     try {
-      // 단일 메시 병합 우선 시도
+      // 단일 메시 병합: 워커가 있으면 워커 내에서 수행 → 메인 스레드 부하 감소
       let exportTarget = object;
-      if (compressToSingleMesh) {
+      if (compressToSingleMesh && !isWorkerSupported()) {
         const merged = this._buildSingleMesh(object, { preserveTransform });
         if (merged) exportTarget = merged;
       }
@@ -630,10 +635,20 @@ export class GLBMeshManager {
       }
 
       // GLB 데이터 생성 (변환 값 유지 옵션 적용)
-      const glbData = await this.exportObjectToGLB(exportTarget, { preserveTransform });
+  const glbData = await this.exportObjectToGLB(exportTarget, { preserveTransform });
       
-      // 썸네일 생성
-      const thumbnail = this.generateThumbnailFromObject(object);
+      // 썸네일 생성: 워커가 있으면 오브젝트 JSON 기반으로 워커에게, 실패 시 폴백
+      let thumbnail = null;
+      if (isWorkerSupported()) {
+        try {
+          const json = object?.toJSON ? object.toJSON() : new THREE.Object3D().toJSON();
+          const { bitmap } = await workerThumbnailFromObjectJSON(json, 128);
+          thumbnail = await imageBitmapToDataURL(bitmap);
+        } catch {}
+      }
+      if (!thumbnail) {
+        thumbnail = this.generateThumbnailFromObject(object);
+      }
       
       // 파일명 생성 (타임스탬프 기반)
       const timestamp = Date.now();

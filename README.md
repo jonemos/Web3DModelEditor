@@ -13,11 +13,6 @@ React와 Vite로 구축된 3D 탐험 게임으로 PWA(Progressive Web App) 지�
 
 ## 🎯 게임 플레이
 
-- **WASD**: 플레이어 이동
-- **마우스**: 카메라 회전 및 줌
-- **ESC**: 게임 일시정지
-- **H**: 홈으로 돌아가기
-- **마우스 클릭**: 아이템 수집
 
 ## 📁 프로젝트 구조
 
@@ -40,6 +35,12 @@ src/
 └── store/               # 상태 관리
     ├── gameStore.js     # 게임 상태
     └── editorStore.js   # 에디터 상태
+
+### 워커 오프로딩
+
+- 썸네일 렌더링/단일 Mesh 병합/일부 GLTF 내보내기 로직은 `src/workers/meshWorker.js`에서 Web Worker + OffscreenCanvas로 수행합니다.
+- 브라우저가 OffscreenCanvas/Worker를 지원하지 않으면 자동으로 메인 스레드 폴백을 사용합니다.
+- 코드: 워커 브리지 `src/utils/meshWorkerClient.js`, 호출부는 `GLBMeshManager` 내부.
 ```
 
 ## 🚀 실행 방법
