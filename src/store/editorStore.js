@@ -1078,11 +1078,13 @@ export const useEditorStore = create((set, get) => {
             local: normalizeVec3(a?.local, { x: 0, y: 0, z: 0 })
           }))
         : []
-      set(() => ({
+  set(() => ({
         walls: normalizedWalls,
         objects: normalizedObjects,
         annotations: normalizedAnnotations
       }))
+  // 씬과 스토어 싱크를 위한 지연 프루닝 (다음 프레임)
+  try { requestAnimationFrame(() => { try { get().pruneOrphanSceneObjects?.() } catch {} }) } catch {}
       // 저장된 뷰 상태 적용(있을 경우): 카메라/뷰포트 설정
       try {
         const vs = mapData.viewState;
@@ -1126,7 +1128,7 @@ export const useEditorStore = create((set, get) => {
       selectedObject: null,
       selectedIds: []
     });
-    // 씬 잔여물 강제 정리: 스토어에 없는 비시스템 오브젝트 제거
+  // 씬 잔여물 강제 정리: 스토어에 없는 비시스템 오브젝트 제거
     try {
       const scene = get().scene;
       if (scene) {
@@ -1149,7 +1151,9 @@ export const useEditorStore = create((set, get) => {
           } catch {}
         });
       }
-    } catch {}
+  } catch {}
+  // 다음 프레임에 한 번 더 프루닝하여 비동기 제거 반영
+  try { requestAnimationFrame(() => { try { get().pruneOrphanSceneObjects?.() } catch {} }) } catch {}
   // UI에 주석 제거 신호 (선택 사항)
   try { window.dispatchEvent(new CustomEvent('annotationsCleared')); } catch {}
   },

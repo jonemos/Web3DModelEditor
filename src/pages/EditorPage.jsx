@@ -5,7 +5,15 @@ import EditorUI from '../components/editor/EditorUI'
 import MenuBar from '../components/editor/MenuBar'
 import ViewportControls from '../components/editor/ViewportControls'
 import { useEditorStore } from '../store/editorStore'
-import { getGLBMeshManager } from '../utils/GLBMeshManager'
+// 에디터 전용 유틸은 에디터 라우트 청크로: 동적 import lazy-init
+let __glbMgr = null;
+async function __getGLBMeshManager() {
+  if (!__glbMgr) {
+    const mod = await import('../utils/GLBMeshManager')
+    __glbMgr = mod.getGLBMeshManager()
+  }
+  return __glbMgr
+}
 import Toast from '../components/ui/Toast'
 import { idbAddCustomMesh } from '../utils/idb'
 import * as THREE from 'three'
@@ -68,7 +76,7 @@ function EditorPage() {
   const editorControlsRef = useRef(null)
   const [editorControlsState, setEditorControlsState] = useState(null)
   const postProcessingRef = useRef(null)
-  const glbMeshManager = useRef(getGLBMeshManager())
+  const glbMeshManager = useRef(null)
   // 커스텀 메쉬 썸네일 blob:ObjectURL 추적 (초기 하이드레이션용)
   const customThumbUrlsRef = useRef(new Set())
 
@@ -77,6 +85,7 @@ function EditorPage() {
     let cancelled = false
     ;(async () => {
       try {
+        if (!glbMeshManager.current) glbMeshManager.current = await __getGLBMeshManager()
         const meshes = await glbMeshManager.current.getCustomMeshes()
         if (!cancelled) {
           // 기존 상태가 비어있을 때만 주입 (불필요한 덮어쓰기 방지)
@@ -89,7 +98,7 @@ function EditorPage() {
             useEditorStore.getState().loadCustomMeshes(meshes)
           }
         }
-      } catch {}
+  } catch {}
     })()
     return () => {
       cancelled = true
@@ -736,6 +745,7 @@ function EditorPage() {
   // 메쉬를 라이브러리에 추가하는 핸들러
   const handleAddToLibrary = async (object) => {
     try {
+      if (!glbMeshManager.current) glbMeshManager.current = await __getGLBMeshManager()
       const name = prompt('메쉬 이름을 입력하세요:', object.name || '커스텀 메쉬');
       if (!name) return;
 

@@ -1224,9 +1224,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
         loadingIdsRef.current.add(obj.id);
         // GLB file loading started
         
-        // GLB 파일 로드 (file 또는 url 사용)
-        const glbSource = obj.file || obj.url;
-        loader.load(
+  // GLB 파일 로드 (file 또는 url 사용)
+  const glbSource = obj.file || obj.url;
+  const shouldRevokeBlob = typeof glbSource === 'string' && glbSource.startsWith('blob:');
+  loader.load(
           glbSource,
           (gltf) => {
             // 이중 콜백/중복 추가 가드
@@ -1297,6 +1298,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             
             // 자동으로 선택 (스토어와 3D 뷰 모두)
             setSelectedObject(obj.id);
+            // blob:ObjectURL 정리 (파일 임포트 경로)
+            if (shouldRevokeBlob) { try { URL.revokeObjectURL(glbSource) } catch {} }
 
             // 로드 직후 스냅/기즈모 상태 재적용 (안전망)
             try { editorControlsRef.current.updateWireframe?.() } catch {}
@@ -1313,6 +1316,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             console.error(`GLB 파일 로딩 실패: ${obj.name}`, error);
             console.error(`GLB 파일 경로: ${glbSource}`);
             console.error('객체 정보:', obj);
+            // 실패 시에도 blob:ObjectURL 정리
+            if (shouldRevokeBlob) { try { URL.revokeObjectURL(glbSource) } catch {} }
             
             // GLB 로딩 실패 시 기본 도형으로 대체
             

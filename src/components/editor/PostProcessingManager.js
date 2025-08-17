@@ -3,6 +3,7 @@
  * 다양한 카메라 효과를 제공하고 관리합니다
  */
 import * as THREE from 'three';
+import { saveEnvironmentSettingsAsync } from '../../utils/viewGizmoConfig.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -480,11 +481,7 @@ export class PostProcessingManager {
   this.updateComposer();
   // 환경 퍼시스트: 톤매핑 변경 시 저장
   if (effectName === 'toneMapping') {
-    try {
-      import('../../utils/viewGizmoConfig.js').then(mod => {
-        try { mod.saveEnvironmentSettingsAsync({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
-      }).catch(() => {});
-    } catch {}
+  try { saveEnvironmentSettingsAsync({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
   }
   }
 
@@ -501,11 +498,7 @@ export class PostProcessingManager {
       }
       // 환경 퍼시스트: 톤매핑 변경 시 저장
       if (effectName === 'toneMapping') {
-        try {
-          import('../../utils/viewGizmoConfig.js').then(mod => {
-            try { mod.saveEnvironmentSettingsAsync({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
-          }).catch(() => {});
-        } catch {}
+  try { saveEnvironmentSettingsAsync({ toneMapping: { ...this.effectSettings.toneMapping } }) } catch {}
       }
     }
   }
@@ -606,11 +599,7 @@ export class PostProcessingManager {
     this.effectSettings = next;
     this.updateComposer();
     // 환경에 프리셋 저장 (best-effort)
-    try {
-      import('../../utils/viewGizmoConfig.js').then(mod => {
-        try { mod.saveEnvironmentSettingsAsync({ postProcessing: { preset: preset } }) } catch {}
-      }).catch(() => {});
-    } catch {}
+  try { saveEnvironmentSettingsAsync({ postProcessing: { preset: preset } }) } catch {}
   }
 
   /**

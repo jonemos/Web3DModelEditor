@@ -4,6 +4,9 @@ import { VitePWA } from 'vite-plugin-pwa'
 import mkcert from 'vite-plugin-mkcert'
 
 export default defineConfig({
+  define: {
+    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'production')
+  },
   plugins: [
     react(),
   // 개발/프리뷰 HTTPS를 위한 로컬 인증서 자동 생성
@@ -11,8 +14,20 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
+        navigateFallback: '/index.html',
         globPatterns: ['**/*.{js,css,html,ico,png,svg,glb,ktx2,wasm}'],
         runtimeCaching: [
+          // 네비게이션 요청 오프라인 폴백
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'html-pages',
+              networkTimeoutSeconds: 3,
+              // 참고: 오프라인 전용 페이지는 앱 레벨 라우팅으로 처리하거나,
+              // 별도 커스텀 SW를 사용하는 경우에만 명시적으로 핸들링하세요.
+            }
+          },
           {
             urlPattern: ({ request }) => request.destination === 'model' || /\.(?:glb|gltf)$/i.test(request.url),
             handler: 'CacheFirst',
@@ -68,17 +83,23 @@ export default defineConfig({
     https: true
   },
   build: {
+  target: 'es2019',
     outDir: 'dist',
     assetsDir: 'assets',
     rollupOptions: {
       output: {
-        manualChunks: {
-          // three 관련은 분리하여 캐시/초기 로드 최적화
-          'three': ['three'],
-          'three-stdlib': ['three-stdlib'],
-          'react-vendor': ['react', 'react-dom'],
-          'router': ['react-router-dom'],
-          'state': ['zustand']
+        manualChunks(id) {
+          // 외부 벤더 청크 분리
+          if (id.includes('/node_modules/three/')) return 'three'
+          if (id.includes('/node_modules/three-stdlib/')) return 'three-stdlib'
+          if (id.includes('/node_modules/react-router-dom/')) return 'router'
+          if (id.includes('/node_modules/react/')) return 'react-vendor'
+          if (id.includes('/node_modules/react-dom/')) return 'react-vendor'
+          if (id.includes('/node_modules/zustand/')) return 'state'
+          // 에디터 전용 코드: 에디터 라우트 청크로 묶기
+          if (id.includes('/src/components/editor/')) return 'editor'
+          if (id.includes('/src/utils/GLBMeshManager')) return 'editor'
+          return undefined
         }
       }
     },
