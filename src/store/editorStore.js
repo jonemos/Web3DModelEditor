@@ -403,7 +403,7 @@ export const useEditorStore = create((set, get) => {
       await idbAddCustomMesh(meshData)
       set((state) => ({ customMeshes: [...state.customMeshes, meshData] }))
     } catch (e) {
-      try { window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '저장에 실패했습니다 (IndexedDB).', type: 'error', duration: 3000 } })) } catch {}
+  // 통지: UI 레이어에서 에러를 보여주세요 (토스트 훅 사용 권장)
     }
   },
 
@@ -412,7 +412,7 @@ export const useEditorStore = create((set, get) => {
       await idbDeleteCustomMesh(meshId)
       set((state) => ({ customMeshes: state.customMeshes.filter(mesh => mesh.id !== meshId) }))
     } catch (e) {
-      try { window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '삭제에 실패했습니다 (IndexedDB).', type: 'error', duration: 3000 } })) } catch {}
+  // 통지: UI 레이어에서 에러를 보여주세요 (토스트 훅 사용 권장)
     }
   },
 

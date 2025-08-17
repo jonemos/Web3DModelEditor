@@ -3,9 +3,11 @@ import { createPortal } from 'react-dom';
 import { useEditorStore } from '../../../store/editorStore';
 import { getGLBMeshManager } from '../../../utils/GLBMeshManager';
 import './LibraryPanel.css';
+import { useToast } from '../../../context/ToastContext.jsx';
 
 const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
   const [isDragging, setIsDragging] = useState(false);
+  const { showToast } = useToast();
   const [customObjects, setCustomObjects] = useState([]);
   const [libraryMeshes, setLibraryMeshes] = useState([]); // 라이브러리 메쉬 상태 추가
   const draggedObject = useRef(null);
@@ -55,10 +57,10 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         if (found) target = found;
       }
       glbMeshManager.current.downloadCustomMesh(target);
-      try { window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '다운로드 시작', type: 'success', duration: 1500 } })); } catch {}
+  try { showToast('다운로드 시작', 'success', 1500); } catch {}
     } catch (e) {
       console.error('GLB 내보내기 실패:', e);
-      window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '내보내기 실패', type: 'error', duration: 2500 } }));
+  showToast('내보내기 실패', 'error', 2500);
     } finally {
       setCtxMenu({ open: false, x: 0, y: 0, mesh: null });
     }
@@ -227,12 +229,12 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
           await glbMeshManager.current.importGLBFile(file);
         } catch (err) {
           console.error('임포트 실패:', err);
-          window.dispatchEvent(new CustomEvent('appToast', { detail: { message: `${file.name} 임포트 실패`, type: 'error', duration: 3000 } }))
+          showToast(`${file.name} 임포트 실패`, 'error', 3000)
         }
       }
       const meshes = await glbMeshManager.current.getCustomMeshes();
       loadCustomMeshes(meshes);
-      window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '임포트 완료', type: 'success', duration: 2000 } }))
+  showToast('임포트 완료', 'success', 2000)
     } finally {
       setIsImporting(false);
       // 같은 파일 다시 선택 가능하도록 value 초기화
@@ -322,9 +324,9 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
         // 메쉬 목록 새로고침
         const meshes = await glbMeshManager.current.getCustomMeshes();
         loadCustomMeshes(meshes);
-        window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '삭제되었습니다.', type: 'success', duration: 2000 } }))
+  showToast('삭제되었습니다.', 'success', 2000)
       } catch (e) {
-        window.dispatchEvent(new CustomEvent('appToast', { detail: { message: '삭제에 실패했습니다 (IndexedDB).', type: 'error', duration: 3000 } }))
+  showToast('삭제에 실패했습니다 (IndexedDB).', 'error', 3000)
       }
     }
   };

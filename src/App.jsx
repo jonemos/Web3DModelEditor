@@ -5,6 +5,7 @@ const HomePage = lazy(() => import('./pages/HomePage'))
 const GamePage = lazy(() => import('./pages/GamePage'))
 const EditorPage = lazy(() => import('./pages/EditorPage'))
 import './App.css'
+import { ToastProvider } from './context/ToastContext.jsx'
 
 function App() {
   return (
@@ -14,15 +15,17 @@ function App() {
         v7_relativeSplatPath: true
       }}
     >
-      <div className="App">
-        <Suspense fallback={<div style={{padding: 16}}>Loading…</div>}>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/game" element={<GamePage />} />
-            <Route path="/editor" element={<EditorPage />} />
-          </Routes>
-        </Suspense>
-      </div>
+      <ToastProvider>
+        <div className="App">
+          <Suspense fallback={<div style={{padding: 16}}>Loading…</div>}>
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/game" element={<GamePage />} />
+              <Route path="/editor" element={<EditorPage />} />
+            </Routes>
+          </Suspense>
+        </div>
+      </ToastProvider>
     </Router>
   )
 }

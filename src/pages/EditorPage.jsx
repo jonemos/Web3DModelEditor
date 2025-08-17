@@ -14,7 +14,7 @@ async function __getGLBMeshManager() {
   }
   return __glbMgr
 }
-import Toast from '../components/ui/Toast'
+import { useToast } from '../context/ToastContext.jsx'
 import { idbAddCustomMesh } from '../utils/idb'
 import * as THREE from 'three'
 import './EditorPage.css'
@@ -69,7 +69,7 @@ function EditorPage() {
   const [mapListLoading, setMapListLoading] = useState(false)
   const [loadingMapName, setLoadingMapName] = useState('')
   const [dialogInput, setDialogInput] = useState('')
-  const [toast, setToast] = useState(null)
+  const { showToast } = useToast()
   const [showInspector, setShowInspector] = useState(true) // 인스펙터 패널 상태 추가
   
   // EditorControls 인스턴스를 관리하기 위한 ref
@@ -109,17 +109,7 @@ function EditorPage() {
     }
   }, [])
 
-  // 전역 토스트 이벤트 리스너 (어디서든 window.dispatchEvent로 토스트 띄우기)
-  useEffect(() => {
-    const handler = (e) => {
-      const { message, type = 'info', duration = 3000 } = e.detail || {}
-      if (!message) return
-      setToast({ message, type })
-      if (duration > 0) setTimeout(() => setToast(null), duration)
-    }
-    window.addEventListener('appToast', handler)
-    return () => window.removeEventListener('appToast', handler)
-  }, [])
+  // 글로벌 이벤트 제거: useToast 훅으로 일원화됨
 
   // HDRI 설정 지속 관리
   useEffect(() => {
@@ -174,8 +164,7 @@ function EditorPage() {
       if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
         e.preventDefault();
         if (!selectedObject) {
-          setToast({ message: '복사할 객체를 먼저 선택해주세요', type: 'warning' });
-          setTimeout(() => setToast(null), 2000);
+            showToast('복사할 객체를 먼저 선택해주세요', 'warning', 2000);
           return;
         }
         requestAnimationFrame(() => {
@@ -187,15 +176,13 @@ function EditorPage() {
               threeObject = editorControlsRef.current.findObjectById(objectId) || (editorControlsRef.current.selectedObjects?.[0] || null);
             }
             if (threeObject) {
-              copyObject(threeObject);
-              setToast({ message: `"${threeObject.name}"이(가) 복사되었습니다`, type: 'success' });
+        copyObject(threeObject);
+        showToast(`"${threeObject.name}"이(가) 복사되었습니다`, 'success', 2000);
             } else {
-              copyObject(selectedObject);
-              setToast({ message: `"${selectedObject.name}"이(가) 복사되었습니다`, type: 'success' });
+        copyObject(selectedObject);
+        showToast(`"${selectedObject.name}"이(가) 복사되었습니다`, 'success', 2000);
             }
-          } finally {
-            setTimeout(() => setToast(null), 2000);
-          }
+      } finally {}
         });
       }
       
@@ -207,16 +194,14 @@ function EditorPage() {
             if (hasClipboardData()) {
               const pastedObject = pasteObject();
               if (pastedObject) {
-                setToast({ message: `"${pastedObject.name}"이(가) 붙여넣기되었습니다`, type: 'success' });
+                showToast(`"${pastedObject.name}"이(가) 붙여넣기되었습니다`, 'success', 2000);
               } else {
-                setToast({ message: '붙여넣기에 실패했습니다', type: 'error' });
+                showToast('붙여넣기에 실패했습니다', 'error', 2000);
               }
             } else {
-              setToast({ message: '붙여넣을 객체가 클립보드에 없습니다', type: 'warning' });
+              showToast('붙여넣을 객체가 클립보드에 없습니다', 'warning', 2000);
             }
-          } finally {
-            setTimeout(() => setToast(null), 2000);
-          }
+          } finally {}
         });
       }
       
@@ -227,7 +212,7 @@ function EditorPage() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [selectedObject, objects, copyObject, pasteObject, deleteSelectedObject, hasClipboardData, setToast]) // 필요한 의존성 모두 추가
+  }, [selectedObject, objects, copyObject, pasteObject, deleteSelectedObject, hasClipboardData, showToast]) // 필요한 의존성 모두 추가
 
   // 지속적인 태양 조명 생성 함수
   const createPersistentSunLight = () => {
@@ -482,83 +467,44 @@ function EditorPage() {
         break
         
       case 'copy':
-        
         if (selectedObject) {
           const objectToCopy = objects.find(obj => obj.id === selectedObject);
           if (objectToCopy) {
             copyObject(objectToCopy);
-            setToast({ 
-              message: `"${objectToCopy.name}"이(가) 복사되었습니다`, 
-              type: 'success' 
-            });
-            setTimeout(() => setToast(null), 2000);
+            showToast(`"${objectToCopy.name}"이(가) 복사되었습니다`, 'success', 2000);
           } else {
-            setToast({ 
-              message: '복사할 객체를 찾을 수 없습니다', 
-              type: 'error' 
-            });
-            setTimeout(() => setToast(null), 2000);
+            showToast('복사할 객체를 찾을 수 없습니다', 'error', 2000);
           }
         } else {
-          setToast({ 
-            message: '복사할 객체를 먼저 선택해주세요', 
-            type: 'warning' 
-          });
-          setTimeout(() => setToast(null), 2000);
+          showToast('복사할 객체를 먼저 선택해주세요', 'warning', 2000);
         }
         break
         
       case 'paste':
-        
         if (hasClipboardData()) {
           const pastedObject = pasteObject();
           if (pastedObject) {
-            setToast({ 
-              message: `"${pastedObject.name}"이(가) 붙여넣기되었습니다`, 
-              type: 'success' 
-            });
-            setTimeout(() => setToast(null), 2000);
+            showToast(`"${pastedObject.name}"이(가) 붙여넣기되었습니다`, 'success', 2000);
           } else {
-            setToast({ 
-              message: '붙여넣기에 실패했습니다', 
-              type: 'error' 
-            });
-            setTimeout(() => setToast(null), 2000);
+            showToast('붙여넣기에 실패했습니다', 'error', 2000);
           }
         } else {
-          setToast({ 
-            message: '붙여넣을 객체가 클립보드에 없습니다', 
-            type: 'warning' 
-          });
-          setTimeout(() => setToast(null), 2000);
+          showToast('붙여넣을 객체가 클립보드에 없습니다', 'warning', 2000);
         }
         break
         
       case 'delete':
-        
         if (selectedObject) {
           const objectToDelete = objects.find(obj => obj.id === selectedObject);
           if (objectToDelete) {
             const objectName = objectToDelete.name;
             deleteSelectedObject();
-            setToast({ 
-              message: `"${objectName}"이(가) 삭제되었습니다`, 
-              type: 'success' 
-            });
-            setTimeout(() => setToast(null), 2000);
+            showToast(`"${objectName}"이(가) 삭제되었습니다`, 'success', 2000);
           } else {
-            setToast({ 
-              message: '삭제할 객체를 찾을 수 없습니다', 
-              type: 'error' 
-            });
-            setTimeout(() => setToast(null), 2000);
+            showToast('삭제할 객체를 찾을 수 없습니다', 'error', 2000);
           }
         } else {
-          setToast({ 
-            message: '삭제할 객체를 먼저 선택해주세요', 
-            type: 'warning' 
-          });
-          setTimeout(() => setToast(null), 2000);
+          showToast('삭제할 객체를 먼저 선택해주세요', 'warning', 2000);
         }
         break
         
@@ -590,11 +536,7 @@ function EditorPage() {
           editorControlsRef.current.toggleGrid();
         }
         
-        setToast({ 
-          message: `그리드가 ${isVisible ? '표시' : '숨김'} 되었습니다`, 
-          type: 'info' 
-        })
-        setTimeout(() => setToast(null), 2000)
+  showToast(`그리드가 ${isVisible ? '표시' : '숨김'} 되었습니다`, 'info', 2000)
         break
         
       case 'toggle-stats':
@@ -602,12 +544,8 @@ function EditorPage() {
         break
         
       case 'toggle-inspector':
-        setShowInspector(prev => !prev)
-        setToast({ 
-          message: `인스펙터가 ${!showInspector ? '표시' : '숨김'} 되었습니다`, 
-          type: 'info' 
-        })
-        setTimeout(() => setToast(null), 2000)
+  setShowInspector(prev => !prev)
+  showToast(`인스펙터가 ${!showInspector ? '표시' : '숨김'} 되었습니다`, 'info', 2000)
         break
         
       case 'fullscreen':
@@ -690,7 +628,7 @@ function EditorPage() {
     if (!name) return
     try {
       setLoadingMapName(name)
-      setToast({ message: `"${name}" 불러오는 중…`, type: 'info' })
+  showToast(`"${name}" 불러오는 중…`, 'info', 1800)
       const ok = await useEditorStore.getState().loadMap?.(name)
       if (ok) {
         try {
@@ -700,15 +638,12 @@ function EditorPage() {
         try { window.__requestRender && window.__requestRender() } catch {}
         setShowDialog(null)
         setDialogInput('')
-        setToast({ message: `맵 "${name}"을 불러왔습니다.`, type: 'success' })
-        setTimeout(() => setToast(null), 1800)
+        showToast(`맵 "${name}"을 불러왔습니다.`, 'success', 1800)
       } else {
-        setToast({ message: `맵 "${name}"을 찾을 수 없습니다.`, type: 'error' })
-        setTimeout(() => setToast(null), 1800)
+        showToast(`맵 "${name}"을 찾을 수 없습니다.`, 'error', 1800)
       }
     } catch (e) {
-      setToast({ message: '불러오기 중 오류가 발생했습니다.', type: 'error' })
-      setTimeout(() => setToast(null), 1800)
+      showToast('불러오기 중 오류가 발생했습니다.', 'error', 1800)
     } finally {
       setLoadingMapName('')
     }
@@ -721,11 +656,9 @@ function EditorPage() {
     const ok = await useEditorStore.getState().deleteMap?.(name)
     if (ok) {
       await reloadMapList()
-      setToast({ message: `맵 "${name}"이(가) 삭제되었습니다.`, type: 'success' })
-      setTimeout(() => setToast(null), 1500)
+      showToast(`맵 "${name}"이(가) 삭제되었습니다.`, 'success', 1500)
     } else {
-      setToast({ message: '삭제에 실패했습니다.', type: 'error' })
-      setTimeout(() => setToast(null), 1500)
+      showToast('삭제에 실패했습니다.', 'error', 1500)
     }
   }
 
@@ -734,8 +667,7 @@ function EditorPage() {
     const onWarn = (e) => {
       const d = e?.detail || {}
       if (d?.type === 'customMeshMissing') {
-        setToast({ message: `일부 커스텀 메쉬를 찾지 못했습니다. (id=${d.id})`, type: 'warning' })
-        setTimeout(() => setToast(null), 2500)
+  showToast(`일부 커스텀 메쉬를 찾지 못했습니다. (id=${d.id})`, 'warning', 2500)
       }
     }
     window.addEventListener('mapLoadWarning', onWarn)
@@ -752,7 +684,7 @@ function EditorPage() {
       // 항상 현재 변환 상태를 지오메트리에 굽고 루트는 항등으로 저장
       const preserveTransform = true;
 
-      setToast({ message: '라이브러리에 추가 중...', type: 'info' });
+  showToast('라이브러리에 추가 중...', 'info', 1500);
 
       // 실제 Three.js 객체로 해석
       const ec = editorControlsRef.current;
@@ -798,8 +730,7 @@ function EditorPage() {
       }
 
       if (!exportTarget) {
-        setToast({ message: '내보낼 Three.js 객체를 찾지 못했습니다.', type: 'error' });
-        setTimeout(() => setToast(null), 4000);
+        showToast('내보낼 Three.js 객체를 찾지 못했습니다.', 'error', 4000);
         return;
       }
 
@@ -811,8 +742,7 @@ function EditorPage() {
       if (exists) {
         const overwrite = confirm(`동일 ID의 커스텀 메쉬가 이미 있습니다.\n\n- 기존 항목을 덮어쓸까요?`)
         if (!overwrite) {
-          setToast({ message: '추가가 취소되었습니다(중복 ID).', type: 'warning' })
-          setTimeout(() => setToast(null), 2500)
+          showToast('추가가 취소되었습니다(중복 ID).', 'warning', 2500)
           return
         }
         // IDB 업서트 후 스토어 교체 반영
@@ -828,19 +758,13 @@ function EditorPage() {
       // 강제로 LibraryPanel 새로고침을 위한 이벤트 발생
       window.dispatchEvent(new CustomEvent('customMeshAdded', { detail: meshData }));
 
-  setToast({ message: `"${name}" GLB가 내보내지고 라이브러리에 추가되었습니다! (그룹 피벗 항등/자식 월드 변환 유지)`, type: 'success' });
-      
-      // 5초 후 토스트 자동 닫기
-  setTimeout(() => setToast(null), 5000);
+  showToast(`"${name}" GLB가 내보내지고 라이브러리에 추가되었습니다! (그룹 피벗 항등/자식 월드 변환 유지)`, 'success', 5000);
     } catch (error) {
       console.error('라이브러리 추가 실패:', error);
       const msg = (error && (error.message === 'NO_MESH_FOUND'))
         ? '선택한 오브젝트에서 내보낼 메시를 찾지 못했습니다. (스키닝/인스턴스/비메시 제외)'
         : '라이브러리 추가에 실패했습니다.';
-      setToast({ message: msg, type: 'error' });
-      
-      // 5초 후 토스트 자동 닫기
-      setTimeout(() => setToast(null), 5000);
+  showToast(msg, 'error', 5000);
     }
   }
 
@@ -921,14 +845,7 @@ function EditorPage() {
         </div>
       )}
 
-      {/* Toast 메시지 */}
-      {toast && (
-        <Toast
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
+  {/* Toast는 ToastProvider에서 전역 렌더 */}
     </div>
   )
 }

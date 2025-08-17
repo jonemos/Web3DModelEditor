@@ -87,8 +87,8 @@ export class GLBMeshManager {
         createdAt: timestamp
       };
 
-      await this.saveCustomMesh(meshData);
-      try { window.dispatchEvent(new CustomEvent('customMeshAdded')) } catch {}
+  await this.saveCustomMesh(meshData);
+  try { window.dispatchEvent(new CustomEvent('customMeshAdded')) } catch {}
       return meshData;
     } catch (e) {
       console.error('GLB 임포트 실패:', e);
