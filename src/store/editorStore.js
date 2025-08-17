@@ -381,10 +381,14 @@ export const useEditorStore = create((set, get) => {
   // HDRI 설정 초기화 (동기 경로 제거)
   initializeHDRISettings: () => false,
   
-  // HDRI 설정 저장 (localStorage에)
+  // HDRI 설정 저장 (직렬화 안전하게)
   saveHDRISettings: async () => {
     const { hdriSettings } = get()
-    try { await saveEnvironmentSettingsAsync({ hdriSettings: { ...(hdriSettings || {}) } }) } catch {}
+    try {
+      const { sanitizeHDRISettings } = await import('../utils/viewGizmoConfig')
+      const safe = sanitizeHDRISettings(hdriSettings)
+      await saveEnvironmentSettingsAsync({ hdriSettings: safe })
+    } catch {}
   },
   
   // Asset actions
@@ -928,13 +932,16 @@ export const useEditorStore = create((set, get) => {
       // 선택적으로 뷰 상태를 함께 저장 (없으면 자동 캡처분 사용)
       viewState: autoView || undefined
     }
+    let sqliteOk = false
     try {
       const { mapsUpsert } = await import('../utils/sqlite')
       await mapsUpsert(String(name || ''), mapData, mapData.__version)
+      sqliteOk = true
     } catch (e) {
-      // 폴백: localStorage 보관 (최소 보존)
-      try { localStorage.setItem(`map_${name}`, JSON.stringify(mapData)) } catch {}
+      // 무시하고 아래 로컬 미러로 보존
     }
+    // 항상 로컬 미러 저장(복구/불러오기 폴백 용)
+    try { localStorage.setItem(`map_${name}`, JSON.stringify(mapData)) } catch {}
   },
   // 맵 원본 데이터 조회 (저장된 viewState 포함)
   getMapData: async (name) => {
@@ -954,19 +961,39 @@ export const useEditorStore = create((set, get) => {
   },
   // 맵 목록 조회
   listMaps: async () => {
+    const rows = []
     try {
       const { mapsList } = await import('../utils/sqlite')
-      return await mapsList()
-    } catch { return [] }
+      const sqlRows = await mapsList()
+      if (Array.isArray(sqlRows)) rows.push(...sqlRows)
+    } catch {}
+    // localStorage fallback entries (map_*) 병합
+    try {
+      const keys = Object.keys(localStorage || {})
+      const mapKeys = keys.filter(k => k.startsWith('map_'))
+      const existing = new Set(rows.map(r => String(r.name)))
+      for (const k of mapKeys) {
+        const nm = k.substring(4)
+        if (!existing.has(nm)) rows.push({ name: nm, version: 1, updated_at: null })
+      }
+    } catch {}
+    // 최신순 정렬(가능한 경우)
+    rows.sort((a,b) => (b.updated_at||0) - (a.updated_at||0))
+    return rows
   },
   // 맵 삭제
   deleteMap: async (name) => {
+    // 이름 정규화
+    const nm = String(name || '')
     try {
       const { mapsDelete } = await import('../utils/sqlite')
-      await mapsDelete(String(name || ''))
+      await mapsDelete(nm)
+      // SQLite 삭제 성공해도 로컬 미러는 항상 같이 제거
+      try { localStorage.removeItem(`map_${nm}`) } catch {}
       return true
     } catch {
-      try { localStorage.removeItem(`map_${name}`) } catch {}
+      // SQLite 실패 시에도 로컬 미러 제거 시도
+      try { localStorage.removeItem(`map_${nm}`) } catch {}
       return false
     }
   },

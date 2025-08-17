@@ -271,7 +271,7 @@ function EditorPage() {
   // Sun light removed
   }
 
-  // HDRI 설정 자동 저장
+  // HDRI 설정 자동 저장(스토어 내부에서 직렬화 안전한 형태로 저장)
   useEffect(() => {
     if (scene) {
       setTimeout(() => saveHDRISettings(), 100)
@@ -719,6 +719,19 @@ function EditorPage() {
       setTimeout(() => setToast(null), 1500)
     }
   }
+
+  // Notify user if some assets were missing on map load
+  useEffect(() => {
+    const onWarn = (e) => {
+      const d = e?.detail || {}
+      if (d?.type === 'customMeshMissing') {
+        setToast({ message: `일부 커스텀 메쉬를 찾지 못했습니다. (id=${d.id})`, type: 'warning' })
+        setTimeout(() => setToast(null), 2500)
+      }
+    }
+    window.addEventListener('mapLoadWarning', onWarn)
+    return () => window.removeEventListener('mapLoadWarning', onWarn)
+  }, [])
 
   // 메쉬를 라이브러리에 추가하는 핸들러
   const handleAddToLibrary = async (object) => {

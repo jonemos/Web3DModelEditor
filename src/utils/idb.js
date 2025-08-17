@@ -53,6 +53,32 @@ async function blobDelete(store, key) {
   })
 }
 
+// Hydrate a single mesh's blobs from SQLite meta (legacy base64) when blobs are missing
+async function hydrateOneFromSQLite(id) {
+  try {
+    const metas = await customMeshesGetAll()
+    const m = (metas || []).find(x => x.id === id)
+    if (!m) return false
+    let updated = false
+    if (m.glbData) {
+      const bin = m.glbData instanceof Uint8Array ? m.glbData : new Uint8Array(m.glbData)
+      await blobPut(STORE_GLB, id, new Blob([bin], { type: 'model/gltf-binary' }))
+      updated = true
+    }
+    if (typeof m.thumbnail === 'string' && m.thumbnail.startsWith('data:')) {
+      try {
+        const blob = await (await fetch(m.thumbnail)).blob()
+        await blobPut(STORE_THUMB, id, blob)
+        updated = true
+      } catch {}
+    }
+    return updated
+  } catch (e) {
+    console.warn('hydrateOneFromSQLite skipped:', e)
+    return false
+  }
+}
+
 // One-time migration: if legacy sqlite has base64, move to blob stores
 async function migrateB64ToBlobsOnce() {
   try {
@@ -102,6 +128,49 @@ export const idbGetAllCustomMeshes = async () => {
   } catch (e) {
     console.error('getAll failed:', e)
     return []
+  }
+}
+
+// Fetch single custom mesh by id (hydrate blobs if present)
+export const idbGetCustomMesh = async (id) => {
+  try {
+    // Read meta from SQLite (reuse getAll and filter to keep API simple and tolerant of schema)
+    const metas = await customMeshesGetAll()
+    const meta = (metas || []).find(m => m.id === id) || null
+    // Hydrate blobs from IDB stores
+    let glbBlob = await blobGet(STORE_GLB, id)
+    let thumbBlob = await blobGet(STORE_THUMB, id)
+    // If missing in blob stores and no meta binary, try targeted hydration from SQLite
+    if (!glbBlob && !(meta?.glbData)) {
+      const did = await hydrateOneFromSQLite(id)
+      if (did) {
+        glbBlob = await blobGet(STORE_GLB, id)
+        thumbBlob = await blobGet(STORE_THUMB, id)
+      }
+    }
+    // If still missing, try migrating from legacy localStorage then retry blob fetch once
+    if (!glbBlob) {
+      try {
+        const { migrateLocalStorageCustomMeshesToIDB } = await import('./idb.js')
+        const did = await migrateLocalStorageCustomMeshesToIDB()
+        if (did) {
+          glbBlob = await blobGet(STORE_GLB, id)
+          if (!thumbBlob) thumbBlob = await blobGet(STORE_THUMB, id)
+        }
+      } catch {}
+    }
+    if (!meta && !glbBlob) return null
+    return {
+      id,
+      name: meta?.name ?? '',
+      // Prefer Blob (zero-copy) when available; callers may convert as needed
+      glbData: glbBlob || (meta?.glbData ?? null),
+      thumbnail: thumbBlob || (meta?.thumbnail ?? null),
+      createdAt: meta?.createdAt ?? Date.now()
+    }
+  } catch (e) {
+    console.error('getCustomMesh failed:', e)
+    return null
   }
 }
 

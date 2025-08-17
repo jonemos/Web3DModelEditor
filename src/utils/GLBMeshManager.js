@@ -733,6 +733,25 @@ export class GLBMeshManager {
   }
 
   /**
+   * 커스텀 메쉬 단건 조회 (ID 기준)
+   * 우선 IndexedDB blob 스토어를 사용하는 idb.js 단건 API를 시도하고,
+   * 실패 시 기존 전체 목록에서 탐색합니다.
+   */
+  async getCustomMeshById(id) {
+    try {
+      const { idbGetCustomMesh } = await import('./idb.js');
+      const m = await idbGetCustomMesh(id);
+      if (m) return m;
+    } catch {}
+    try {
+      const list = await this.getCustomMeshes();
+      return (list || []).find(x => x.id === id) || null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * 커스텀 메쉬 삭제
    * @param {string} meshId 삭제할 메쉬 ID
    * @returns {Array} 업데이트된 커스텀 메쉬 배열

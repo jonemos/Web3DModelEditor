@@ -106,6 +106,31 @@ function normalizeAppSettings(raw) {
 // ------------------------------
 import { settingsGet, settingsSet } from './sqlite'
 
+// Runtime 객체(Texture/PMREM 등)를 제거해 직렬화 가능한 형태로 정리
+export function sanitizeHDRISettings(h) {
+  const src = h || {}
+  const cur = src.currentHDRI || null
+  const safeCurrent = cur
+    ? {
+        name: cur.name,
+        type: cur.type,
+        // URL만 보존(있을 때). Texture/RT는 저장 금지
+        url: cur.url || undefined,
+      }
+    : null
+  return {
+    hdriIntensity: Number.isFinite(src.hdriIntensity) ? src.hdriIntensity : defaultEnvironmentSettings.hdriSettings.hdriIntensity,
+    hdriRotation: Number.isFinite(src.hdriRotation) ? src.hdriRotation : defaultEnvironmentSettings.hdriSettings.hdriRotation,
+    sunLightEnabled: !!src.sunLightEnabled,
+    sunIntensity: Number.isFinite(src.sunIntensity) ? src.sunIntensity : defaultEnvironmentSettings.hdriSettings.sunIntensity,
+    timeOfDay: Number.isFinite(src.timeOfDay) ? src.timeOfDay : defaultEnvironmentSettings.hdriSettings.timeOfDay,
+    sunAzimuth: Number.isFinite(src.sunAzimuth) ? src.sunAzimuth : defaultEnvironmentSettings.hdriSettings.sunAzimuth,
+    sunElevation: Number.isFinite(src.sunElevation) ? src.sunElevation : defaultEnvironmentSettings.hdriSettings.sunElevation,
+    sunColor: typeof src.sunColor === 'string' ? src.sunColor : defaultEnvironmentSettings.hdriSettings.sunColor,
+    currentHDRI: safeCurrent,
+  }
+}
+
 export async function getAppSettingsAsync() {
   try {
     const fromSql = await settingsGet(APP_SETTINGS_KEY)
@@ -198,7 +223,7 @@ export async function saveEnvironmentSettingsAsync(cfg) {
 
 export function startEnvironmentAutoPersist(store) {
   const pick = (s) => ({
-    hdriSettings: { ...(s.hdriSettings || {}) },
+  hdriSettings: sanitizeHDRISettings(s.hdriSettings),
     postProcessing: { enabled: !!s.isPostProcessingEnabled, preset: s.postProcessingPreset || 'default' },
     // safeMode는 스토어에서 직접 관리되므로 자동 저장에 포함
     safeMode: { enabled: !!s.safeMode?.enabled, pixelRatio: Number(s.safeMode?.pixelRatio ?? 1) },

@@ -1346,13 +1346,14 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             editorControlsRef.current.selectObject(mesh);
           }
         );
-      } else if (obj.type === 'glb' && (obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id || obj.glbData)) {
-        // 커스텀 메쉬: id 참조 또는 임시 glbData
+  } else if (obj.type === 'glb' && (obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id || obj.glbData)) {
+    // 커스텀 메쉬: id 참조 또는 임시 glbData
   const mgr = getGLBMeshManager();
   // 중복 로드 방지
   if (loadingIdsRef.current.has(obj.id) || loadedObjectsRef.current.has(obj.id)) return;
   loadingIdsRef.current.add(obj.id);
-        const derivedId = obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id;
+  const derivedId = obj.customMeshId || obj.userData?.customMeshId || obj.userData?.originalData?.id;
+  const libUrl = obj.userData?.originalData?.glbUrl || obj.userData?.glbUrl || obj.glbUrl || null;
         const isValidGLBData = (d) => {
           if (!d) return false;
           if (d instanceof ArrayBuffer) return true;
@@ -1405,16 +1406,67 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
           );
         };
 
-    if (derivedId) {
-          mgr.getCustomMeshes().then((list) => {
-      const found = (list || []).find(m => m.id === derivedId);
-            if (!found || !found.glbData) throw new Error('CUSTOM_MESH_NOT_FOUND');
-            const u = mgr.createBlobURL(found.glbData);
-            loadFromUrl(u);
-          }).catch((e) => {
-            console.error('커스텀 메쉬 로드 실패:', e);
-            try { loadingIdsRef.current.delete(obj.id); } catch {}
-          });
+    // 라이브러리 항목은 URL로 직접 로드
+    if (!obj.glbData && libUrl) {
+      try { loadFromUrl(libUrl); } catch (e) { try { loadingIdsRef.current.delete(obj.id); } catch {} }
+    } else if (derivedId) {
+          (async () => {
+            try {
+              // 우선 단건 조회 (Blob 스토어 포함)
+              const { idbGetCustomMesh } = await import('../../utils/idb')
+              const found = await idbGetCustomMesh(derivedId)
+              if (!found) throw new Error('CUSTOM_MESH_NOT_FOUND')
+              let glbData = found.glbData
+              // If Blob, convert to object URL directly; if ArrayBuffer/Uint8Array, use helper
+              if (glbData && typeof glbData === 'object' && 'size' in glbData) {
+                const url = URL.createObjectURL(glbData)
+                loadFromUrl(url)
+              } else if (glbData) {
+                const u = mgr.createBlobURL(glbData)
+                loadFromUrl(u)
+              } else {
+                throw new Error('CUSTOM_MESH_NOT_FOUND')
+              }
+            } catch (e) {
+              // 폴백: 전체 목록 조회 후 탐색 (구버전 경로) + 단건 하이드레이션 재시도 로그
+              try {
+                const list = await mgr.getCustomMeshes()
+                const found2 = (list || []).find(m => m.id === derivedId)
+                if (found2?.glbData) {
+                  const u = mgr.createBlobURL(found2.glbData)
+                  loadFromUrl(u)
+                } else {
+                  throw new Error('CUSTOM_MESH_NOT_FOUND')
+                }
+              } catch (err) {
+                console.warn(`커스텀 메쉬 누락: id=${derivedId}`)
+                // 최종 폴백: 플레이스홀더 박스 생성하여 장면 일관성 유지
+                try {
+                  const geometry = new THREE.BoxGeometry(1, 1, 1)
+                  const material = new THREE.MeshLambertMaterial({ color: 0xff6b6b, transparent: true, opacity: 0.7 })
+                  const mesh = new THREE.Mesh(geometry, material)
+                  mesh.position.set(obj.position.x, obj.position.y, obj.position.z)
+                  mesh.rotation.set(obj.rotation.x, obj.rotation.y, obj.rotation.z)
+                  mesh.scale.set(obj.scale.x, obj.scale.y, obj.scale.z)
+                  mesh.name = `${obj.name || derivedId} (누락)`
+                  mesh.userData = { id: obj.id, type: obj.type, customMeshId: derivedId, loadError: true, missingCustomMesh: true }
+                  mesh.castShadow = true
+                  mesh.receiveShadow = true
+                  mesh.visible = obj.visible !== false
+                  scene.add(mesh)
+                  editorControlsRef.current.addSelectableObject(mesh)
+                  loadedObjectsRef.current.set(obj.id, mesh)
+                  setSelectedObject(obj.id)
+                  editorControlsRef.current.selectObject(mesh)
+                  // 사용자 알림 이벤트 디스패치
+                  try {
+                    window.dispatchEvent(new CustomEvent('mapLoadWarning', { detail: { type: 'customMeshMissing', id: derivedId, objectId: obj.id, objectName: obj.name || '' } }))
+                  } catch {}
+                } catch {}
+                try { loadingIdsRef.current.delete(obj.id); } catch {}
+              }
+            }
+          })();
     } else if (obj.glbData && isValidGLBData(obj.glbData)) {
           try {
             const u = mgr.createBlobURL(obj.glbData);

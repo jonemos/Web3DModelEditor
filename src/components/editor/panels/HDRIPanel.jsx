@@ -201,12 +201,12 @@ function HDRIPanel({ scene, onClose }) {
         scene.environmentIntensity = hdriIntensity
       }
 
+      // 렌더링용 런타임 참조는 컴포넌트 로컬 변수/scene에만 보관
+      // 스토어에는 직렬화 가능한 정보만 저장
       updateHDRISettings({
         currentHDRI: {
           name: name,
           type: 'hdr',
-          texture: texture,
-          envRT: envRT,
           url: url
         }
       })
@@ -256,8 +256,6 @@ function HDRIPanel({ scene, onClose }) {
             currentHDRI: {
               name: name + ' (폴백)',
               type: 'hdr',
-              texture: fallbackTexture,
-              envRT: envRT,
               url: url
             }
           })
@@ -349,12 +347,7 @@ function HDRIPanel({ scene, onClose }) {
         scene.background = new THREE.Color(0x87CEEB)
         scene.environment = null
         
-        updateHDRISettings({
-          currentHDRI: {
-            name: '기본 스카이박스',
-            type: 'gradient'
-          }
-        })
+  updateHDRISettings({ currentHDRI: { name: '기본 스카이박스', type: 'gradient' } })
         break
 
       case 'none':
@@ -367,12 +360,7 @@ function HDRIPanel({ scene, onClose }) {
         scene.background = new THREE.Color(0x2a2a2a) // 회색 배경
         scene.environment = null
         
-        updateHDRISettings({
-          currentHDRI: {
-            name: '기본 배경',
-            type: 'none'
-          }
-        })
+  updateHDRISettings({ currentHDRI: { name: '기본 배경', type: 'none' } })
         break
     }
   }
