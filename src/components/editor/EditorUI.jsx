@@ -115,29 +115,13 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
     });
   };
 
-  // 전역 키보드 이벤트 처리
+  // 전역 키보드 이벤트 처리 제거: 키 입력은 KeyboardController가 중앙 처리
   useEffect(() => {
-    const handleKeyDown = (e) => {
-      // F키 - 포커스
-      if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault()
-        if (selectedObject?.id) {
-          // 선택된 오브젝트가 있으면 포커스
-          handleObjectFocus(selectedObject)
-        }
-      }
-    }
-
-    // 커스텀 컨텍스트 메뉴 이벤트 리스너
     const handleEditorContextMenu = (e) => {
       handleContextMenu(e.detail.originalEvent);
     };
-
-    window.addEventListener('keydown', handleKeyDown)
     window.addEventListener('editorContextMenu', handleEditorContextMenu)
-    
     return () => {
-      window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('editorContextMenu', handleEditorContextMenu)
     }
   }, [selectedObject])
@@ -642,7 +626,8 @@ function EditorUI({ editorControls, postProcessingManager, onAddToLibrary, showI
       // 오브젝트가 씬에 남아있는지 확인
       let inScene = false; let p = a.targetObject;
       while (p) { if (p === scene) { inScene = true; break; } p = p.parent; }
-      if (!a.targetObject || !inScene) { try { a.el?.style && (a.el.style.display = 'none'); } catch {}; continue; }
+  // 타겟이 아직 없거나 씬에 없으면 숨기되, 보관하여 이후 프레임에서 리바인딩 기회를 유지
+  if (!a.targetObject || !inScene) { try { a.el?.style && (a.el.style.display = 'none'); } catch {}; keep.push(a); continue; }
       // 월드 포인트 계산
       try { a.targetObject.updateMatrixWorld?.(true); } catch {}
       const world = a.localPoint.clone();

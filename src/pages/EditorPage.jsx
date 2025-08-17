@@ -57,6 +57,9 @@ function EditorPage() {
   } = useEditorStore()
   
   const [showDialog, setShowDialog] = useState(null)
+  const [mapList, setMapList] = useState([])
+  const [mapListLoading, setMapListLoading] = useState(false)
+  const [loadingMapName, setLoadingMapName] = useState('')
   const [dialogInput, setDialogInput] = useState('')
   const [toast, setToast] = useState(null)
   const [showInspector, setShowInspector] = useState(true) // 인스펙터 패널 상태 추가
@@ -146,6 +149,10 @@ function EditorPage() {
   // 키보드 이벤트 처리
   useEffect(() => {
     const handleKeyDown = (e) => {
+      if (e?.defaultPrevented) return;
+      const t = e?.target; const tag = t?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t?.isContentEditable) return;
+      if (e?.repeat) return;
       // I키 - 인스펙터 토글
       if (e.key === 'i' || e.key === 'I') {
         if (!e.ctrlKey && !e.altKey && !e.shiftKey) {
@@ -154,117 +161,57 @@ function EditorPage() {
         }
       }
       
-      // Ctrl+C - 복사
+      // Ctrl+C - 복사 (다음 프레임으로 연기해 입력 지연 감소)
       if (e.ctrlKey && (e.key === 'c' || e.key === 'C')) {
-        e.preventDefault()
-        
-        
-        if (selectedObject) {
-          // EditorControls에서 실제 선택된 Three.js 객체 가져오기
-          let threeObject = null;
-          
-          if (editorControlsRef.current) {
-            // 선택된 객체 ID로 Three.js 객체 찾기
-            const objectId = selectedObject.id || selectedObject;
-            threeObject = editorControlsRef.current.findObjectById(objectId);
-            
-            // 찾지 못한 경우 현재 선택된 객체들에서 가져오기
-            if (!threeObject && editorControlsRef.current.selectedObjects?.length > 0) {
-              threeObject = editorControlsRef.current.selectedObjects[0];
+        e.preventDefault();
+        if (!selectedObject) {
+          setToast({ message: '복사할 객체를 먼저 선택해주세요', type: 'warning' });
+          setTimeout(() => setToast(null), 2000);
+          return;
+        }
+        requestAnimationFrame(() => {
+          try {
+            // EditorControls에서 실제 선택된 Three.js 객체 우선
+            let threeObject = null;
+            if (editorControlsRef.current) {
+              const objectId = selectedObject.id || selectedObject;
+              threeObject = editorControlsRef.current.findObjectById(objectId) || (editorControlsRef.current.selectedObjects?.[0] || null);
             }
-          }
-          
-          
-          
-          if (threeObject) {
-            
-            copyObject(threeObject);
-            setToast({ 
-              message: `"${threeObject.name}"이(가) 복사되었습니다`, 
-              type: 'success' 
-            });
-            setTimeout(() => setToast(null), 2000);
-          } else {
-            
-            copyObject(selectedObject);
-            setToast({ 
-              message: `"${selectedObject.name}"이(가) 복사되었습니다`, 
-              type: 'success' 
-            });
+            if (threeObject) {
+              copyObject(threeObject);
+              setToast({ message: `"${threeObject.name}"이(가) 복사되었습니다`, type: 'success' });
+            } else {
+              copyObject(selectedObject);
+              setToast({ message: `"${selectedObject.name}"이(가) 복사되었습니다`, type: 'success' });
+            }
+          } finally {
             setTimeout(() => setToast(null), 2000);
           }
-        } else {
-          
-          setToast({ 
-            message: '복사할 객체를 먼저 선택해주세요', 
-            type: 'warning' 
-          });
-          setTimeout(() => setToast(null), 2000);
-        }
+        });
       }
       
-      // Ctrl+V - 붙여넣기
+      // Ctrl+V - 붙여넣기 (다음 프레임으로 연기)
       if (e.ctrlKey && (e.key === 'v' || e.key === 'V')) {
-        e.preventDefault()
-        
-        
-        if (hasClipboardData()) {
-          const pastedObject = pasteObject();
-          if (pastedObject) {
-            setToast({ 
-              message: `"${pastedObject.name}"이(가) 붙여넣기되었습니다`, 
-              type: 'success' 
-            });
-            setTimeout(() => setToast(null), 2000);
-          } else {
-            
-            setToast({ 
-              message: '붙여넣기에 실패했습니다', 
-              type: 'error' 
-            });
+        e.preventDefault();
+        requestAnimationFrame(() => {
+          try {
+            if (hasClipboardData()) {
+              const pastedObject = pasteObject();
+              if (pastedObject) {
+                setToast({ message: `"${pastedObject.name}"이(가) 붙여넣기되었습니다`, type: 'success' });
+              } else {
+                setToast({ message: '붙여넣기에 실패했습니다', type: 'error' });
+              }
+            } else {
+              setToast({ message: '붙여넣을 객체가 클립보드에 없습니다', type: 'warning' });
+            }
+          } finally {
             setTimeout(() => setToast(null), 2000);
           }
-        } else {
-          setToast({ 
-            message: '붙여넣을 객체가 클립보드에 없습니다', 
-            type: 'warning' 
-          });
-          setTimeout(() => setToast(null), 2000);
-        }
+        });
       }
       
-      // Delete 키 - 삭제
-      if (e.key === 'Delete') {
-        e.preventDefault()
-        
-        
-        if (selectedObject) {
-          const selectedIdRaw = typeof selectedObject === 'object' ? (selectedObject.id ?? selectedObject.userData?.ownerId) : selectedObject;
-          // ownerId 매핑 보강
-          const objectToDelete = objects.find(obj => obj.id === selectedIdRaw);
-          if (objectToDelete) {
-            const objectName = objectToDelete.name;
-            deleteSelectedObject();
-            setToast({ 
-              message: `"${objectName}"이(가) 삭제되었습니다`, 
-              type: 'success' 
-            });
-            setTimeout(() => setToast(null), 2000);
-          } else {
-            setToast({ 
-              message: '삭제할 객체를 찾을 수 없습니다', 
-              type: 'error' 
-            });
-            setTimeout(() => setToast(null), 2000);
-          }
-        } else {
-          setToast({ 
-            message: '삭제할 객체를 먼저 선택해주세요', 
-            type: 'warning' 
-          });
-          setTimeout(() => setToast(null), 2000);
-        }
-      }
+  // Delete 키 - 삭제는 KeyboardController(Object actions)에서 처리됨(중복 제거)
     }
 
     window.addEventListener('keydown', handleKeyDown)
@@ -679,21 +626,22 @@ function EditorPage() {
     }
   }
 
-  const handleDialogConfirm = () => {
+  const handleDialogConfirm = async () => {
     if (showDialog === 'save' && dialogInput.trim()) {
       const viewState = getViewState()
       // 스토어의 saveMap에 viewState를 포함 저장
-      saveMap(dialogInput.trim(), viewState)
+  await saveMap(dialogInput.trim(), viewState)
       alert(`맵이 "${dialogInput.trim()}"으로 저장되었습니다.`)
     } else if (showDialog === 'load' && dialogInput.trim()) {
       // 먼저 로드하여 오브젝트/벽을 반영
-      const success = loadMap(dialogInput.trim())
+  const success = await useEditorStore.getState().loadMap?.(dialogInput.trim())
       if (success) {
         // 저장된 viewState가 있으면 적용
         try {
-          const raw = useEditorStore.getState().getMapData?.(dialogInput.trim())
+      const raw = await useEditorStore.getState().getMapData?.(dialogInput.trim())
           if (raw && raw.viewState) applyViewState(raw.viewState)
         } catch {}
+        try { window.__requestRender && window.__requestRender() } catch {}
         alert(`맵 "${dialogInput.trim()}"을 불러왔습니다.`)
       } else {
         alert(`맵 "${dialogInput.trim()}"을 찾을 수 없습니다.`)
@@ -707,6 +655,69 @@ function EditorPage() {
   const handleDialogCancel = () => {
     setShowDialog(null)
     setDialogInput('')
+  }
+
+  // 맵 목록 로딩/동작
+  const reloadMapList = async () => {
+    try {
+      setMapListLoading(true)
+      const rows = await useEditorStore.getState().listMaps?.()
+      setMapList(Array.isArray(rows) ? rows : [])
+    } catch {
+      setMapList([])
+    } finally {
+      setMapListLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (showDialog === 'load') {
+      reloadMapList()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDialog])
+
+  const handleLoadFromList = async (name) => {
+    if (!name) return
+    try {
+      setLoadingMapName(name)
+      setToast({ message: `"${name}" 불러오는 중…`, type: 'info' })
+      const ok = await useEditorStore.getState().loadMap?.(name)
+      if (ok) {
+        try {
+          const raw = await useEditorStore.getState().getMapData?.(name)
+          if (raw?.viewState) applyViewState(raw.viewState)
+        } catch {}
+        try { window.__requestRender && window.__requestRender() } catch {}
+        setShowDialog(null)
+        setDialogInput('')
+        setToast({ message: `맵 "${name}"을 불러왔습니다.`, type: 'success' })
+        setTimeout(() => setToast(null), 1800)
+      } else {
+        setToast({ message: `맵 "${name}"을 찾을 수 없습니다.`, type: 'error' })
+        setTimeout(() => setToast(null), 1800)
+      }
+    } catch (e) {
+      setToast({ message: '불러오기 중 오류가 발생했습니다.', type: 'error' })
+      setTimeout(() => setToast(null), 1800)
+    } finally {
+      setLoadingMapName('')
+    }
+  }
+
+  const handleDeleteMap = async (name) => {
+    if (!name) return
+    const yes = window.confirm(`정말 "${name}" 맵을 삭제하시겠습니까?`)
+    if (!yes) return
+    const ok = await useEditorStore.getState().deleteMap?.(name)
+    if (ok) {
+      await reloadMapList()
+      setToast({ message: `맵 "${name}"이(가) 삭제되었습니다.`, type: 'success' })
+      setTimeout(() => setToast(null), 1500)
+    } else {
+      setToast({ message: '삭제에 실패했습니다.', type: 'error' })
+      setTimeout(() => setToast(null), 1500)
+    }
   }
 
   // 메쉬를 라이브러리에 추가하는 핸들러
@@ -853,9 +864,36 @@ function EditorPage() {
               }}
             />
             <div className="dialog-buttons">
-              <button onClick={handleDialogConfirm}>확인</button>
-              <button onClick={handleDialogCancel}>취소</button>
+              <button type="button" onClick={handleDialogConfirm} disabled={!!loadingMapName}>확인</button>
+              <button type="button" onClick={handleDialogCancel} disabled={!!loadingMapName}>취소</button>
             </div>
+            {showDialog === 'load' && (
+              <div style={{marginTop: 12, maxHeight: 260, overflow: 'auto', borderTop: '1px solid #444', paddingTop: 10}}>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: 8}}>
+                  <strong>저장된 맵 목록</strong>
+                  <button onClick={reloadMapList} disabled={mapListLoading} style={{padding:'4px 8px'}}>
+                    {mapListLoading ? '새로고침…' : '새로고침'}
+                  </button>
+                </div>
+                {mapList.length === 0 && (
+                  <div style={{opacity:0.7}}>저장된 맵이 없습니다.</div>
+                )}
+                {mapList.map((m) => (
+                  <div key={m.name} style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap: 8, padding:'6px 0', borderBottom:'1px solid #333'}}>
+                    <div style={{display:'flex', flexDirection:'column'}}>
+                      <span style={{fontWeight:600}}>{m.name}</span>
+                      <span style={{fontSize:12, opacity:0.8}}>업데이트: {m.updated_at ? new Date(m.updated_at).toLocaleString() : '-'}</span>
+                    </div>
+                    <div style={{display:'flex', gap:6}}>
+                      <button type="button" onClick={() => handleLoadFromList(m.name)} disabled={!!loadingMapName} style={{padding:'4px 8px'}}>
+                        {loadingMapName === m.name ? '불러오는 중…' : '불러오기'}
+                      </button>
+                      <button type="button" onClick={() => handleDeleteMap(m.name)} disabled={!!loadingMapName} style={{padding:'4px 8px', background:'#a33', color:'#fff'}}>삭제</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

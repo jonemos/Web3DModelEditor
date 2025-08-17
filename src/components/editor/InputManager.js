@@ -37,12 +37,17 @@ export class InputManager {
       keyDown: this.handleKeyDown.bind(this),
       keyUp: this.handleKeyUp.bind(this),
       mouseDown: this.handleMouseDown.bind(this),
-      mouseMove: this.handleMouseMove.bind(this),
+      // mousemove는 rAF로 코얼레싱하여 처리
+      mouseMove: this._scheduleMouseMove.bind(this),
       mouseUp: this.handleMouseUp.bind(this),
       wheel: this.handleWheel.bind(this),
       contextMenu: this.handleContextMenu.bind(this),
       resize: this.handleResize.bind(this)
     };
+
+    // 고주파 입력 코얼레싱 상태
+    this._mouseMoveScheduled = false;
+    this._lastMouseMoveEvent = null;
 
   this.setupEventListeners();
   }
@@ -70,9 +75,10 @@ export class InputManager {
     
     // 마우스 이벤트
     canvas.addEventListener('mousedown', this.boundHandlers.mouseDown);
-    document.addEventListener('mousemove', this.boundHandlers.mouseMove);
+  document.addEventListener('mousemove', this.boundHandlers.mouseMove);
     document.addEventListener('mouseup', this.boundHandlers.mouseUp);
-    canvas.addEventListener('wheel', this.boundHandlers.wheel);
+  // 휠은 preventDefault를 사용하므로 명시적으로 passive: false 지정
+  canvas.addEventListener('wheel', this.boundHandlers.wheel, { passive: false });
     canvas.addEventListener('contextmenu', this.boundHandlers.contextMenu);
   }
 
@@ -162,7 +168,7 @@ export class InputManager {
    */
   handleMouseMove(event) {
     if (!this.isEnabled) return;
-
+    // 이전 좌표 스냅샷 후 최신 좌표 갱신
     this.mouseState.previousPosition = { ...this.mouseState.position };
     this.updateMousePosition(event);
 
@@ -180,6 +186,31 @@ export class InputManager {
     };
 
     this.executeHandler('mouse', 'mousemove', mouseInfo);
+  }
+
+  /**
+   * mousemove 이벤트를 requestAnimationFrame으로 코얼레싱하여 처리
+   */
+  _scheduleMouseMove(event) {
+    this._lastMouseMoveEvent = event;
+    if (this._mouseMoveScheduled) return;
+    this._mouseMoveScheduled = true;
+    const process = () => {
+      this._mouseMoveScheduled = false;
+      const ev = this._lastMouseMoveEvent;
+      this._lastMouseMoveEvent = null;
+      if (!ev) return;
+      try {
+        this.handleMouseMove(ev);
+      } catch (err) {
+        console.error('Error in scheduled mousemove:', err);
+      }
+    };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(process);
+    } else {
+      setTimeout(process, 0);
+    }
   }
 
   /**

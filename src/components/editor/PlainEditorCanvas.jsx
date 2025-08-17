@@ -18,6 +18,7 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
   const loadedObjectsRef = useRef(new Map()); // 로드된 오브젝트들을 추적
   const loadingIdsRef = useRef(new Set()); // GLB 로딩 중인 오브젝트 id 추적
   const statsRef = useRef({ lastT: 0, frames: 0, fps: 0, lastPush: 0, vert: 0, tri: 0, obj: 0 });
+  const idleStatsScheduledRef = useRef(false);
   const dropIndicatorRef = useRef(null); // 드롭 위치 인디케이터(링)
   const dropFadeRef = useRef({ animId: null, t: 0, target: 0, start: 0, startTime: 0, duration: 220, easing: 'easeInOutQuad', maxOpacity: 0.6 });
   
@@ -138,10 +139,10 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     try {
       const useBlender = !!useEditorStore.getState().useBlenderControls;
       if (useBlender) {
-        const bc = new BlenderControls(editorControls.camera, renderer.domElement);
+  const bc = new BlenderControls(editorControls.camera, renderer.domElement);
         bc.setScene(scene);
         const st = useEditorStore.getState();
-        bc.setSpeeds({ rotate: st.cameraOrbitSpeed * 0.01, pan: st.cameraPanSpeed * 0.02, zoom: st.cameraZoomSpeed });
+  bc.setSpeeds({ rotate: st.cameraOrbitSpeed * 0.01, pan: st.cameraPanSpeed * 0.02, zoom: st.cameraZoomSpeed });
         blenderControlsRef.current = bc;
         try { window.__blenderControls = bc } catch {}
         // 구독: 카메라 속도 설정 변경 시 즉시 반영
@@ -277,78 +278,63 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
     const animate = () => {
       const mode = getRenderMode();
       requestAnimationFrame(animate);
-      
+
       // Rotate cube slowly for visual feedback
       cube.rotation.y += 0.005;
-      
-      // 선택된 오브젝트들의 아웃라인 업데이트 (애니메이션 중인 오브젝트용)
-      if (editorControlsRef.current) {
-        editorControlsRef.current.updateSelectedOutlines();
-        // 라이트 헬퍼 주기적 동기화(타겟 이동 포함)
-        try {
-          const sel = editorControlsRef.current.getSelectedObjects?.() || [];
-          sel.forEach((obj) => {
-            if (obj?.isLight && obj.userData?.lightHelper && typeof obj.userData.lightHelper.update === 'function') {
-              obj.userData.lightHelper.update();
-            } else if (obj?.userData?.isLightTarget || obj?.userData?.ownerId) {
-              // 타겟이 선택된 경우: 소유 라이트의 헬퍼 갱신
-              try {
-                const ownerId = obj.userData.ownerId;
-                let ownerLight = null;
-                if (ownerId && loadedObjectsRef.current?.has(ownerId)) {
-                  ownerLight = loadedObjectsRef.current.get(ownerId);
-                } else {
-                  // 폴백: 씬에서 target === obj인 라이트 탐색
-                  scene.traverse((n) => {
-                    if (!ownerLight && n?.isLight && n.target === obj) ownerLight = n;
-                  });
-                }
-                if (ownerLight?.userData?.lightHelper && typeof ownerLight.userData.lightHelper.update === 'function') {
-                  ownerLight.userData.lightHelper.update();
-                }
-              } catch {}
-            }
-          });
-        } catch {}
-      }
-      
-      // 드롭 링 rAF 페이드 처리 (easeInOutQuad)
+
+      // BlenderControls 업데이트 (카메라 이동 시 렌더 요청)
+      const bcUpdated = (() => { try { return blenderControlsRef.current?.update?.() } catch { return false } })();
+      if (bcUpdated) needsRender = true;
+
+      // 드롭 링 rAF 페이드 처리 (가벼움)
       if (dropIndicatorRef.current) {
         const ring = dropIndicatorRef.current;
         const f = dropFadeRef.current;
         if (f && f.duration > 0 && (f.t < 1 || ring.material.opacity !== f.target)) {
           const now = performance.now();
           const elapsed = Math.min(1, (now - f.startTime) / f.duration);
-          // 이징 선택
           let ease;
           switch (f.easing) {
-            case 'linear':
-              ease = elapsed;
-              break;
-            case 'easeOutCubic':
-              ease = 1 - Math.pow(1 - elapsed, 3);
-              break;
-            case 'easeInCubic':
-              ease = Math.pow(elapsed, 3);
-              break;
-            case 'easeInOutQuad':
-            default:
+            case 'linear': ease = elapsed; break;
+            case 'easeOutCubic': ease = 1 - Math.pow(1 - elapsed, 3); break;
+            case 'easeInCubic': ease = Math.pow(elapsed, 3); break;
+            case 'easeInOutQuad': default:
               ease = elapsed < 0.5 ? 2 * elapsed * elapsed : -1 + (4 - 2 * elapsed) * elapsed;
           }
           const nextOpacity = f.start + (f.target - f.start) * ease;
           if (ring.material) ring.material.opacity = Math.max(0, Math.min(1, nextOpacity));
           f.t = elapsed;
-          if (elapsed >= 1 && f.target === 0 && ring.visible) {
-            ring.visible = false; // 완전 페이드아웃 시 숨김
-          }
+          if (elapsed >= 1 && f.target === 0 && ring.visible) ring.visible = false;
         }
       }
 
-  // BlenderControls 업데이트
-  const bcUpdated = (() => { try { return blenderControlsRef.current?.update?.() } catch { return false } })();
-  if (bcUpdated) needsRender = true;
+      // 온디맨드 모드에서 렌더 필요가 없고 카메라도 업데이트 안 된 경우, 무거운 작업을 스킵하여 입력 지연을 줄임
+      if (mode === 'on-demand' && !needsRender && !bcUpdated) {
+        return;
+      }
 
-  // === 통계 갱신 (FPS 및 지오메트리 집계) - 렌더 스킵과 무관하게 실행 ===
+      // 선택된 오브젝트 아웃라인 업데이트는 필요한 경우에만 수행
+      if (editorControlsRef.current && (mode !== 'on-demand' || needsRender)) {
+        try { editorControlsRef.current.updateSelectedOutlines(); } catch {}
+        // 선택된 라이트/타겟의 헬퍼만 갱신 (씬 전체 탐색 제거)
+        try {
+          const sel = editorControlsRef.current.getSelectedObjects?.() || [];
+          sel.forEach((obj) => {
+            if (obj?.isLight && obj.userData?.lightHelper?.update) {
+              obj.userData.lightHelper.update();
+            } else if (obj?.userData?.isLightTarget || obj?.userData?.ownerId) {
+              const ownerId = obj.userData.ownerId;
+              let ownerLight = null;
+              if (ownerId && loadedObjectsRef.current?.has(ownerId)) {
+                ownerLight = loadedObjectsRef.current.get(ownerId);
+              }
+              if (ownerLight?.userData?.lightHelper?.update) ownerLight.userData.lightHelper.update();
+            }
+          });
+        } catch {}
+      }
+
+      // === 통계 갱신: FPS만 경량 계산, 씬 집계는 idle에 위임 ===
       try {
         const now = performance.now();
         const s = statsRef.current;
@@ -359,63 +345,54 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
           s.fps = Math.round((s.frames * 1000) / dt);
           s.frames = 0; s.lastT = now;
         }
-        // 1초마다 씬 집계 후 스토어에 푸시
-        if (!s.lastPush || (now - s.lastPush) >= 1000) {
+        if ((!s.lastPush || (now - s.lastPush) >= 2000) && !idleStatsScheduledRef.current) {
           s.lastPush = now;
-          let objCount = 0, vert = 0, tri = 0;
-          scene.traverse((child) => {
-            if (!child.visible) return;
-            if (child.userData?.isSystemObject || child.userData?.isSelectionOutline) return;
-            // Group 카운트
-            if (child.isGroup) objCount += 1;
-            // Mesh 카운트 및 지오메트리 합산
-            if (child.isMesh && child.geometry) {
-              objCount += 1;
-              const g = child.geometry;
-              const pos = g.attributes?.position;
-              const idx = g.index;
-              const v = pos ? pos.count : 0;
-              const t = idx ? Math.floor(idx.count / 3) : (pos ? Math.floor(pos.count / 3) : 0);
-              vert += v;
-              tri += t;
+          idleStatsScheduledRef.current = true;
+          const schedule = (cb) => {
+            const ric = typeof window !== 'undefined' && window.requestIdleCallback;
+            if (ric) ric(() => cb()); else setTimeout(cb, 0);
+          };
+          schedule(() => {
+            let objCount = 0, vert = 0, tri = 0;
+            try {
+              scene.traverse((child) => {
+                if (!child.visible) return;
+                if (child.userData?.isSystemObject || child.userData?.isSelectionOutline) return;
+                const lname = (child.name || '').toLowerCase();
+                if (lname.includes('transformcontrols') || lname.includes('gizmo') || lname.includes('helper')) return;
+                if (child.isGroup) objCount += 1;
+                if (child.isMesh && child.geometry) {
+                  objCount += 1;
+                  const g = child.geometry;
+                  const pos = g.attributes?.position;
+                  const idx = g.index;
+                  const v = pos ? pos.count : 0;
+                  const t = idx ? Math.floor(idx.count / 3) : (pos ? Math.floor(pos.count / 3) : 0);
+                  vert += v; tri += t;
+                }
+              });
+              s.obj = objCount; s.vert = vert; s.tri = tri;
+              try { useEditorStore.getState().setStats({ fps: s.fps, objects: objCount, vertices: vert, triangles: tri }); } catch {}
+            } finally {
+              idleStatsScheduledRef.current = false;
             }
           });
-          s.obj = objCount; s.vert = vert; s.tri = tri;
-          try { useEditorStore.getState().setStats({ fps: s.fps, objects: objCount, vertices: vert, triangles: tri }); } catch {}
         }
       } catch {}
 
       // 렌더링 (포스트프로세싱 사용 여부)
-      if (mode === 'on-demand' && !needsRender) {
-        return; // 스킵 프레임
-      }
       needsRender = false;
       renderer.clear();
-      // EditorControls의 현재 카메라 사용 (Perspective/Orthographic 토글 대응)
       const currentCamera = editorControlsRef.current ? editorControlsRef.current.camera : camera;
-      
       const usePP = isPostProcessingEnabledRef.current && !!postProcessingRef.current;
-      // 라이트 헬퍼 월드행렬/업데이트 (전역 보강)
-      try {
-        scene.traverse((n) => {
-          if (n?.isLight && n.userData?.lightHelper && typeof n.userData.lightHelper.update === 'function') {
-            try { n.updateMatrixWorld(true); } catch {}
-            try { n.target?.updateMatrixWorld?.(true); } catch {}
-            // three.js SpotLightHelper.update는 light/target의 월드행렬 최신화 후 호출해야 방향/콘이 맞음
-            n.userData.lightHelper.update();
-          }
-        });
-      } catch {}
       if (usePP) {
-        // EditorControls가 보유한 최신 카메라를 컴포저에 반영
         try { postProcessingRef.current.setCamera(currentCamera); } catch {}
         postProcessingRef.current.render();
       } else {
         renderer.render(scene, currentCamera);
       }
-      // 렌더 전후로도 기즈모 라인 강제 숨김 (안전망)
+      // 렌더 전후 gizmo 라인 숨김 및 gizmo 오버레이 렌더
       try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
-      // postprocess 이후 gizmo 오버레이 씬 렌더 (깊이 무시, 색상만 덮어씀)
       renderer.clearDepth();
       renderer.render(gizmoScene, currentCamera);
       try { editorControlsRef.current?.objectSelector?.forceHideGizmoLines?.(); } catch {}
@@ -1470,6 +1447,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             light.target.position.set(obj.position.x, ty, obj.position.z);
             light.castShadow = !!obj.castShadow;
             scene.add(light.target);
+            // 타겟에도 소유자 id 표기하여 매 프레임 씬 전체 탐색을 피함
+            try { light.target.userData = { ...(light.target.userData || {}), isLightTarget: true, ownerId: obj.id }; } catch {}
             assetObject = light;
             try { editorControlsRef.current.addSelectableObject(light.target); } catch {}
             // 헬퍼 부착(선택): 시각적 확인용
@@ -1491,6 +1470,8 @@ function PlainEditorCanvas({ onEditorControlsReady, onPostProcessingReady, onCon
             light.target.position.set(obj.position.x, ty, obj.position.z);
             light.castShadow = !!obj.castShadow;
             scene.add(light.target);
+            // 타겟에도 소유자 id 표기하여 매 프레임 씬 전체 탐색을 피함
+            try { light.target.userData = { ...(light.target.userData || {}), isLightTarget: true, ownerId: obj.id }; } catch {}
             assetObject = light;
             try { editorControlsRef.current.addSelectableObject(light.target); } catch {}
             try { const helper = new THREE.SpotLightHelper(light); light.userData = light.userData || {}; light.userData.lightHelper = helper; scene.add(helper); helper.update?.(); } catch {}

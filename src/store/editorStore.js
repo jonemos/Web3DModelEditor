@@ -875,14 +875,15 @@ export const useEditorStore = create((set, get) => {
     return true;
   },
   
-  saveMap: (name, viewState) => {
+  saveMap: async (name, viewState) => {
     const state = get()
     // 저장 직전 씬의 실제 변환/속성 동기화
     try { state.syncSceneToState?.() } catch {}
     // glbData를 제거하고 참조 id만 남기는 사전 처리
     const serializedObjects = state.objects.map((o) => {
       if (o?.type === 'glb') {
-        const { glbData, file, ...rest } = o || {}
+        // 바이너리(glbData)만 제거하고 file/url/customMeshId 등 참조는 유지
+        const { glbData, ...rest } = o || {}
         return { ...rest }
       }
       return o
@@ -919,6 +920,7 @@ export const useEditorStore = create((set, get) => {
       }
     } catch {}
     const mapData = {
+      __version: 1,
       walls: state.walls,
       objects: serializedObjects,
       // 주석도 함께 저장
@@ -926,24 +928,68 @@ export const useEditorStore = create((set, get) => {
       // 선택적으로 뷰 상태를 함께 저장 (없으면 자동 캡처분 사용)
       viewState: autoView || undefined
     }
-    try { localStorage.setItem(`map_${name}`, JSON.stringify(mapData)) } catch {}
+    try {
+      const { mapsUpsert } = await import('../utils/sqlite')
+      await mapsUpsert(String(name || ''), mapData, mapData.__version)
+    } catch (e) {
+      // 폴백: localStorage 보관 (최소 보존)
+      try { localStorage.setItem(`map_${name}`, JSON.stringify(mapData)) } catch {}
+    }
   },
   // 맵 원본 데이터 조회 (저장된 viewState 포함)
-  getMapData: (name) => {
+  getMapData: async (name) => {
+    try {
+      const { mapsGet } = await import('../utils/sqlite')
+      const obj = await mapsGet(String(name || ''))
+      if (obj) return obj
+    } catch {}
+    // 폴백: localStorage
     try {
       const s = localStorage.getItem(`map_${name}`)
       if (!s) return null
-      return JSON.parse(s)
+      const parsed = JSON.parse(s)
+      if (parsed && !('__version' in parsed)) parsed.__version = 1
+      return parsed
     } catch { return null }
   },
+  // 맵 목록 조회
+  listMaps: async () => {
+    try {
+      const { mapsList } = await import('../utils/sqlite')
+      return await mapsList()
+    } catch { return [] }
+  },
+  // 맵 삭제
+  deleteMap: async (name) => {
+    try {
+      const { mapsDelete } = await import('../utils/sqlite')
+      await mapsDelete(String(name || ''))
+      return true
+    } catch {
+      try { localStorage.removeItem(`map_${name}`) } catch {}
+      return false
+    }
+  },
   
-  loadMap: (name) => {
-    const mapDataString = localStorage.getItem(`map_${name}`)
-    if (mapDataString) {
-      const mapData = JSON.parse(mapDataString)
+  loadMap: async (name) => {
+    // 1) SQLite 우선 조회
+    let mapData = null;
+    try {
+      const { mapsGet } = await import('../utils/sqlite')
+      mapData = await mapsGet(String(name || ''))
+    } catch {}
+    // 2) 폴백: localStorage
+    if (!mapData) {
+      const mapDataString = localStorage.getItem(`map_${name}`)
+      if (mapDataString) {
+        try { mapData = JSON.parse(mapDataString) } catch { mapData = null }
+      }
+    }
+    if (mapData) {
+      if (!('__version' in mapData)) mapData.__version = 1
       
       // 로드 시 변환 필드 정규화 적용
-      const normalizedObjects = (mapData.objects || []).map(o => {
+  const normalizedObjects = (mapData.objects || []).map(o => {
         const n = normalizeTransformFields(o)
         // 레거시 또는 잘못 직렬화된 glbData 정리
         if (n?.type === 'glb') {
@@ -951,6 +997,24 @@ export const useEditorStore = create((set, get) => {
             // {} 같은 잘못된 데이터는 제거
             delete n.glbData
           }
+        }
+        // 타입 누락 보정: 과거 저장본 호환
+        if (!n?.type) {
+          if (n.url || n.file) {
+            n.type = 'glb'
+          } else if (n.geometry && n.params) {
+            n.type = 'basic'
+          } else if (n.size && n.material) {
+            // 매우 오래된 cube 스키마
+            n.type = 'cube'
+          }
+        }
+        // GLB 참조 누락 보정: url/file/customMeshId/glbData 모두 없으면 userData에서 복구 시도
+        if (n?.type === 'glb' && !n.url && !n.file && !n.customMeshId && !n.glbData) {
+          if (n.userData?.originalData?.id) n.customMeshId = n.userData.originalData.id;
+          if (!n.customMeshId && n.userData?.customMeshId) n.customMeshId = n.userData.customMeshId;
+          // 과거 url 필드만 있던 경우 보정
+          if (!n.customMeshId && n.userData?.url) n.url = n.userData.url;
         }
         // 레거시: 캔버스 드롭으로 생성된 기본 도형이 type 'mesh'로 저장된 경우 보정
         if (n?.type === 'mesh' && !n.geometry && !n.params && (n.userData?.type === 'basic' || n.userData?.geometry)) {
@@ -1020,7 +1084,7 @@ export const useEditorStore = create((set, get) => {
         }
       } catch {}
       
-      return true
+  return true
     }
     return false
   },

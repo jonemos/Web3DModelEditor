@@ -15,6 +15,8 @@ let initPromise = null;
 const LEGACY_IDB_NAME = 'Web3DModelEditorDB';
 const LEGACY_IDB_STORE = 'customMeshes';
 const LEGACY_MIGRATION_FLAG = 'sqlite_legacy_migrated_v1';
+// One-time localStorage -> SQLite migration flag for maps
+const MAPS_MIGRATION_FLAG = 'sqlite_maps_migrated_v1';
 
 // ---- Safe base64 helpers (avoid call stack overflow on large buffers) ----
 function uint8ToBase64(uint8) {
@@ -137,6 +139,12 @@ CREATE TABLE IF NOT EXISTS custom_meshes (
   thumbnail_b64 TEXT,
   created_at INTEGER
 );
+CREATE TABLE IF NOT EXISTS saved_maps (
+  name TEXT PRIMARY KEY,
+  data_json TEXT,
+  version INTEGER,
+  updated_at INTEGER
+);
 `);
       // One-time legacy migration from old IndexedDB store
       try {
@@ -148,6 +156,17 @@ CREATE TABLE IF NOT EXISTS custom_meshes (
         }
       } catch (e) {
         console.warn('Legacy migration skipped:', e);
+      }
+      // One-time migration of maps from localStorage (map_*) to SQLite
+      try {
+        const mflag = localStorage.getItem(MAPS_MIGRATION_FLAG);
+        if (!mflag) {
+          await migrateMapsFromLocalStorage();
+          localStorage.setItem(MAPS_MIGRATION_FLAG, '1');
+          persist();
+        }
+      } catch (e) {
+        console.warn('Maps migration skipped:', e);
       }
       return db;
     })();
@@ -251,4 +270,75 @@ async function migrateLegacyIndexedDB() {
       await customMeshesUpsert({ id: m.id, name: m.name, glbData: m.glbData, thumbnail: m.thumbnail });
     } catch {}
   }
+}
+
+// ----- Maps: CRUD helpers backed by SQLite -----
+
+export async function mapsUpsert(name, dataObj, version = 1) {
+  const database = await getDB();
+  const updated_at = Date.now();
+  let data_json = null;
+  try { data_json = JSON.stringify(dataObj ?? {}); } catch { data_json = '{}'; }
+  const stmt = database.prepare('INSERT INTO saved_maps(name, data_json, version, updated_at) VALUES(?, ?, ?, ?)\nON CONFLICT(name) DO UPDATE SET data_json=excluded.data_json, version=excluded.version, updated_at=excluded.updated_at');
+  stmt.run([String(name || ''), data_json, Number.isFinite(version) ? version : 1, updated_at]);
+  stmt.free();
+  persist();
+}
+
+export async function mapsGet(name) {
+  const database = await getDB();
+  const stmt = database.prepare('SELECT data_json, version, updated_at FROM saved_maps WHERE name = ?');
+  let out = null;
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    try {
+      out = JSON.parse(row.data_json || '{}');
+    } catch {
+      out = null;
+    }
+    if (out && typeof out === 'object' && !('__version' in out)) {
+      out.__version = Number.isFinite(row.version) ? row.version : 1;
+    }
+  }
+  stmt.free();
+  return out;
+}
+
+export async function mapsList() {
+  const database = await getDB();
+  const stmt = database.prepare('SELECT name, version, updated_at FROM saved_maps ORDER BY updated_at DESC');
+  const rows = [];
+  while (stmt.step()) {
+    rows.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return rows;
+}
+
+export async function mapsDelete(name) {
+  const database = await getDB();
+  const stmt = database.prepare('DELETE FROM saved_maps WHERE name = ?');
+  stmt.run([String(name || '')]);
+  stmt.free();
+  persist();
+}
+
+// Migrate maps stored as localStorage keys `map_*` into SQLite
+async function migrateMapsFromLocalStorage() {
+  try {
+    const keys = Object.keys(localStorage || {});
+    const mapKeys = keys.filter(k => k.startsWith('map_'));
+    if (mapKeys.length === 0) return;
+    for (const k of mapKeys) {
+      try {
+        const raw = localStorage.getItem(k);
+        if (!raw) continue;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') continue;
+        if (!('__version' in obj)) obj.__version = 1;
+        const name = k.substring(4);
+        await mapsUpsert(name, obj, obj.__version || 1);
+      } catch {}
+    }
+  } catch {}
 }

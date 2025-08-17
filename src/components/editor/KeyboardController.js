@@ -35,35 +35,40 @@ export class KeyboardController {
     this.actions.transform.set('KeyW', {
       name: 'Move Mode',
       description: '이동 모드',
-      action: null, // 나중에 등록됨
+  action: null, // 나중에 등록됨
+  allowRepeat: false,
       category: 'transform'
     });
 
     this.actions.transform.set('KeyE', {
       name: 'Rotate Mode',
       description: '회전 모드',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'transform'
     });
 
     this.actions.transform.set('KeyR', {
       name: 'Scale Mode',
       description: '크기 모드',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'transform'
     });
 
     this.actions.transform.set('KeyQ', {
       name: 'Toggle Space',
       description: '좌표계 전환',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'transform'
     });
 
     this.actions.transform.set('KeyX', {
       name: 'Toggle Snap',
       description: '그리드 스냅 토글',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'transform'
     });
 
@@ -73,49 +78,56 @@ export class KeyboardController {
     this.actions.rotation.set('KeyJ', {
       name: 'Rotate X+',
       description: 'X축 양의 방향 15도 회전',
-      action: null,
+  action: null,
+  allowRepeat: true,
       category: 'rotation'
     });
 
     this.actions.rotation.set('KeyL', {
       name: 'Rotate X-',
       description: 'X축 음의 방향 15도 회전',
-      action: null,
+  action: null,
+  allowRepeat: true,
       category: 'rotation'
     });
 
     this.actions.rotation.set('KeyI', {
       name: 'Rotate Y+',
       description: 'Y축 양의 방향 15도 회전',
-      action: null,
+  action: null,
+  allowRepeat: true,
       category: 'rotation'
     });
 
     this.actions.rotation.set('KeyK', {
       name: 'Rotate Y-',
       description: 'Y축 음의 방향 15도 회전',
-      action: null,
+  action: null,
+  allowRepeat: true,
       category: 'rotation'
     });
 
     this.actions.rotation.set('KeyU', {
       name: 'Rotate Z+',
       description: 'Z축 양의 방향 15도 회전',
-      action: null,
+  action: null,
+  allowRepeat: true,
       category: 'rotation'
     });
 
     this.actions.rotation.set('KeyO', {
       name: 'Rotate Z-',
       description: 'Z축 음의 방향 15도 회전',
-      action: null,
+  action: null,
+  allowRepeat: true,
       category: 'rotation'
     });
 
     this.actions.rotation.set('KeyP', {
       name: 'Reset Rotation',
       description: '회전 초기화',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'rotation'
     });
 
@@ -123,14 +135,16 @@ export class KeyboardController {
     this.actions.selection.set('Escape', {
       name: 'Deselect All',
       description: '모든 선택 해제',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'selection'
     });
 
     this.actions.selection.set('KeyA', {
       name: 'Select All',
       description: '전체 선택',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'selection',
       requiresCtrl: true
     });
@@ -139,21 +153,24 @@ export class KeyboardController {
     this.actions.object.set('Delete', {
       name: 'Delete Objects',
       description: '선택된 오브젝트 삭제',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'object'
     });
 
     this.actions.object.set('Backspace', {
       name: 'Delete Objects',
       description: '선택된 오브젝트 삭제',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'object'
     });
 
     this.actions.object.set('KeyD', {
       name: 'Duplicate Objects',
       description: '오브젝트 복제',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'object',
       requiresCtrl: true
     });
@@ -161,7 +178,8 @@ export class KeyboardController {
     this.actions.object.set('KeyG', {
       name: 'Group Objects',
       description: '오브젝트 그룹화',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'object',
       requiresCtrl: true
     });
@@ -170,42 +188,48 @@ export class KeyboardController {
     this.actions.viewport.set('KeyF', {
       name: 'Focus on Object',
       description: '선택된 오브젝트로 포커스',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'viewport'
     });
 
     this.actions.viewport.set('Numpad5', {
       name: 'Toggle Projection',
       description: '투영 모드 전환',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'viewport'
     });
 
     this.actions.viewport.set('Numpad1', {
       name: 'Front View',
       description: '정면 뷰',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'viewport'
     });
 
     this.actions.viewport.set('Numpad3', {
       name: 'Side View',
       description: '측면 뷰',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'viewport'
     });
 
     this.actions.viewport.set('Numpad7', {
       name: 'Top View',
       description: '상단 뷰',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'viewport'
     });
 
     this.actions.viewport.set('Numpad0', {
       name: 'Reset Camera',
       description: '카메라 리셋',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'viewport'
     });
 
@@ -213,7 +237,8 @@ export class KeyboardController {
     this.actions.system.set('KeyZ', {
       name: 'Undo',
       description: '실행 취소',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'system',
       requiresCtrl: true
     });
@@ -221,7 +246,8 @@ export class KeyboardController {
     this.actions.system.set('KeyY', {
       name: 'Redo',
       description: '다시 실행',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'system',
       requiresCtrl: true
     });
@@ -229,7 +255,8 @@ export class KeyboardController {
     this.actions.system.set('KeyS', {
       name: 'Save',
       description: '저장',
-      action: null,
+  action: null,
+  allowRepeat: false,
       category: 'system',
       requiresCtrl: true
     });
@@ -274,6 +301,8 @@ export class KeyboardController {
     // 해당 키에 대한 액션 찾기
     const action = this.findAction(code);
     if (action && action.action && !action.requiresCtrl) {
+      // 반복 입력 억제 (명시적으로 허용된 액션만 반복 허용)
+      if (originalEvent?.repeat && !action.allowRepeat) return;
       originalEvent.preventDefault();
       this.executeAction(action, keyInfo);
     }
@@ -287,9 +316,7 @@ export class KeyboardController {
     // Undo/Redo는 키 자동 반복 시 여러 번 실행되면 안 됨
     // keydown의 KeyboardEvent.repeat이 true이면 무시하여 "한 번 누를 때 한 번"만 실행
     const isUndoRedoKey = code === 'KeyZ' || code === 'KeyY';
-    if (isUndoRedoKey && originalEvent?.repeat) {
-      return;
-    }
+    // 모든 Ctrl 조합은 기본적으로 반복 금지 (명시적으로 허용된 경우만 예외)
 
     // 추가 안전장치: 같은 조합은 키업 전까지 1회만 허용
     const comboSig = this.buildComboSignature(code, { ctrl: true, shift });
@@ -300,6 +327,7 @@ export class KeyboardController {
     // 해당 키에 대한 액션 찾기
     const action = this.findAction(code);
     if (action && action.action && action.requiresCtrl) {
+      if (originalEvent?.repeat && !action.allowRepeat) return;
       originalEvent.preventDefault();
       
       // Shift 조합 처리 (예: Ctrl+Shift+G = 그룹 해제)
@@ -524,7 +552,8 @@ export class KeyboardController {
       description: description,
       action: action,
       category: category,
-      requiresCtrl: requiresCtrl
+  requiresCtrl: requiresCtrl,
+  allowRepeat: false
     });
 
     
