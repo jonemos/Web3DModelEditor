@@ -329,6 +329,14 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
     }
   };
 
+  // 썸네일 로드 실패 시 재하이드레이션 시도 (blob: URL 등 실패 대응)
+  const handleThumbError = async (meshId) => {
+    try {
+      const meshes = await glbMeshManager.current.getCustomMeshes();
+      loadCustomMeshes(meshes);
+    } catch {}
+  };
+
   return (
     <div className="library-panel">
       <div className="library-header">
@@ -430,9 +438,10 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
                       </div>
                     ) : object.thumbnail ? (
                       <img 
-                        src={object.thumbnail} 
+                        src={object.thumbnail}
                         alt={object.name}
                         className="thumbnail-image"
+                        onError={() => handleThumbError(object.id)}
                       />
                     ) : (
                       <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
@@ -467,14 +476,15 @@ const LibraryPanel = ({ onObjectDrop, onClose, forceRefresh = 0 }) => {
                 >
                   <div className="library-thumbnail">
                     <img 
-                      src={mesh.thumbnail} 
+                      src={mesh.thumbnail}
                       alt={mesh.name}
-                      width="40" 
+                      width="40"
                       height="40"
                       onError={(e) => {
-                        // 썸네일 로드 실패 시 기본 아이콘 표시
+                        // 썸네일 로드 실패 시 기본 아이콘 표시 + 재하이드레이션 시도
                         e.target.style.display = 'none';
                         e.target.nextSibling.style.display = 'block';
+                        handleThumbError(mesh.id);
                       }}
                     />
                     <svg 

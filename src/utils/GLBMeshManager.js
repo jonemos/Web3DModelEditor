@@ -13,6 +13,10 @@ export class GLBMeshManager {
   this.loader = getGLTFLoader();
     this.exporter = new GLTFExporter();
     this.thumbnailRenderer = null;
+  // Cache for stable thumbnail Object URLs keyed by mesh id
+  this._thumbUrlCache = new Map();
+  // Cache for stable thumbnail data URLs keyed by mesh id
+  this._thumbDataUrlCache = new Map();
     this.initThumbnailRenderer();
   // 초기 1회: localStorage → IndexedDB 마이그레이션 시도
   migrateLocalStorageCustomMeshesToIDB();
@@ -684,17 +688,31 @@ export class GLBMeshManager {
   async getCustomMeshes() {
     const meshes = await idbGetAllCustomMeshes();
     // 썸네일이 Blob이면 Object URL로 변환해 UI에서 직접 사용 가능하도록 가공
-    const processed = meshes.map((m) => {
+  const processed = await Promise.all(meshes.map(async (m) => {
       const out = { ...m };
   // 패널/드롭 핸들러에서 인식되도록 명시적 타입 부여
   if (!out.type) out.type = 'custom';
       if (m && m.thumbnail && typeof m.thumbnail === 'object' && 'size' in m.thumbnail) {
         try {
-          out.thumbnail = URL.createObjectURL(m.thumbnail);
+          const dataCached = this._thumbDataUrlCache.get(m.id);
+          if (dataCached) {
+            out.thumbnail = dataCached;
+          } else {
+            // Convert Blob -> data URL (small size; stable, no revoke needed)
+            out.thumbnail = await new Promise((resolve, reject) => {
+              try {
+                const fr = new FileReader();
+                fr.onload = () => resolve(typeof fr.result === 'string' ? fr.result : '');
+                fr.onerror = () => reject(fr.error || new Error('FileReader error'));
+                fr.readAsDataURL(m.thumbnail);
+              } catch (e) { reject(e); }
+            });
+            this._thumbDataUrlCache.set(m.id, out.thumbnail);
+          }
         } catch {}
       }
       return out;
-    });
+    }));
     
     return processed;
   }
@@ -707,6 +725,13 @@ export class GLBMeshManager {
   async deleteCustomMesh(meshId) {
     try {
       await idbDeleteCustomMesh(meshId);
+      // Revoke cached thumbnail URL if any
+      try {
+        const url = this._thumbUrlCache.get(meshId);
+        if (url) { URL.revokeObjectURL(url); this._thumbUrlCache.delete(meshId); }
+      } catch {}
+  // Drop data URL cache
+  try { this._thumbDataUrlCache.delete(meshId); } catch {}
     } catch (e) {
       console.error('IndexedDB 삭제 실패:', e)
       throw new Error('IDB_DELETE_FAILED')

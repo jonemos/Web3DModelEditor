@@ -119,8 +119,38 @@ async function saveToStorage() {
   }
 }
 
+// ---- Schema upgrade helpers ----
+function tableHasColumn(database, table, column) {
+  try {
+    const stmt = database.prepare(`PRAGMA table_info(${table});`);
+    while (stmt.step()) {
+      const row = stmt.getAsObject();
+      if (String(row.name) === String(column)) {
+        stmt.free();
+        return true;
+      }
+    }
+    stmt.free();
+  } catch {}
+  return false;
+}
+
+function ensureSchemaUpgrades(database) {
+  let changed = false;
+  try {
+    // Add thumbnail_str if missing (custom_meshes)
+    if (!tableHasColumn(database, 'custom_meshes', 'thumbnail_str')) {
+      database.exec('ALTER TABLE custom_meshes ADD COLUMN thumbnail_str TEXT;');
+      changed = true;
+    }
+  } catch (e) {
+    console.warn('Schema upgrade skipped:', e);
+  }
+  return changed;
+}
+
 export async function getDB() {
-  if (db) return db;
+  if (db) { try { if (ensureSchemaUpgrades(db)) persist(); } catch {} return db; }
   if (!initPromise) {
     initPromise = (async () => {
       SQL = await initSqlJs({ locateFile: (file) => file.endsWith('sql-wasm.wasm') ? wasmUrl : file });
@@ -135,8 +165,11 @@ CREATE TABLE IF NOT EXISTS app_settings (
 CREATE TABLE IF NOT EXISTS custom_meshes (
   id TEXT PRIMARY KEY,
   name TEXT,
+  -- Deprecated: data_b64 / thumbnail_b64 kept for backward-compat; new flow stores blobs in IDB
   data_b64 TEXT,
   thumbnail_b64 TEXT,
+  -- Optional lightweight string metadata for thumbnail (e.g. mime or note)
+  thumbnail_str TEXT,
   created_at INTEGER
 );
 CREATE TABLE IF NOT EXISTS saved_maps (
@@ -146,6 +179,8 @@ CREATE TABLE IF NOT EXISTS saved_maps (
   updated_at INTEGER
 );
 `);
+      // Apply in-place schema upgrades for existing DBs
+  try { if (ensureSchemaUpgrades(db)) persist(); } catch {}
       // One-time legacy migration from old IndexedDB store
       try {
         const migrated = localStorage.getItem(LEGACY_MIGRATION_FLAG);
@@ -203,14 +238,21 @@ export async function settingsGet(key) {
 export async function customMeshesGetAll() {
   const database = await getDB();
   const res = [];
-  const stmt = database.prepare('SELECT id, name, data_b64, thumbnail_b64, created_at FROM custom_meshes ORDER BY created_at ASC');
+  let stmt;
+  try {
+    stmt = database.prepare('SELECT id, name, data_b64, thumbnail_b64, thumbnail_str, created_at FROM custom_meshes ORDER BY created_at ASC');
+  } catch {
+    // Fallback for older DBs without the column
+    stmt = database.prepare('SELECT id, name, data_b64, thumbnail_b64, created_at FROM custom_meshes ORDER BY created_at ASC');
+  }
   while (stmt.step()) {
     const row = stmt.getAsObject();
     res.push({
       id: row.id,
       name: row.name,
-    glbData: row.data_b64 ? base64ToUint8(row.data_b64).buffer : null,
-      thumbnail: row.thumbnail_b64 || null,
+      // Legacy fields returned for backward-compat (callers may ignore)
+      glbData: row.data_b64 ? base64ToUint8(row.data_b64).buffer : null,
+      thumbnail: row.thumbnail_b64 || row.thumbnail_str || null,
       createdAt: row.created_at
     });
   }
@@ -220,14 +262,24 @@ export async function customMeshesGetAll() {
 
 export async function customMeshesUpsert(mesh) {
   const database = await getDB();
-  const { id, name, data, glbData, thumbnail } = mesh;
+  const { id, name, data, glbData, thumbnail, thumbnailStr } = mesh;
   const bin = data || glbData || null;
   const data_b64 = bin ? abToBase64(bin instanceof Uint8Array ? bin : new Uint8Array(bin)) : null;
+  // Prefer non-binary thumbnail string meta when provided
   const thumbnail_b64 = typeof thumbnail === 'string' ? thumbnail : null;
+  const thumbnail_str = typeof thumbnailStr === 'string' ? thumbnailStr : null;
   const created_at = Date.now();
-  const stmt = database.prepare('INSERT INTO custom_meshes(id, name, data_b64, thumbnail_b64, created_at) VALUES(?, ?, ?, ?, ?)\nON CONFLICT(id) DO UPDATE SET name=excluded.name, data_b64=excluded.data_b64, thumbnail_b64=excluded.thumbnail_b64');
-  stmt.run([id, name ?? '', data_b64, thumbnail_b64, created_at]);
-  stmt.free();
+  let stmt;
+  try {
+    stmt = database.prepare('INSERT INTO custom_meshes(id, name, data_b64, thumbnail_b64, thumbnail_str, created_at) VALUES(?, ?, ?, ?, ?, ?)\nON CONFLICT(id) DO UPDATE SET name=excluded.name, data_b64=excluded.data_b64, thumbnail_b64=excluded.thumbnail_b64, thumbnail_str=excluded.thumbnail_str');
+    stmt.run([id, name ?? '', data_b64, thumbnail_b64, thumbnail_str, created_at]);
+    stmt.free();
+  } catch {
+    // Fallback for DB without thumbnail_str
+    stmt = database.prepare('INSERT INTO custom_meshes(id, name, data_b64, thumbnail_b64, created_at) VALUES(?, ?, ?, ?, ?)\nON CONFLICT(id) DO UPDATE SET name=excluded.name, data_b64=excluded.data_b64, thumbnail_b64=excluded.thumbnail_b64');
+    stmt.run([id, name ?? '', data_b64, thumbnail_b64, created_at]);
+    stmt.free();
+  }
   persist();
 }
 
